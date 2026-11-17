@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  S12, validateManifest, ManifestError, predicateFromP, scoreFromHead, topGap, mergePolicy, shouldEscalate,
+  S1S2, validateManifest, ManifestError, predicateFromP, scoreFromHead, topGap, mergePolicy, shouldEscalate,
   thresholdFromQuantile, MARGIN_POLICY_DEFAULTS, normalizeQuestions, logitIds, encodeTagged, assertManifestTokens, decisionOf,
 } from "../dist/index.js";
 import { clone, toy, toyManifest, TOY_ID as ID, TOY_PIECES } from "./helpers.mjs";
@@ -44,7 +44,7 @@ function M({ escalation, buildEscalation, tasks } = {}) {
   if (tasks) m.tasks = tasks;
   return validateManifest(m);
 }
-const lib = (m, be, build = "genai-int4-webgpu") => S12.fromBackend(m, build, be, toy);
+const lib = (m, be, build = "genai-int4-webgpu") => S1S2.fromBackend(m, build, be, toy);
 // Logits by question: the instruction text decides the yes/no gap.
 const byText = (table) => (ids) => { const t = toy.decode(ids); for (const [k, v] of Object.entries(table)) if (t.includes(k)) return v; return { [YES]: 1, [NO]: 0 }; };
 

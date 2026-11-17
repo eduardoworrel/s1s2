@@ -32,7 +32,7 @@ export interface Engine {
   resolveBuild?: (build: string) => Promise<EscalationTarget>;
 }
 
-/** Anything that can re-read questions: another S12 (another build), or a test double. */
+/** Anything that can re-read questions: another S1S2 (another build), or a test double. */
 export interface EscalationTarget {
   decide(req: DecisionRequest, opts?: DecideOptions): Promise<{ answers: Answer[]; dispose(): Promise<void> }>;
 }

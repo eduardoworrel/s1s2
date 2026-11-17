@@ -31,7 +31,7 @@ options; each is shown and read as `" " + label`.
 | evidence | head only on the fused model, init from the decision head, lr 1e-4, batch 32, ≤8 epochs, multi-target loss, epoch by dev loss | reimplemented from the lab-s12 study 005 trainer |
 | build | `builder.py -p int4 -e webgpu --extra_options include_hidden_states=true exclude_mtp=true` from a copy of pip `onnxruntime-genai==0.19.0` patched with `s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch` (or `--builder-src` a checkout). `--precision int8/fp16/fp32` for more builds | lab-s12 builds |
 | package | files + manifest (`genai-<prec>-webgpu` and `-cpu` per graph, heads, `evidence`, `tasks` when the question is fixed, `license`, `provenance` with `source.format`); head.bin headers state `"scale": 1` + `s1s2 validate --strict` | `head.py` = port of the Kev PointerHead (Apache-2.0, see NOTICE) |
-| parity | dev rows: PyTorch fp32 on the fused weights vs s1s2 `S12.load` on a build (onnxruntime-node CPU); writes the build's `fidelity` (spec 7) and `provenance.parity.<build>` | |
+| parity | dev rows: PyTorch fp32 on the fused weights vs s1s2 `S1S2.load` on a build (onnxruntime-node CPU); writes the build's `fidelity` (spec 7) and `provenance.parity.<build>` | |
 
 **Builder patch** = `git diff d01b2441..lab-s12/builder-0.19.0-fixes` of github.com/eduardoworrel/onnxruntime-genai
 (builder.py + builders/): `38cbf9c3` SmolLM3 NoPE layers (0.19.0 raises KeyError on `position_ids`) and `b4bb8aec`
@@ -53,7 +53,7 @@ dev; 8 epochs, `--lr 1e-4 --head-lr 1e-3`; CPU training ~9 min). The package its
   SmolLM2 manifest (lab-s12 study 001);
   s1s2 encoding == Python rendering on all 3120 prompts.
 * `s1s2 validate --strict` on the package: ok (13 files sha256-checked, heads parsed).
-* s1s2 loads it (`S12.load`, build `genai-*-cpu`, onnxruntime-node CPU, heads `choice` + `evidence`) and answers
+* s1s2 loads it (`S1S2.load`, build `genai-*-cpu`, onnxruntime-node CPU, heads `choice` + `evidence`) and answers
   every dev row with `method: "both"` + `evidence`. Parity vs PyTorch fp32 (40 decision rows, 19 evidence rows):
 
 | build | head agreement | head acc (PyTorch → lib) | logits agreement | evidence agreement | evidence acc |

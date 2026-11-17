@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  S12, validateManifest, ManifestError, headFor, encodeTagged, normalizeQuestions, splitSentences, evidenceFromScores,
+  S1S2, validateManifest, ManifestError, headFor, encodeTagged, normalizeQuestions, splitSentences, evidenceFromScores,
 } from "../dist/index.js";
 import { clone, toy, toyManifest, TOY_ID as ID, TOY_PIECES } from "./helpers.mjs";
 
@@ -53,7 +53,7 @@ function M({ evidence = { instructions: EV_Q, source: "test" }, evidenceHead = t
   if (evidence) m.evidence = evidence;
   return validateManifest(m);
 }
-const lib = (m, be, heads = { evidence: head(), choice: head() }) => S12.fromBackend(m, "genai-int4-webgpu", be, toy, heads);
+const lib = (m, be, heads = { evidence: head(), choice: head() }) => S1S2.fromBackend(m, "genai-int4-webgpu", be, toy, heads);
 const PASSAGE = "We collect your email. We keep it for two years. You can ask us to delete it.";
 const SENTS = ["We collect your email.", "We keep it for two years.", "You can ask us to delete it."];
 

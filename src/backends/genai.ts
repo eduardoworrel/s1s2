@@ -287,7 +287,7 @@ export async function createGenai(model: string | Uint8Array, dataUrl: string, d
   if (verify) {
     const store = epStore(opts);
     const maxCpu = opts.maxCpuNodes ?? 32;
-    const key = store ? `s12:genai-ep:${ort.env?.versions?.web ?? "?"}:${await adapterTag(opts)}:${modelKey}:${dataUrl}:${maxCpu}` : "";
+    const key = store ? `s1s2:genai-ep:${ort.env?.versions?.web ?? "?"}:${await adapterTag(opts)}:${modelKey}:${dataUrl}:${maxCpu}` : "";
     let cached = false;
     if (verify !== "force" && store) { try { cached = store.getItem(key) === "ok"; } catch { /* no storage */ } }
     if (!cached) {

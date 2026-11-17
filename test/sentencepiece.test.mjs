@@ -4,7 +4,7 @@
 // the lib verifies marker and label tokens in the context of the rendered prompt, and still refuses real mismatches.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertManifestTokens, encodeTagged, firstTokens, logitIds, normalizeQuestions, planQuestion, validateManifest, S12 } from "../dist/index.js";
+import { assertManifestTokens, encodeTagged, firstTokens, logitIds, normalizeQuestions, planQuestion, validateManifest, S1S2 } from "../dist/index.js";
 import { toy, toyManifest, TOY_ID as ID, TOY_PIECES } from "./helpers.mjs";
 const TOY_PIECES_LEN = TOY_PIECES.length;
 
@@ -20,7 +20,7 @@ test("toy tokenizer behaves like SentencePiece: '>' alone is '▁>', decode is n
 test("load-time checks accept a marker piece without '▁' (checked in the rendered prompt)", () => {
   const m = validateManifest(toyManifest());
   assertManifestTokens(toy, m);
-  assert.doesNotThrow(() => S12.fromBackend(m, "genai-int4-cpu", { kind: "stub", hiddenName: "hidden_states" }, toy));
+  assert.doesNotThrow(() => S1S2.fromBackend(m, "genai-int4-cpu", { kind: "stub", hiddenName: "hidden_states" }, toy));
 });
 
 test("read positions by prefix encoding land on the '>' of each marker", () => {

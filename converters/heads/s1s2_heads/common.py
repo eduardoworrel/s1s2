@@ -123,7 +123,7 @@ def compare(ref: list[list[float]], ours: list[list[float]], *, tol_p: float, to
 
 def fidelity_record(*, source_format: str, reference: dict, inputs: dict, result: dict, ours: dict, notes: str = "") -> dict:
     """spec 0.2 section 9.2: one record per conversion."""
-    return {"schema": "s12.conversion-fidelity/1", "spec": SPEC_VERSION, "sourceFormat": source_format, "reference": reference,
+    return {"schema": "s1s2.conversion-fidelity/1", "spec": SPEC_VERSION, "sourceFormat": source_format, "reference": reference,
             "ours": {"impl": "s1s2", "commit": lib_commit(), **ours}, "inputs": inputs, **result, **({"notes": notes} if notes else {})}
 
 

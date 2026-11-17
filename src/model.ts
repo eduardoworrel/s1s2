@@ -60,7 +60,7 @@ async function readManifest(src: LoadOptions["manifest"], platform: string, f: t
   return validateManifest(await r.json());
 }
 
-export class S12 {
+export class S1S2 {
   readonly manifest: Manifest;
   readonly build: string;
   readonly runtime: RuntimeName;
@@ -68,26 +68,26 @@ export class S12 {
   /** Why "auto" did not use its first candidate. */
   fallbackReason?: string;
   private engine: Engine;
-  private buildLoader?: (build: string) => Promise<S12>;
-  private escalationBuilds = new Map<string, Promise<S12>>();
+  private buildLoader?: (build: string) => Promise<S1S2>;
+  private escalationBuilds = new Map<string, Promise<S1S2>>();
 
   private constructor(m: Manifest, plan: Plan, engine: Engine) {
     this.manifest = m; this.build = plan.build; this.runtime = plan.runtime; this.device = plan.device;
     this.engine = { ...engine, build: plan.build, resolveBuild: (b) => this.escalationBuild(b) };
   }
 
-  /** How `to: { build }` escalation loads another build (default after S12.load: S12.load with the same options
+  /** How `to: { build }` escalation loads another build (default after S1S2.load: S1S2.load with the same options
    *  and that build). Each build is loaded once, on first use, and disposed with this instance. A second graph in
    *  memory is a real cost (an int8 graph is about twice the int4 one). */
-  withBuildLoader(load: (build: string) => Promise<S12>): this { this.buildLoader = load; return this; }
+  withBuildLoader(load: (build: string) => Promise<S1S2>): this { this.buildLoader = load; return this; }
 
   /** The instance used for escalation to `build` (loaded on first use). */
-  escalationBuild(build: string): Promise<S12> {
+  escalationBuild(build: string): Promise<S1S2> {
     if (build === this.build) return Promise.reject(new Error(`margin policy: escalation target "${build}" is the build already answering`));
     if (!this.manifest.builds[build]) return Promise.reject(new Error(`margin policy: unknown build "${build}"`));
     let p = this.escalationBuilds.get(build);
     if (!p) {
-      if (!this.buildLoader) return Promise.reject(new Error(`margin policy: no loader for build "${build}" (S12.fromBackend: call withBuildLoader)`));
+      if (!this.buildLoader) return Promise.reject(new Error(`margin policy: no loader for build "${build}" (S1S2.fromBackend: call withBuildLoader)`));
       p = this.buildLoader(build);
       p.catch(() => this.escalationBuilds.delete(build));
       this.escalationBuilds.set(build, p);
@@ -120,16 +120,16 @@ export class S12 {
   }
 
   /** Build an instance around an existing backend + tokenizer (tests, custom runtimes). */
-  static fromBackend(manifest: Manifest | Record<string, unknown>, build: string, backend: Backend, tok: Tok, heads: Partial<Record<HeadRole, AnyHead>> = {}, device: Device = "cpu", maxSafeTokens?: number, norm?: NormWeights): S12 {
+  static fromBackend(manifest: Manifest | Record<string, unknown>, build: string, backend: Backend, tok: Tok, heads: Partial<Record<HeadRole, AnyHead>> = {}, device: Device = "cpu", maxSafeTokens?: number, norm?: NormWeights): S1S2 {
     const m = validateManifest(manifest);
     const b = m.builds[build];
     if (!b) throw new Error(`unknown build "${build}"`);
     assertManifestTokens(tok, m);
     for (const [t, h] of Object.entries(heads)) { const hs = h && ("cfg" in h ? h.cfg.hidden_size : h.hiddenSize); if (h && hs !== m.hiddenSize) throw new Error(`head for ${t}: hiddenSize ${hs} != manifest ${m.hiddenSize}`); }
-    return new S12(m, { build, runtime: b.runtime, device }, { manifest: m, tok, backend, heads, norm, maxSafeTokens: maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
+    return new S1S2(m, { build, runtime: b.runtime, device }, { manifest: m, tok, backend, heads, norm, maxSafeTokens: maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
   }
 
-  static async load(opts: LoadOptions): Promise<S12> {
+  static async load(opts: LoadOptions): Promise<S1S2> {
     const status = opts.onStatus ?? (() => {});
     const platform = detectPlatform();
     const f = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
@@ -277,9 +277,9 @@ export class S12 {
         const heads = opts.heads === false ? {} : await loadHeads(m, b, files, status);
         const norm = opts.heads === false || !b.norm ? undefined : await loadBuildNorm(m, b, files);
         await assertBackend(m, b, backend);
-        const s = new S12(m, plan, { manifest: m, tok, backend, heads, norm, maxSafeTokens: opts.maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
+        const s = new S1S2(m, plan, { manifest: m, tok, backend, heads, norm, maxSafeTokens: opts.maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
         if (reasons.length) s.fallbackReason = reasons.join("; ");
-        s.withBuildLoader((build) => S12.load({ ...opts, build, runtime: undefined }));
+        s.withBuildLoader((build) => S1S2.load({ ...opts, build, runtime: undefined }));
         status(`ready: ${plan.build} (${plan.runtime}, ${plan.device})`);
         return s;
       } catch (e: any) {
@@ -348,3 +348,8 @@ export async function assertBackend(m: Manifest, b: BuildSpec, be: Backend): Pro
   const mx = Math.max(...ids);
   if (r.lastLogits.length <= mx) throw new Error(`build ${b.repo}@${b.revision}: vocabulary ${r.lastLogits.length} does not cover manifest token ${mx}`);
 }
+
+/** @deprecated Renamed to `S1S2`; `S12` stays as an alias for compatibility and will be removed in a later release. */
+export const S12 = S1S2;
+/** @deprecated Renamed to `S1S2`. */
+export type S12 = S1S2;

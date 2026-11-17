@@ -159,7 +159,7 @@ def stage_prepare(a, W):
     pid = a.id or f"{base['repo'].split('/')[-1].lower()}-s1s2"
     lab_texts = [LY.option_text(l) for l in labels]
     draft = {
-        "schema": "s12.manifest/1", "id": pid, "base": {"repo": base["repo"], "revision": base["revision"]},
+        "schema": "s1s2.manifest/1", "id": pid, "base": {"repo": base["repo"], "revision": base["revision"]},
         "hiddenSize": hidden, "layer": {"read": "final", "norm": "in-graph"},
         "tokenizer": {"repo": f"local/{pid}", "revision": base["revision"], "files": {}},
         "eos": [disc.ref(i) for i in sorted(eos)], "warmup": warm, "encoding": enc, "markers": disc.markers(),
@@ -318,7 +318,7 @@ def stage_parity(a, W):
     write_jsonl(W / "parity_in.jsonl", rows_in)
     lib = lib_dir(a.lib)
     node = Path(__file__).resolve().parent / "node" / "run_package.mjs"
-    run(["node", node, lib, pkg, build, W / "parity_in.jsonl", W / "parity_lib.jsonl"], "parity", env={"S12_CACHE": str(W / "s12-cache")})
+    run(["node", node, lib, pkg, build, W / "parity_in.jsonl", W / "parity_lib.jsonl"], "parity", env={"S1S2_CACHE": str(W / "s1s2-cache")})
     got = {r["id"]: r for r in read_jsonl(W / "parity_lib.jsonl")}
     # reference
     tok = AutoTokenizer.from_pretrained(str(W / "fused"), local_files_only=True)
@@ -366,7 +366,7 @@ def stage_parity(a, W):
                 "margin_pearson": cov / (va * vb) ** 0.5 if va > 0 and vb > 0 else None,
                 "margin_mean_pytorch": mu_a, "margin_mean_lib": mu_b}
     out = {"package": str(pkg), "build": build, "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
-           "runtime": f"s1s2 S12.load build {build} (onnxruntime-node CPU, {m['builds'][build].get('dtype')} graph)", "dev_rows": len(res),
+           "runtime": f"s1s2 S1S2.load build {build} (onnxruntime-node CPU, {m['builds'][build].get('dtype')} graph)", "dev_rows": len(res),
            "head": summary("ref_head", "head"), "logits": summary("ref_logits", "logits"),
            "evidence": summary("ref_evidence", "evidence", "gold_evidence"), "labels": prep["label_texts"]}
     write_json(W / f"PARITY-{build}.json", out)

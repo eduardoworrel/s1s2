@@ -10,10 +10,10 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as ort from "onnxruntime-node";
-import { genaiFromSession, embeddingTableFromBytes, embeddingTable, fileTable, httpRangeTable, validateManifest, S12, nodeFloat16Workaround } from "../dist/index.js";
+import { genaiFromSession, embeddingTableFromBytes, embeddingTable, fileTable, httpRangeTable, validateManifest, S1S2, nodeFloat16Workaround } from "../dist/index.js";
 import { toy, toyManifest } from "./helpers.mjs";
 
-// fp16 inputs_embeds tensors on onnxruntime-node: same workaround S12.load applies, before any ort tensor exists.
+// fp16 inputs_embeds tensors on onnxruntime-node: same workaround S1S2.load applies, before any ort tensor exists.
 nodeFloat16Workaround(ort);
 
 const DIR = fileURLToPath(new URL("./fixtures/embeds/", import.meta.url));
@@ -95,8 +95,8 @@ function manifest() {
 // transformers.js stand-in: the toy tokenizer (the pinned tokenizer files are only hashed).
 const tjs = { PreTrainedTokenizer: class { encode(t) { return toy.encode(t); } decode(i) { return toy.decode(i); } } };
 
-test("manifest role embeddings: S12.load (genai, Node CPU) gives the same decisions and text as the input_ids build", async () => {
-  const load = (build) => S12.load({ manifest: manifest(), build, device: "cpu", localDirs: { "local/toy-embeds": DIR }, modules: { ort, transformers: tjs }, cacheDir: join(tmpdir(), "s1s2-test-embeds") });
+test("manifest role embeddings: S1S2.load (genai, Node CPU) gives the same decisions and text as the input_ids build", async () => {
+  const load = (build) => S1S2.load({ manifest: manifest(), build, device: "cpu", localDirs: { "local/toy-embeds": DIR }, modules: { ort, transformers: tjs }, cacheDir: join(tmpdir(), "s1s2-test-embeds") });
   const [la, lb] = [await load("ids"), await load("embeds")];
   const req = { input: "We share data with partners.", questions: [
     { type: "choice", name: "c", instructions: "Is it so?", choices: [" Yes", " No"], method: "logits" },

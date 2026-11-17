@@ -2,7 +2,7 @@
 """Tiny synthetic GenAI-shaped graphs for s1s2 tests (onnx helper only; no model weights).
 
   stub   --hidden H --vocab V --out DIR [--head-size D]
-         A weightless stand-in for a genai build of a real model (same hidden size and vocabulary), so S12.load can be
+         A weightless stand-in for a genai build of a real model (same hidden size and vocabulary), so S1S2.load can be
          exercised with the real tokenizer and a real manifest without the multi-GB graph. Inputs input_ids, attention_mask, a KV-like
          past_key_values.0.key (present = concat(past, id)); outputs logits[1,S,V] = (id+1) * w[v] and hidden_states[1,S,H] = (id+1) * u[h] (w, u in model.onnx.data).
          Writes model.onnx, model.onnx.data, genai_config.json.

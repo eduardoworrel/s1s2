@@ -4,7 +4,7 @@ import * as ort from "onnxruntime-node";
 import * as tjs from "@huggingface/transformers";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { S12, Files, createDecodeOnly as s12DecodeOnly, loadHead } from "../../dist/index.js";
+import { S1S2, Files, createDecodeOnly as libDecodeOnly, loadHead } from "../../dist/index.js";
 import { CT0 } from "../helpers.mjs";
 
 const edge = process.env.CT0_EDGE_DIR ?? "../ct0-edge";
@@ -26,10 +26,10 @@ const edgeBe = await createDecodeOnly(session, rawTok, { ort, skipVersionCheck: 
 const edgeHeads = { noulChoice: edgeLoadHead(await ab(b.heads.predicateChoice.file)), score: edgeLoadHead(await ab(b.heads.score.file)) };
 const { tokenizerFromJson } = await import("../../dist/index.js");
 const tok = tokenizerFromJson(tjs, await json(t.files.tokenizer), await json(t.files.config));
-const s12Be = await s12DecodeOnly(session, { ort, eos: new Set(CT0.eos.map((x) => x.id)), hiddenOutput: b.hiddenOutput, skipVersionCheck: true });
+const libBe = await libDecodeOnly(session, { ort, eos: new Set(CT0.eos.map((x) => x.id)), hiddenOutput: b.hiddenOutput, skipVersionCheck: true });
 const heads = { predicate: loadHead(await ab(b.heads.predicateChoice.file)), score: loadHead(await ab(b.heads.score.file)) };
 heads.choice = heads.predicate;
-const lib = S12.fromBackend(CT0, "decode-only-q4", s12Be, tok, heads);
+const lib = S1S2.fromBackend(CT0, "decode-only-q4", libBe, tok, heads);
 
 const state = '<form action="http://x.example/login" method="get"><input name="password" type="password"></form>';
 const q = "Does this excerpt itself contain a form submitting sensitive data insecurely?";

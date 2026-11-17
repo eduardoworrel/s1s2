@@ -51,7 +51,7 @@ Library: `escalate: { below, to: { build } }`, `thresholdFromQuantile`.
 
 ## 3. Escalate to a larger model by margin (cascade)
 
-Library: `escalate: { to: { build } }` covers builds of one manifest; a different model is a separate `S12`
+Library: `escalate: { to: { build } }` covers builds of one manifest; a different model is a separate `S1S2`
 passed as `escalate.target`.
 
 - **measured (study 001, dev, exploratory)**: small model decides, lowest-margin items go to a cloud comparator

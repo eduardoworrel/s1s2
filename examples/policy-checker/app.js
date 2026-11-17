@@ -3,7 +3,7 @@
 // a head trained by the lab plugs in through the manifest (builds.<name>.heads, defaults.method.choice = "head").
 import * as ort from "onnxruntime-web/webgpu";
 import * as tjs from "@huggingface/transformers";
-import { S12 } from "./lib/index.js";
+import { S1S2 } from "./lib/index.js";
 
 const $ = (id) => document.getElementById(id);
 const status = (m) => { $("status").textContent = m; };
@@ -11,7 +11,7 @@ const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">"
 const params = new URLSearchParams(location.search);
 
 let REQ = null, LAW = "GDPR";
-const models = {}; // manifest file -> S12
+const models = {}; // manifest file -> S1S2
 let mirrors = {};
 
 async function loadModel(file) {
@@ -23,7 +23,7 @@ async function loadModel(file) {
     if (mirrors[repo]) baseUrls[repo] = new URL(mirrors[repo], location.href).href;
   ort.env.wasm.numThreads = 1;
   ort.env.wasm.wasmPaths = new URL("./vendor/ort/", location.href).href;
-  const lib = await S12.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs }, baseUrls,
+  const lib = await S1S2.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs }, baseUrls,
     genai: { verifyEp: true }, onStatus: (m) => status(`${manifest.id}: ${m}`) });
   models[file] = lib;
   return lib;

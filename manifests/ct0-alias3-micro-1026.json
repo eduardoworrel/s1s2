@@ -1,5 +1,5 @@
 {
-  "schema": "s12.manifest/1",
+  "schema": "s1s2.manifest/1",
   "id": "ct0-alias3-micro-1026",
   "base": {
     "repo": "aliasrobotics/alias3-micro-1026",

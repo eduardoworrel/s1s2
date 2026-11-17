@@ -45,7 +45,7 @@ test("browser path: off-Hub files are hashed when size is pinned and small, refu
 });
 
 test("node: download into <cache>/<revision>/<repo>/<path>, hashed while streaming; tampered download rejected", async () => {
-  const cache = mkdtempSync(join(tmpdir(), "s12-"));
+  const cache = mkdtempSync(join(tmpdir(), "s1s2-"));
   let n = 0;
   const f = new Files({ platform: "node", cacheDir: cache, fetch: async () => { n++; return new Response(bytes); } });
   const p = await f.local("o/r", "f".repeat(40), pin);
@@ -58,7 +58,7 @@ test("node: download into <cache>/<revision>/<repo>/<path>, hashed while streami
 });
 
 test("node: localDirs are read-only, hashed once, re-hashed when the file changes", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "s12-local-")), cache = mkdtempSync(join(tmpdir(), "s12-c-"));
+  const dir = mkdtempSync(join(tmpdir(), "s1s2-local-")), cache = mkdtempSync(join(tmpdir(), "s1s2-c-"));
   const file = join(dir, "x.bin"); writeFileSync(file, bytes);
   const p = { path: "x.bin", sha256: sha(bytes), size: bytes.length };
   const f = new Files({ platform: "node", cacheDir: cache, localDirs: { "o/r": dir } });

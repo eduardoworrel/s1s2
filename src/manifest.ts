@@ -2,7 +2,12 @@
 // file sha256s, hidden size, prompt template, marker token ids + strings, readout tokens,
 // head files, per-build fidelity numbers). Validated at load; mismatches fail loudly.
 
-export const MANIFEST_SCHEMA = "s12.manifest/1";
+export const MANIFEST_SCHEMA = "s1s2.manifest/1";
+/** Earlier schema id (before the rename to s1s2). Still accepted, deprecated: write `MANIFEST_SCHEMA` in new manifests. */
+export const LEGACY_MANIFEST_SCHEMAS = ["s12.manifest/1"] as const;
+export type ManifestSchemaId = typeof MANIFEST_SCHEMA | (typeof LEGACY_MANIFEST_SCHEMAS)[number];
+/** True when `schema` is a deprecated id that is still accepted. */
+export const isLegacyManifestSchema = (schema: unknown): boolean => (LEGACY_MANIFEST_SCHEMAS as readonly unknown[]).includes(schema);
 
 export type QType = "predicate" | "choice" | "score";
 export type RuntimeName = "genai" | "decode-only" | "transformers.js" | "webllm" | "litert";
@@ -195,7 +200,8 @@ export interface Fidelity {
 }
 
 export interface Manifest {
-  schema: typeof MANIFEST_SCHEMA;
+  /** `"s1s2.manifest/1"`; the deprecated `"s12.manifest/1"` is still accepted. */
+  schema: ManifestSchemaId;
   id: string;
   base: { repo: string; revision: string };
   hiddenSize: number;
@@ -302,7 +308,7 @@ export function validateManifest(m: any): Manifest {
   const rev = (x: any, at: string) => need(typeof x === "string" && SHA1.test(x), `${at}: pinned 40-hex commit sha required (not a branch)`);
 
   if (!isObj(m)) throw new ManifestError(["manifest: expected an object"]);
-  need(m.schema === MANIFEST_SCHEMA, `schema: expected "${MANIFEST_SCHEMA}", got ${JSON.stringify(m.schema)}`);
+  need(m.schema === MANIFEST_SCHEMA || isLegacyManifestSchema(m.schema), `schema: expected "${MANIFEST_SCHEMA}" (or the deprecated "${LEGACY_MANIFEST_SCHEMAS[0]}"), got ${JSON.stringify(m.schema)}`);
   need(str(m.id), "id: non-empty string");
   need(isObj(m.base) && str(m.base?.repo), "base.repo: string");
   rev(m.base?.revision, "base.revision");

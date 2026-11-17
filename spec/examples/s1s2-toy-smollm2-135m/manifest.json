@@ -1,5 +1,5 @@
 {
- "schema": "s12.manifest/1",
+ "schema": "s1s2.manifest/1",
  "id": "smollm2-135m-instruct-s1s2",
  "base": {
   "repo": "HuggingFaceTB/SmolLM2-135M-Instruct",
@@ -674,7 +674,7 @@
   "parity": {
    "genai-int4-cpu": {
     "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
-    "runtime": "s1s2 S12.load build genai-int4-cpu (onnxruntime-node CPU, int4 graph)",
+    "runtime": "s1s2 S1S2.load build genai-int4-cpu (onnxruntime-node CPU, int4 graph)",
     "dev_rows": 40,
     "head": {
      "n": 40,
@@ -709,7 +709,7 @@
    },
    "genai-int8-cpu": {
     "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
-    "runtime": "s1s2 S12.load build genai-int8-cpu (onnxruntime-node CPU, int8 graph)",
+    "runtime": "s1s2 S1S2.load build genai-int8-cpu (onnxruntime-node CPU, int8 graph)",
     "dev_rows": 40,
     "head": {
      "n": 40,
@@ -744,7 +744,7 @@
    },
    "genai-fp32-cpu": {
     "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
-    "runtime": "s1s2 S12.load build genai-fp32-cpu (onnxruntime-node CPU, fp32 graph)",
+    "runtime": "s1s2 S1S2.load build genai-fp32-cpu (onnxruntime-node CPU, fp32 graph)",
     "dev_rows": 40,
     "head": {
      "n": 40,

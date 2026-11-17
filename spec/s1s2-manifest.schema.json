@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/eduardoworrel/s1s2/spec/s1s2-manifest.schema.json",
-  "title": "S1S2 model package manifest (s12.manifest/1), package spec 0.2-draft",
+  "title": "S1S2 model package manifest (s1s2.manifest/1; the deprecated s12.manifest/1 is still accepted), package spec 0.2-draft",
   "description": "Structural layer of the S1S2 package manifest. Cross-field rules a JSON Schema cannot express (placeholder order, marker/delimiter agreement, embeddings size, one head per question type per build, escalation targets, label/token counts) are normative in spec/s1s2-package.md and enforced by validateManifest (src/manifest.ts); `s1s2 validate` runs both.",
   "type": "object",
   "required": [
@@ -22,7 +22,8 @@
   ],
   "properties": {
     "schema": {
-      "const": "s12.manifest/1"
+      "enum": ["s1s2.manifest/1", "s12.manifest/1"],
+      "description": "Schema id. \"s12.manifest/1\" is the deprecated id from before the rename; readers accept both, writers use \"s1s2.manifest/1\"."
     },
     "id": {
       "$ref": "#/$defs/nonEmpty"

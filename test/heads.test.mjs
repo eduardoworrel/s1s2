@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   parseSafetensors, loadPointerSafetensors, loadLinearHead, linearScores, linearRaw, loadJointHead, jointScores,
-  encodeJointSchema, jointOptions, pyJson, loadAnyHead, headScore, S12, validateManifest,
+  encodeJointSchema, jointOptions, pyJson, loadAnyHead, headScore, S1S2, validateManifest,
 } from "../dist/index.js";
 import { toy, toyManifest, clone } from "./helpers.mjs";
 
@@ -70,7 +70,7 @@ test("linear head through decide(): one read position per question, probabilitie
   const hd = loadAnyHead(LIN(), { kind: "linear", tensors: { weight: "proj.weight", bias: "proj.bias" }, rows: { predicate: { start: 0, end: 2 }, choice: { start: 2 }, score: { start: 2 } }, read: "decide" });
   const seen = [];
   const be = { kind: "fake", hiddenName: "hidden", async prefill(ids, want) { seen.push(want.positions); return { hiddens: want.positions.map(() => new Float32Array([1, 3])), lastLogits: new Float32Array(200) }; } };
-  const s = S12.fromBackend(m, "genai-int4-cpu", be, toy, { predicate: hd, choice: hd, score: hd });
+  const s = S1S2.fromBackend(m, "genai-int4-cpu", be, toy, { predicate: hd, choice: hd, score: hd });
   const r = await s.decide({ input: "We share data.", questions: [
     { name: "p", type: "predicate", instructions: "Shared?" },
     { name: "c", type: "choice", instructions: "Which?", choices: ["a", "b", "c"] },

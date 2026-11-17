@@ -1,13 +1,13 @@
-// Integration smoke test (real weights, Node CPU): CT0 decode-only q4 through S12.load.
+// Integration smoke test (real weights, Node CPU): CT0 decode-only q4 through S1S2.load.
 // Uses the files ct0-edge already cached (read-only) via localDirs. Heavy: about 4 GB of RAM.
-import { S12 } from "../../dist/index.js";
+import { S1S2 } from "../../dist/index.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 const t0 = Date.now(), dt = () => ((Date.now() - t0) / 1000).toFixed(1) + "s";
 const repo = "eduardoworrel/alias3-micro-1026-ONNX-decode-only";
 const localDir = process.env.CT0_DECODE_ONLY_DIR ?? join(homedir(), ".cache/ct0-edge/huggingface.co", repo, "resolve/main");
-const lib = await S12.load({
+const lib = await S1S2.load({
   manifest: new URL("../../manifests/ct0-alias3-micro-1026.json", import.meta.url).pathname,
   build: "decode-only-q4", localDirs: { [repo]: localDir },
   onStatus: (m) => console.log(`[${dt()}] ${m}`),

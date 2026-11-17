@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { S12, normalizeQuestions, inputToText, validateManifest, decisionOf } from "../dist/index.js";
+import { S1S2, normalizeQuestions, inputToText, validateManifest, decisionOf } from "../dist/index.js";
 import { CT0, clone, fixture, ct0Tokenizer } from "./helpers.mjs";
 
 const tok = await ct0Tokenizer();
@@ -41,7 +41,7 @@ function fake(c, { keep = false } = {}) {
   }
   return be;
 }
-const lib = (c, o) => S12.fromBackend(M16, "decode-only-q4", fake(c, o), tok, heads);
+const lib = (c, o) => S1S2.fromBackend(M16, "decode-only-q4", fake(c, o), tok, heads);
 
 test("predicate (alias noul): head and logits reads match ct0-edge reference numbers", { skip }, async () => {
   const c = C.noul, e = c.expected;
@@ -144,7 +144,7 @@ test("input: string, or messages with input_text / input_json parts", () => {
 test("session: System 2 continues from the kept decision prefill (sharedPrefill)", { skip }, async () => {
   const c = C.noul;
   const be = fake(c, { keep: true });
-  const m = S12.fromBackend(M16, "decode-only-q4", be, tok, heads);
+  const m = S1S2.fromBackend(M16, "decode-only-q4", be, tok, heads);
   assert.equal(m.sharedPrefill, true);
   const s = await m.decide({ input: c.probe.state, questions: [{ name: "ioc", type: "noul", instructions: c.probe.q }] });
   assert.equal(s.sharedPrefill, true);
@@ -162,7 +162,7 @@ test("session: System 2 continues from the kept decision prefill (sharedPrefill)
 test("session: backends without kept state fall back to a fresh prefill, flagged", { skip }, async () => {
   const c = C.noul;
   const be = fake(c);
-  const m = S12.fromBackend(M16, "decode-only-q4", be, tok, heads);
+  const m = S1S2.fromBackend(M16, "decode-only-q4", be, tok, heads);
   const s = await m.decide({ input: c.probe.state, questions: [{ name: "ioc", type: "noul", instructions: c.probe.q }] });
   assert.equal(s.sharedPrefill, false);
   const g = await s.generate("Why?");
@@ -173,5 +173,5 @@ test("session: backends without kept state fall back to a fresh prefill, flagged
 });
 
 test("fromBackend rejects heads whose hidden size differs from the manifest", { skip }, () => {
-  assert.throws(() => S12.fromBackend(CT0, "decode-only-q4", fake(C.noul), tok, heads), /hiddenSize 16 != manifest 2560/);
+  assert.throws(() => S1S2.fromBackend(CT0, "decode-only-q4", fake(C.noul), tok, heads), /hiddenSize 16 != manifest 2560/);
 });

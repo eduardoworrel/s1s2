@@ -50,7 +50,7 @@ def kev_manifest(tok, H: int, tok_dir: Path) -> dict:
     eos = tok.convert_tokens_to_ids("<|endoftext|>")
     pin = lambda p: {"path": p.name, "sha256": __import__("hashlib").sha256(p.read_bytes()).hexdigest()}  # noqa: E731
     return {
-        "schema": "s12.manifest/1", "id": "kev-0.8b-e2e", "base": {"repo": KEV[0], "revision": KEV[1]}, "hiddenSize": H,
+        "schema": "s1s2.manifest/1", "id": "kev-0.8b-e2e", "base": {"repo": KEV[0], "revision": KEV[1]}, "hiddenSize": H,
         "layer": {"read": "final", "norm": "in-graph"},
         "tokenizer": {"repo": KEV[0], "revision": KEV[1], "files": {"tokenizer": pin(tok_dir / "tokenizer.json"), "config": pin(tok_dir / "tokenizer_config.json")}},
         "eos": [ref(eos, "<|endoftext|>")],

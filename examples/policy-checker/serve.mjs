@@ -2,7 +2,7 @@
 // Local static server for the Privacy Policy Checker (127.0.0.1 only; COOP/COEP for WebGPU/wasm threads).
 // Serves the page, s1s2/dist as ./lib, onnxruntime-web and transformers.js from node_modules as ./vendor,
 // s1s2/manifests as ./manifests, and local model mirrors as ./models/<repo>/ (listed in ./models.json so the
-// page passes them to S12.load as baseUrls; every file is still sha256-checked against the manifest).
+// page passes them to S1S2.load as baseUrls; every file is still sha256-checked against the manifest).
 // Usage: node serve.mjs [--port 8787] [--mirror <repo>=<dir>]...
 import fs from "node:fs";
 import http from "node:http";
