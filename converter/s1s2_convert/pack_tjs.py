@@ -390,7 +390,8 @@ def stage_card(a):
     sib, name = meta["source"]["repo"], meta["name"]
     fm, body = _front_matter((Path(meta["sourceDir"]) / "README.md").read_text())
     front = yaml.safe_load(fm) or {}
-    tags = [t for t in front.get("tags", []) if t not in ("onnxruntime-genai",) and (a.browser or t != "webgpu")]
+    on_gpu = "webgpu" in read_json(out / meta["manifests"][0])["builds"][BUILD]["devices"]
+    tags = [t for t in front.get("tags", []) if t not in ("onnxruntime-genai",) and (on_gpu or t != "webgpu")]
     for t in ("transformers.js", "onnx"):
         if t not in tags:
             tags.insert(0, t)
@@ -411,8 +412,10 @@ def stage_card(a):
         f"# {title}", "",
         f"**Alternative format.** The same specialist as [{sib.split('/')[-1]}]({sib_url}) in the Transformers.js layout "
         f"(`config.json` + `onnx/{GRAPH}`), for apps that already use transformers.js. The reference build is the ONNX Runtime "
-        "GenAI one in that repo: this copy carries the same int4 weights byte for byte (only graph metadata and file names "
-        "changed), the same heads and the same prompts, so accuracy is the one reported there.", "",
+        "GenAI one in that repo: this copy carries the same int4 weights byte for byte (" + (
+            f"the token table `{meta['graph'].get('embeddingFile', 'embed_tokens.fp16.bin')}` of that repo is `onnx/{DATA}_1` here, read by one added "
+            "Gather node; otherwise only graph metadata and file names changed" if meta["graph"].get("embeddingGather")
+            else "only graph metadata and file names changed") + "), the same heads and the same prompts, so accuracy is the one reported there.", "",
         f"**Parity with the GenAI build:** {par['items']} prompts written for this check (not a test set), Node CPU "
         f"(onnxruntime-node {v.get('onnxruntime-node', '?')}, transformers.js {tjs_v}): hidden state at every read position "
         f"max |diff| {par['hiddenMaxAbsDiff']:g}, head probabilities max |diff| {par['probMaxAbsDiff']:g}, decisions "
