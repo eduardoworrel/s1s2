@@ -115,3 +115,15 @@ test("manifest validation: embeddings only for genai, size pinned and a multiple
   const m2 = manifest(); m2.builds.embeds.runtime = "decode-only";
   assert.throws(() => validateManifest(m2), /only for runtime genai/);
 });
+
+test("S1S2.load fetches the manifest URL once, also when escalation loads another build", async () => {
+  const URL_ = "https://huggingface.co/local/toy-embeds/resolve/main/manifest.json";
+  let fetches = 0;
+  const fetch = async (u) => { if (u === URL_) { fetches++; return new Response(JSON.stringify(manifest())); } throw new Error(`unexpected fetch ${u}`); };
+  const la = await S1S2.load({ manifest: URL_, fetch, build: "ids", device: "cpu", localDirs: { "local/toy-embeds": DIR }, modules: { ort, transformers: tjs }, cacheDir: join(tmpdir(), "s1s2-test-embeds") });
+  assert.equal(fetches, 1);
+  const lb = await la.escalationBuild("embeds");
+  assert.equal(lb.build, "embeds");
+  assert.equal(fetches, 1, "escalation reuses the parsed manifest");
+  await la.dispose();
+});

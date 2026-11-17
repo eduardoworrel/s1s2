@@ -279,7 +279,7 @@ export class S1S2 {
         await assertBackend(m, b, backend);
         const s = new S1S2(m, plan, { manifest: m, tok, backend, heads, norm, maxSafeTokens: opts.maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
         if (reasons.length) s.fallbackReason = reasons.join("; ");
-        s.withBuildLoader((build) => S1S2.load({ ...opts, build, runtime: undefined }));
+        s.withBuildLoader((build) => S1S2.load({ ...opts, manifest: m, build, runtime: undefined })); // parsed once: one manifest fetch per load
         status(`ready: ${plan.build} (${plan.runtime}, ${plan.device})`);
         return s;
       } catch (e: any) {

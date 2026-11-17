@@ -29,7 +29,7 @@ An S1S2 package is one language model plus everything needed to ask it **typed q
 
 | Item | Required | Notes |
 |---|---|---|
-| `manifest*.json` | yes | One manifest per prompt language/layout. |
+| `manifest*.json` | yes | At the package root: one manifest per prompt language/layout; `manifest.json` is the default one. No other file at the root is named `manifest*.json` (a LiteRT bundle manifest goes in the build's folder), since `S1S2.load` reads exactly one of them per load and the Hub counts a download on it. |
 | tokenizer files | yes | `tokenizer.json` + `tokenizer_config.json` (Hugging Face format), pinned by sha256. |
 | one or more builds | yes | Graph files of a runtime (ONNX Runtime GenAI, WebLLM, LiteRT, …), pinned by sha256. |
 | heads | no | Head files of any type of section 6 (`head.bin`, `*.safetensors`), pinned inside a build. |
