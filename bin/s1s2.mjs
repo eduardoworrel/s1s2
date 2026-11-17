@@ -81,8 +81,11 @@ async function encode(args) {
     try {
       if (row.question) {
         const [q] = api.normalizeQuestions([row.question], m);
-        const enc = api.encodeQuestion(tok, m, q, state);
-        o.question = { ids: enc.ids, decide: enc.decide, options: enc.options, last: enc.last, labelIds: api.logitIds(engine, q, enc.text) };
+        // Same layout as decide(): a score question read by logits gets the lead appended (head positions unchanged); with a lead, logits are read at the final id, heads at `last`.
+        let enc = api.encodeQuestion(tok, m, q, state);
+        const lay = q.type === "score" && (q.method ?? m.defaults.method.score) !== "head" ? api.scoreLayout(tok, m, q, enc.text) : { lead: "", labels: q.values };
+        enc = api.appendLead(tok, enc, lay.lead);
+        o.question = { ids: enc.ids, decide: enc.decide, options: enc.options, last: enc.last, labelIds: api.logitIds(engine, q, enc.text, lay.labels), ...(lay.lead ? { lead: lay.lead } : {}) };
       }
       if (row.evidence) {
         const p = api.planEvidence(engine, row.evidence, state);
