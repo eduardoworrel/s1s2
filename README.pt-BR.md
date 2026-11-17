@@ -4,8 +4,12 @@
 
 Decisões tipadas numa só passada de um modelo de linguagem, no navegador, com a probabilidade e a margem de cada resposta. Quando você quer uma explicação, o mesmo modelo gera texto com os mesmos pesos.
 
+```sh
+npm i @s1s2/web
+```
+
 ```js
-import { S1S2 } from "s1s2";
+import { S1S2 } from "@s1s2/web";
 
 const model = await S1S2.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });    // escolhe o runtime do aparelho
 const s = await model.decide({
@@ -51,7 +55,7 @@ Especialistas S1S2 publicados. Os repositórios ONNX rodam no navegador com esta
 Início rápido com um pacote publicado:
 
 ```js
-import { S1S2 } from "s1s2";
+import { S1S2 } from "@s1s2/web";
 
 const model = await S1S2.load({  // navegador (WebGPU): os manifestos publicados ainda não listam device para Node
   manifest: "https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2/resolve/main/manifest.cnli.json",

@@ -4,8 +4,12 @@
 
 Typed decisions from one forward pass of a language model, in the browser, with the probability and the margin of each answer, and text generation on the same weights when you want an explanation.
 
+```sh
+npm i @s1s2/web
+```
+
 ```js
-import { S1S2 } from "s1s2";
+import { S1S2 } from "@s1s2/web";
 
 const model = await S1S2.load({ manifest: "manifests/ct0-alias3-micro-1026.json" });    // picks a runtime for this device
 const s = await model.decide({
@@ -51,7 +55,7 @@ Published S1S2 specialists. The ONNX repos run in the browser with this library 
 Quick start with a published package:
 
 ```js
-import { S1S2 } from "s1s2";
+import { S1S2 } from "@s1s2/web";
 
 const model = await S1S2.load({  // browser (WebGPU): the published manifests list no Node device yet
   manifest: "https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2/resolve/main/manifest.cnli.json",

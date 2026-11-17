@@ -17,7 +17,7 @@ A manifest task (any label set; tokens optional), and a margin policy whose thre
 ```
 
 ```js
-import { S1S2, thresholdFromQuantile } from "s1s2";
+import { S1S2, thresholdFromQuantile } from "@s1s2/web";
 
 const lib = await S1S2.load({ manifest: "manifests/my-model.json" });      // runtime "auto"
 const s = await lib.decide({ input: "Arrived late, but works great.", questions: ["sentiment"] }, { escalate: true });
