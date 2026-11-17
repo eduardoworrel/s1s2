@@ -28,6 +28,45 @@ await s.dispose(); await model.dispose();
 - Formatos de head que lê: Kev `head.pt`, heads de decisão em GGUF, alias3-web `head.bin`, leituras lineares d3/pplx, JEV, `DecisionConfig` do transformers e heads conjuntos Clef. [`converters/heads/`](converters/heads) converte cada um deles e grava um registro de fidelidade contra o código de referência do próprio formato.
 - Antes se chamava s12: o export `S12` e manifests com `schema: "s12.manifest/1"` continuam funcionando, como aliases obsoletos de `S1S2` e `"s1s2.manifest/1"`.
 
+## Modelos
+
+Especialistas S1S2 publicados. Os repositórios ONNX rodam no navegador com esta biblioteca (WebGPU); os LoRA trazem o adaptador PyTorch e os heads para servidor. Cada card traz resultados, limites e licença.
+
+| Tarefa | Base | Navegador (ONNX int4, WebGPU) | Servidores (LoRA + heads) |
+|---|---|---|---|
+| GDPR + LGPD | EuroLLM-1.7B | [EuroLLM-1.7B-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/EuroLLM-1.7B-GDPR-LGPD-ONNX-genai-int4-S1S2) | [EuroLLM-1.7B-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/EuroLLM-1.7B-GDPR-LGPD-LoRA) |
+| GDPR + LGPD | S5-nano | [S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2) | [S5-nano-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-LoRA) |
+| GDPR + LGPD | Salamandra-2B | [Salamandra-2B-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Salamandra-2B-GDPR-LGPD-ONNX-genai-int4-S1S2) | [Salamandra-2B-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/Salamandra-2B-GDPR-LGPD-LoRA) |
+| GDPR + LGPD | SmolLM3-3B | [SmolLM3-3B-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-genai-int4-S1S2) | [SmolLM3-3B-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-GDPR-LGPD-LoRA) |
+| só LGPD | Jurema-7B (acesso controlado) | [Jurema-7B-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Jurema-7B-LGPD-ONNX-genai-int4-S1S2) | [Jurema-7B-LGPD-LoRA](https://huggingface.co/eduardoworrel/Jurema-7B-LGPD-LoRA) |
+| só LGPD | S5-nano | [S5-nano-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-LGPD-ONNX-genai-int4-S1S2) | [S5-nano-LGPD-LoRA](https://huggingface.co/eduardoworrel/S5-nano-LGPD-LoRA) |
+| só LGPD | SmolLM3-3B | [SmolLM3-3B-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-LGPD-ONNX-genai-int4-S1S2) | [SmolLM3-3B-LGPD-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-LGPD-LoRA) |
+| ContractNLI + CLINC150 + SIB-200 | Qwen3-0.6B | [Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [Qwen3-0.6B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-LoRA) |
+| ContractNLI + CLINC150 + SIB-200 | Qwen3-1.7B | [Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [Qwen3-1.7B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-LoRA) |
+| ContractNLI + CLINC150 + SIB-200 | S5-nano | [S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [S5-nano-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-LoRA) |
+| ContractNLI + CLINC150 + SIB-200 | SmolLM3-3B | [SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA) |
+
+Início rápido com um pacote publicado:
+
+```js
+import { S1S2 } from "s1s2";
+
+const model = await S1S2.load({
+  manifest: "https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2/resolve/main/manifest.cnli.json",
+});
+const options = model.manifest.lab.options;  // ["Entailment", "Contradiction", "Not mentioned"]
+const hypothesis = "Receiving Party shall destroy or return some Confidential Information upon the termination of Agreement.";
+const s = await model.decide({
+  input: "Contract:\n" + ndaText,
+  questions: [{ name: "h", type: "choice", choices: options,
+    instructions: `Hypothesis: ${hypothesis}\nDoes the contract entail this hypothesis, contradict it, or not mention it? Answer with one option only.` }],
+});
+const { choice, confidence, margin } = s.answers[0];
+await s.dispose(); await model.dispose();
+```
+
+Os heads foram treinados com as palavras exatas das opções e da pergunta: use as do manifesto (`lab.options`, `lab.question`, ou `lab.labels` nos pacotes GDPR/LGPD, perguntados como `choice` entre `labels.yes` e `labels.no`). Outras palavras mudam o prompt que o head lê.
+
 ## Estado: alfa
 
 O que foi medido, em rodadas pré-registradas dos estudos do lab-s12. Os relatórios ainda não foram publicados.
@@ -57,8 +96,8 @@ Outros projetos já fazem decisão tipada numa passada, entre eles o open-jev, o
 - [`spec/`](spec): a spec do pacote S1S2 (0.2-draft) e o JSON Schema. `node bin/s1s2.mjs validate <pacote>` confere um pacote.
 - [`converter/`](converter/README.md): transforma um modelo do Hugging Face e um JSONL rotulado num pacote. Em Python.
 - [`converters/heads/`](converters/heads): converte formatos de head publicados em pacotes.
-- [`examples/`](examples): um verificador de política de privacidade que roda no aparelho. Os builds do SmolLM2 não estão publicados; sirva-os localmente com `serve.mjs --mirror`.
-- [`manifests/`](manifests): manifestos fixados do CT0 (alias3-micro-1026, builds públicos) e do SmolLM2-135M (builds locais, não publicados).
+- [`examples/`](examples): um verificador de política de privacidade que roda no aparelho, com o pacote publicado [S5-nano GDPR + LGPD](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2) (download de 2,4 GB; a CCPA não estava no treino). Rode `node examples/policy-checker/serve.mjs` depois de `npm ci && npm run build`. `?en=<URL do manifesto>&pt=<URL do manifesto>` carrega outro pacote; um build local é servido com `--mirror <repo>=<pasta>`.
+- [`manifests/`](manifests): manifestos fixados do CT0 (alias3-micro-1026, builds públicos) e do modelo base SmolLM2-135M. Os builds do SmolLM2 não estão publicados, então esses manifestos só carregam de um espelho desses mesmos arquivos; para gerar um pacote pequeno seu, rode o [`converter/`](converter/README.md) (`s1s2-convert all` escreve o grafo, os heads e o manifesto) e sirva com `serve.mjs --mirror`.
 
 ## Créditos
 

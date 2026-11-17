@@ -40,8 +40,8 @@ options; each is shown and read as `" " + label`.
 | package | files + manifest (`genai-<prec>-webgpu` and `-cpu` per graph, heads, `evidence`, `tasks` when the question is fixed, `license`, `provenance` with `source.format`); head.bin headers state `"scale": 1` + `s1s2 validate --strict` | `head.py` = port of the Kev PointerHead (Apache-2.0, see NOTICE) |
 | parity | dev rows: PyTorch fp32 on the fused weights vs s1s2 `S1S2.load` on a build (onnxruntime-node CPU); writes the build's `fidelity` (spec 7) and `provenance.parity.<build>` | |
 
-**Builder patch** = `git diff d01b2441..lab-s12/builder-0.19.0-fixes` of github.com/eduardoworrel/onnxruntime-genai
-(builder.py + builders/): `38cbf9c3` SmolLM3 NoPE layers (0.19.0 raises KeyError on `position_ids`) and `b4bb8aec`
+**Builder patch** (shipped in `s1s2_convert/patches/`): two commits on top of onnxruntime-genai 0.19.0 (`d01b2441`),
+files builder.py + builders/: `38cbf9c3` SmolLM3 NoPE layers (0.19.0 raises KeyError on `position_ids`) and `b4bb8aec`
 `linear_attn_op=linear_attention` for dense Qwen3.5 CUDA/WebGPU exports. Applies cleanly to the pip 0.19.0 builder.
 
 Declared differences from the lab recipe: no kev data augmentation (none-of-the-above / distractors), no later kev

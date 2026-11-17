@@ -16,7 +16,7 @@ let mirrors = {};
 
 async function loadModel(file) {
   if (models[file]) return models[file];
-  const url = params.get(file.includes(".pt.") ? "pt" : "en") ?? `./manifests/${file}`;
+  const url = params.get(file.includes(".pt.") ? "pt" : "en") ?? (/^https?:\/\//.test(file) ? file : `./manifests/${file}`);
   const manifest = await (await fetch(url)).json();
   const baseUrls = {};
   for (const repo of [manifest.tokenizer.repo, ...Object.values(manifest.builds).map((b) => b.repo)])

@@ -1,8 +1,8 @@
 """int4 (or int8) ONNX Runtime GenAI build of the fused checkpoint, with the hidden-state output the heads read.
 
 Builder: onnxruntime-genai 0.19.0 `models/builder.py`, run from a copy of the installed package with the lab-s12 fixes
-applied (s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch = `git diff d01b2441..lab-s12/builder-0.19.0-fixes` of
-github.com/eduardoworrel/onnxruntime-genai, files builder.py + builders/):
+applied (s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch, shipped here: two commits on top of
+onnxruntime-genai 0.19.0 d01b2441, files builder.py + builders/):
   38cbf9c3  SmolLM3 NoPE layers: disable RoPE instead of unfusing it (0.19.0 raises KeyError on position_ids)
   b4bb8aec  Qwen3.5/3.8 hybrid layers: linear_attn_op=linear_attention for dense CUDA/WebGPU exports
 Or `--builder-src <fork>/src/python/py/models` to run a checkout directly.
@@ -16,7 +16,7 @@ from pathlib import Path
 from .util import log, run, sha256_file, python_exe
 
 PATCH = Path(__file__).resolve().parent / "patches" / "onnxruntime-genai-0.19.0-lab-s12-fixes.patch"
-FORK = {"repo": "https://github.com/eduardoworrel/onnxruntime-genai", "branch": "lab-s12/builder-0.19.0-fixes",
+FORK = {"repo": "https://github.com/microsoft/onnxruntime-genai",
         "base": "d01b2441a72d4e3223415b9b08474c6e65fbc028 (Version 0.19.0)",
         "commits": ["38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it",
                     "b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"]}
@@ -35,7 +35,7 @@ def patched_builder(work):
     r = subprocess.run(["patch", "-p5", "-d", str(dst), "-i", str(PATCH)], capture_output=True, text=True)
     if r.returncode != 0:
         raise SystemExit(f"builder patch did not apply:\n{r.stdout}\n{r.stderr}")
-    return dst, {"tool": "onnxruntime-genai builder", "version": GENAI_VERSION, "source": f"pip onnxruntime-genai=={GENAI_VERSION} + {FORK['repo']} {FORK['branch']}",
+    return dst, {"tool": "onnxruntime-genai builder", "version": GENAI_VERSION, "source": f"pip onnxruntime-genai=={GENAI_VERSION} + s1s2_convert/patches/{PATCH.name}",
                  "patches": [{"path": "converter/s1s2_convert/patches/" + PATCH.name, "sha256": sha256_file(PATCH),
                               "description": "; ".join(FORK["commits"])}]}
 

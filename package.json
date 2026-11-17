@@ -1,8 +1,20 @@
 {
   "name": "s1s2",
-  "version": "0.1.0-alpha",
-  "private": true,
+  "version": "0.1.0",
   "description": "Typed decisions (predicate / choice / score) with probability and margin from one forward pass of an LLM in the browser and Node, plus generation on the same weights. Reads S1S2 packages.",
+  "keywords": [
+    "llm",
+    "onnx",
+    "onnxruntime",
+    "webgpu",
+    "browser",
+    "classification",
+    "decision",
+    "margin",
+    "lora",
+    "on-device",
+    "s1s2"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/types/index.d.ts",
@@ -30,10 +42,15 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "npm run typecheck && npm run build && node --test \"test/*.test.mjs\"",
     "test:smoke": "node test/smoke/node_decode_only.mjs",
-    "validate:manifests": "node bin/s1s2.mjs validate manifests/*.json spec/examples"
+    "validate:manifests": "node bin/s1s2.mjs validate manifests/*.json spec/examples",
+    "prepublishOnly": "npm test"
   },
   "license": "MIT",
   "author": "Eduardo Worrel",
+  "homepage": "https://github.com/eduardoworrel/s1s2#readme",
+  "bugs": {
+    "url": "https://github.com/eduardoworrel/s1s2/issues"
+  },
   "peerDependencies": {
     "@huggingface/transformers": ">=3.0.0",
     "@litertjs/core": "2.6.0",
@@ -83,5 +100,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eduardoworrel/s1s2.git"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
