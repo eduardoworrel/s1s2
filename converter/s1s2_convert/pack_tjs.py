@@ -437,7 +437,11 @@ def stage_card(a):
         "```", "",
         "## Limits", "",
         "- Not an open-jev / Kev-format model and not a transformers.js `pipeline`: the decision heads are separate files read by s1s2.",
-        "- KV cache head dimension pinned in the graph (transformers.js needs it); everything else is the GenAI graph.", "",
+        "- KV cache head dimension pinned in the graph (transformers.js needs it)" + (
+            f" and one Gather node added that reads the token table (`onnx/{DATA}_1`)" if meta["graph"].get("embeddingGather") else "")
+        + "; everything else is the GenAI graph.",
+        "- Not run on the browser CPU (WASM): the manifests list only the devices measured"
+        + (" (cpu, webgpu)." if on_gpu else "."), "",
         "## License", "", lic, "",
         "## Credits", "", cred,
         "- Transformers.js layout and runtime: [transformers.js](https://github.com/huggingface/transformers.js) (Apache-2.0, Hugging Face).", "",

@@ -85,7 +85,8 @@ external-data location renamed), `config.json` of the base + `transformers.js_co
 per source manifest with a single `transformers.js` build. Builds made with `exclude_embeds` get the token table back as
 `onnx/model_q4.onnx_data_1` (same file) and one Gather node. `parity` loads the source GenAI graph and the new one with
 s1s2 on Node CPU (one at a time) and compares the hidden state at every read position and the head decisions; the result
-goes into the build's `fidelity`. The published `*-ONNX-transformersjs-S1S2` repos were made with it.
+goes into the build's `fidelity`. The prompts used for the published repos come from `examples/pack_tjs_items.py`
+(hand-written texts in each manifest's own templates; no dataset rows). The published `*-ONNX-transformersjs-S1S2` repos were made with it.
 
 ## Not tested
 
