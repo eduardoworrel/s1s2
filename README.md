@@ -30,6 +30,8 @@ await s.dispose(); await model.dispose();
 
 ## Models
 
+All of them in one place: [s1s2 specialists](https://huggingface.co/collections/eduardoworrel/s1s2-specialists-6afc6b0ec797ec2a26933909) on Hugging Face.
+
 Published S1S2 specialists. The ONNX repos run in the browser with this library (WebGPU); the LoRA repos hold the PyTorch adapter and heads for servers. Each card lists its results, limits and license.
 
 | Task | Base | Browser (ONNX int4, WebGPU) | Servers (LoRA + heads) |
