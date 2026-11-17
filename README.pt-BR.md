@@ -52,7 +52,7 @@ Outros projetos já fazem decisão tipada numa passada, entre eles o open-jev, o
 
 ## Estrutura
 
-- [`src/`](src): a biblioteca. `npm test` roda typecheck, build e testes de unidade. Os testes usam mocks e não baixam modelo.
+- [`src/`](src): a biblioteca. `npm test` roda typecheck, build e testes de unidade. Os testes usam mocks e não baixam modelo. Ainda não há CI hospedado: rode `npm test` (e `python -m pytest` em `converter/`) antes de cada versão.
 - [`spec/`](spec): a spec do pacote S1S2 (0.2-draft) e o JSON Schema. `node bin/s1s2.mjs validate <pacote>` confere um pacote.
 - [`converter/`](converter/README.md): transforma um modelo do Hugging Face e um JSONL rotulado num pacote. Em Python.
 - [`converters/heads/`](converters/heads): converte formatos de head publicados em pacotes.

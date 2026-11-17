@@ -52,7 +52,7 @@ Other projects already run typed decisions in one pass, including open-jev, the 
 
 ## Layout
 
-- [`src/`](src): the library. Run `npm test` for typecheck, build and unit tests. Unit tests use mocks and need no model download.
+- [`src/`](src): the library. Run `npm test` for typecheck, build and unit tests. Unit tests use mocks and need no model download. There is no hosted CI yet: run `npm test` (and `python -m pytest` in `converter/`) before each release.
 - [`spec/`](spec): the S1S2 package spec (0.2-draft) and its JSON Schema. `node bin/s1s2.mjs validate <package>` checks a package.
 - [`converter/`](converter/README.md): turns a Hugging Face model plus labelled JSONL into a package. Python.
 - [`converters/heads/`](converters/heads): converts published head formats into packages.
