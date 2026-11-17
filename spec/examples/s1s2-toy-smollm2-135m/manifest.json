@@ -1,0 +1,782 @@
+{
+ "schema": "s12.manifest/1",
+ "id": "smollm2-135m-instruct-s1s2",
+ "base": {
+  "repo": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac"
+ },
+ "hiddenSize": 576,
+ "layer": {
+  "read": "final",
+  "norm": "in-graph"
+ },
+ "tokenizer": {
+  "repo": "local/smollm2-135m-instruct-s1s2",
+  "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+  "files": {
+   "tokenizer": {
+    "path": "tokenizer.json",
+    "sha256": "9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c",
+    "size": 2104556
+   },
+   "config": {
+    "path": "tokenizer_config.json",
+    "sha256": "4ec77d44f62efeb38d7e044a1db318f6a939438425312dfa333b8382dbad98df",
+    "size": 3764
+   }
+  }
+ },
+ "eos": [
+  {
+   "id": 2,
+   "text": "<|im_end|>"
+  }
+ ],
+ "warmup": {
+  "id": 1,
+  "text": "<|im_start|>"
+ },
+ "encoding": {
+  "kind": "tagged",
+  "template": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\n<state> {state}\n <question> {question} <decide><|im_end|>\n<|im_start|>assistant\nAnswer:",
+  "question": {
+   "predicate": "{instructions}",
+   "choice": "{instructions}\n{options}",
+   "score": "{instructions}"
+  },
+  "option": " <option>{label} </option> \n",
+  "optionSeparator": "",
+  "forbiddenInLabels": [
+   "</option>",
+   "<option>"
+  ],
+  "escapeSpecial": true,
+  "escapeLiterals": [
+   "<state>",
+   " <question>",
+   " <option>",
+   " </option>",
+   " <decide>"
+  ]
+ },
+ "markers": {
+  "decide": {
+   "text": " <decide>",
+   "at": "last-token",
+   "tokens": [
+    {
+     "id": 46,
+     "text": ">"
+    }
+   ]
+  },
+  "option": {
+   "text": " </option>",
+   "at": "last-token",
+   "tokens": [
+    {
+     "id": 46,
+     "text": ">"
+    }
+   ]
+  }
+ },
+ "readout": {
+  "predicate": "last",
+  "choice": "option",
+  "score": "last"
+ },
+ "logits": {
+  "predicate": {
+   "yes": {
+    "id": 9230,
+    "text": " Yes"
+   },
+   "no": {
+    "id": 2838,
+    "text": " No"
+   }
+  },
+  "choice": {
+   "map": "tokens",
+   "tokens": [
+    {
+     "label": " Yes",
+     "id": 9230,
+     "text": " Yes"
+    },
+    {
+     "label": " No",
+     "id": 2838,
+     "text": " No"
+    }
+   ]
+  },
+  "score": {
+   "map": "first-token"
+  }
+ },
+ "defaults": {
+  "method": {
+   "predicate": "logits",
+   "choice": "head",
+   "score": "logits"
+  },
+  "maxSafeTokens": 2048
+ },
+ "generation": {
+  "turn": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+  "continue": "{answer}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+  "answers": {
+   "predicate": [
+    " No",
+    " Yes"
+   ]
+  }
+ },
+ "builds": {
+  "genai-int4-webgpu": {
+   "runtime": "genai",
+   "repo": "local/smollm2-135m-instruct-s1s2",
+   "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+   "files": {
+    "model": {
+     "path": "int4/model.onnx",
+     "sha256": "3ba2b324e3dcf6d387a441644000747052991e1c057a206bf40bc042987f3358",
+     "size": 214648
+    },
+    "data": {
+     "path": "int4/model.onnx.data",
+     "sha256": "1cb1115dd6a783f50d8605744f77ea7c370f31ed108ea1be2ee5559e472092cd",
+     "size": 76763776
+    },
+    "genaiConfig": {
+     "path": "int4/genai_config.json",
+     "sha256": "fb8a1ec0091c754703f1e6344cbf88decfc9c40d61e7528d9bb68adfce00626c",
+     "size": 1522
+    }
+   },
+   "hiddenOutput": "hidden_states",
+   "heads": {
+    "decision": {
+     "file": {
+      "path": "heads/decision/head.bin",
+      "sha256": "faf7d35e71e6b0edf9b695e85e5d4f57e7fba282e028654552c97bb3807bbc80",
+      "size": 590938
+     },
+     "types": [
+      "choice"
+     ]
+    },
+    "evidence": {
+     "file": {
+      "path": "heads/evidence/head.bin",
+      "sha256": "133e94e4519daec8f7c05d06410b31298dbe85e4581c53af5bf0bef9532f21b9",
+      "size": 590938
+     },
+     "types": [
+      "evidence"
+     ]
+    }
+   },
+   "devices": [
+    "webgpu"
+   ],
+   "dtype": "int4",
+   "kvHeadDim": 64,
+   "maxSafeTokens": 2048,
+   "fidelity": null
+  },
+  "genai-int4-cpu": {
+   "runtime": "genai",
+   "repo": "local/smollm2-135m-instruct-s1s2",
+   "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+   "files": {
+    "model": {
+     "path": "int4/model.onnx",
+     "sha256": "3ba2b324e3dcf6d387a441644000747052991e1c057a206bf40bc042987f3358",
+     "size": 214648
+    },
+    "data": {
+     "path": "int4/model.onnx.data",
+     "sha256": "1cb1115dd6a783f50d8605744f77ea7c370f31ed108ea1be2ee5559e472092cd",
+     "size": 76763776
+    },
+    "genaiConfig": {
+     "path": "int4/genai_config.json",
+     "sha256": "fb8a1ec0091c754703f1e6344cbf88decfc9c40d61e7528d9bb68adfce00626c",
+     "size": 1522
+    }
+   },
+   "hiddenOutput": "hidden_states",
+   "heads": {
+    "decision": {
+     "file": {
+      "path": "heads/decision/head.bin",
+      "sha256": "faf7d35e71e6b0edf9b695e85e5d4f57e7fba282e028654552c97bb3807bbc80",
+      "size": 590938
+     },
+     "types": [
+      "choice"
+     ]
+    },
+    "evidence": {
+     "file": {
+      "path": "heads/evidence/head.bin",
+      "sha256": "133e94e4519daec8f7c05d06410b31298dbe85e4581c53af5bf0bef9532f21b9",
+      "size": 590938
+     },
+     "types": [
+      "evidence"
+     ]
+    }
+   },
+   "devices": [
+    "cpu"
+   ],
+   "dtype": "int4",
+   "kvHeadDim": 64,
+   "maxSafeTokens": 2048,
+   "fidelity": {
+    "reference": "pytorch-fp32 (fused checkpoint; s1s2-convert parity)",
+    "n": 40,
+    "decisionChanged": {
+     "head": 0.4,
+     "logits": 0.07499999999999996
+    },
+    "measuredAt": "2026-11-16T03:06:05Z",
+    "notes": "dev split, onnxruntime-node CPU EP; evidence head agreement 5/19; order inversion not measured; details in provenance.parity"
+   }
+  },
+  "genai-int8-webgpu": {
+   "runtime": "genai",
+   "repo": "local/smollm2-135m-instruct-s1s2",
+   "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+   "files": {
+    "model": {
+     "path": "int8/model.onnx",
+     "sha256": "664997aae4a268f27704036a3e3a8f6066589c005850201ff26260911b5c6fcf",
+     "size": 214811
+    },
+    "data": {
+     "path": "int8/model.onnx.data",
+     "sha256": "d37a3d9e95a53f2487ff7854b8105912798aae0a7803df2cfabb8b99f0c599ef",
+     "size": 174084736
+    },
+    "genaiConfig": {
+     "path": "int8/genai_config.json",
+     "sha256": "fb8a1ec0091c754703f1e6344cbf88decfc9c40d61e7528d9bb68adfce00626c",
+     "size": 1522
+    }
+   },
+   "hiddenOutput": "hidden_states",
+   "heads": {
+    "decision": {
+     "file": {
+      "path": "heads/decision/head.bin",
+      "sha256": "faf7d35e71e6b0edf9b695e85e5d4f57e7fba282e028654552c97bb3807bbc80",
+      "size": 590938
+     },
+     "types": [
+      "choice"
+     ]
+    },
+    "evidence": {
+     "file": {
+      "path": "heads/evidence/head.bin",
+      "sha256": "133e94e4519daec8f7c05d06410b31298dbe85e4581c53af5bf0bef9532f21b9",
+      "size": 590938
+     },
+     "types": [
+      "evidence"
+     ]
+    }
+   },
+   "devices": [
+    "webgpu"
+   ],
+   "dtype": "int8",
+   "kvHeadDim": 64,
+   "maxSafeTokens": 2048,
+   "fidelity": null
+  },
+  "genai-int8-cpu": {
+   "runtime": "genai",
+   "repo": "local/smollm2-135m-instruct-s1s2",
+   "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+   "files": {
+    "model": {
+     "path": "int8/model.onnx",
+     "sha256": "664997aae4a268f27704036a3e3a8f6066589c005850201ff26260911b5c6fcf",
+     "size": 214811
+    },
+    "data": {
+     "path": "int8/model.onnx.data",
+     "sha256": "d37a3d9e95a53f2487ff7854b8105912798aae0a7803df2cfabb8b99f0c599ef",
+     "size": 174084736
+    },
+    "genaiConfig": {
+     "path": "int8/genai_config.json",
+     "sha256": "fb8a1ec0091c754703f1e6344cbf88decfc9c40d61e7528d9bb68adfce00626c",
+     "size": 1522
+    }
+   },
+   "hiddenOutput": "hidden_states",
+   "heads": {
+    "decision": {
+     "file": {
+      "path": "heads/decision/head.bin",
+      "sha256": "faf7d35e71e6b0edf9b695e85e5d4f57e7fba282e028654552c97bb3807bbc80",
+      "size": 590938
+     },
+     "types": [
+      "choice"
+     ]
+    },
+    "evidence": {
+     "file": {
+      "path": "heads/evidence/head.bin",
+      "sha256": "133e94e4519daec8f7c05d06410b31298dbe85e4581c53af5bf0bef9532f21b9",
+      "size": 590938
+     },
+     "types": [
+      "evidence"
+     ]
+    }
+   },
+   "devices": [
+    "cpu"
+   ],
+   "dtype": "int8",
+   "kvHeadDim": 64,
+   "maxSafeTokens": 2048,
+   "fidelity": {
+    "reference": "pytorch-fp32 (fused checkpoint; s1s2-convert parity)",
+    "n": 40,
+    "decisionChanged": {
+     "head": 0.0,
+     "logits": 0.0
+    },
+    "measuredAt": "2026-11-16T03:06:55Z",
+    "notes": "dev split, onnxruntime-node CPU EP; evidence head agreement 15/19; order inversion not measured; details in provenance.parity"
+   }
+  },
+  "genai-fp32-cpu": {
+   "runtime": "genai",
+   "repo": "local/smollm2-135m-instruct-s1s2",
+   "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+   "files": {
+    "model": {
+     "path": "fp32/model.onnx",
+     "sha256": "cc2dccb81f9b26f7461578e5abedd2d688d43ef05e4456bbb2cf3703960bd843",
+     "size": 170338
+    },
+    "data": {
+     "path": "fp32/model.onnx.data",
+     "sha256": "b3187c57b2b9d291956f7b8fda88b45b123ce6e0955077f91eae1aa47264e629",
+     "size": 540157184
+    },
+    "genaiConfig": {
+     "path": "fp32/genai_config.json",
+     "sha256": "9eaf4c580112da4d0dc5f2e9ca4bc7b8159d8a48da19362110c71f5323104187",
+     "size": 1456
+    }
+   },
+   "hiddenOutput": "hidden_states",
+   "heads": {
+    "decision": {
+     "file": {
+      "path": "heads/decision/head.bin",
+      "sha256": "faf7d35e71e6b0edf9b695e85e5d4f57e7fba282e028654552c97bb3807bbc80",
+      "size": 590938
+     },
+     "types": [
+      "choice"
+     ]
+    },
+    "evidence": {
+     "file": {
+      "path": "heads/evidence/head.bin",
+      "sha256": "133e94e4519daec8f7c05d06410b31298dbe85e4581c53af5bf0bef9532f21b9",
+      "size": 590938
+     },
+     "types": [
+      "evidence"
+     ]
+    }
+   },
+   "devices": [
+    "cpu"
+   ],
+   "dtype": "fp32",
+   "kvHeadDim": 64,
+   "maxSafeTokens": 2048,
+   "fidelity": {
+    "reference": "pytorch-fp32 (fused checkpoint; s1s2-convert parity)",
+    "n": 40,
+    "decisionChanged": {
+     "head": 0.0,
+     "logits": 0.0
+    },
+    "measuredAt": "2026-11-16T03:07:26Z",
+    "notes": "dev split, onnxruntime-node CPU EP; evidence head agreement 19/19; order inversion not measured; details in provenance.parity"
+   }
+  }
+ },
+ "tasks": {
+  "decision": {
+   "type": "choice",
+   "instructions": "Does this passage address a refund? Answer with one option only.",
+   "choices": [
+    {
+     "value": " Yes",
+     "token": {
+      "id": 9230,
+      "text": " Yes"
+     }
+    },
+    {
+     "value": " No",
+     "token": {
+      "id": 2838,
+      "text": " No"
+     }
+    }
+   ]
+  }
+ },
+ "evidence": {
+  "instructions": "This passage addresses {requirement}. Which of the passage's sentences below shows it? Answer with one option only.",
+  "sentencePrefix": " ",
+  "source": "s1s2-convert 0.1.0: lab-s12 005 recipe on the fused model, epoch 8 chosen by dev loss; PyTorch fp32 reference, int4 see provenance.parity"
+ },
+ "license": "Apache-2.0",
+ "provenance": {
+  "generator": {
+   "name": "s1s2-convert",
+   "version": "0.1.0"
+  },
+  "createdAt": "2026-11-16T03:05:36Z",
+  "source": {
+   "format": "hf-transformers-causal-lm",
+   "repo": "HuggingFaceTB/SmolLM2-135M-Instruct",
+   "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+   "files": [
+    "config.json",
+    "model.safetensors | model.safetensors.index.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+   ],
+   "data": "s1s2-convert jsonl (text, question|requirement, label, evidence?, sentences?, split?)"
+  },
+  "base": {
+   "repo": "HuggingFaceTB/SmolLM2-135M-Instruct",
+   "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+   "license": "Apache-2.0"
+  },
+  "dataset": {
+   "sha256": "265ec0e0382e41fd01d7c4b6dd7ea6e573f8e21da751f3252081e89b53a8549e",
+   "rows": 400,
+   "name": "toy.jsonl",
+   "splits": {
+    "train": 360,
+    "dev": 40
+   }
+  },
+  "training": {
+   "recipe": "lab-s12 study 001 joint LoRA + pointer head (Kev @2074cc44)",
+   "seed": 1,
+   "hyperparameters": {
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "lora_targets": "^(?!.*(visual|vision|mtp)).*\\.layers\\.\\d+\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$",
+    "head_dim": 256,
+    "lr": 0.0001,
+    "head_lr": 0.001,
+    "weight_decay": 0.01,
+    "schedule": "OneCycleLR pct_start 0.1",
+    "grad_clip": 1.0,
+    "batch": 4,
+    "accum": 2,
+    "epochs": 8,
+    "steps": 360,
+    "seed": 1,
+    "precision": "fp32 (CPU)",
+    "device": "cpu"
+   },
+   "selection": "lowest dev head loss",
+   "metrics": {
+    "decision_dev_pytorch": {
+     "step": 360,
+     "train_loss": 1.5347174008479354e-06,
+     "dev_loss": 3.2305241845165257e-06,
+     "dev_acc_head": 1.0
+    },
+    "evidence_dev_pytorch": {
+     "epoch": 8,
+     "dev_loss": 0.7460474967956543,
+     "dev_acc": 0.7894736842105263
+    }
+   },
+   "prompt": {
+    "labels": [
+     " Yes",
+     " No"
+    ],
+    "questionTemplate": "Does this passage address {requirement}? Answer with one option only.",
+    "cue": "Answer:",
+    "system": null,
+    "chatKwargs": {},
+    "usage": "decide({input: text, questions: [{type: 'choice', instructions: <question>, choices: labels}]})"
+   },
+   "fuse": {
+    "modules_fused": 210,
+    "scale": 2.0,
+    "files": [
+     "model.safetensors"
+    ],
+    "relative_delta_norm": {
+     "mean": 0.0015205359765483688,
+     "max": 0.006191646214574575
+    },
+    "adapter_sha256": "007529aeff2f2389537866ffac5c6e7c6f4dd6dd73636d3bc8ce0b6efd2a20c4"
+   },
+   "evidence": {
+    "recipe": "lab-s12 study 005 evidence head: head only on the fused model, init from the decision head",
+    "hyperparameters": {
+     "lr": 0.0001,
+     "weight_decay": 0.01,
+     "batch": 32,
+     "epochs": 8,
+     "grad_clip": 1.0,
+     "seed": 1,
+     "precision": "fp32"
+    },
+    "selection": "lowest dev loss (epoch 0 = init head)",
+    "rows": {
+     "train": 181,
+     "dev": 19
+    }
+   }
+  },
+  "builds": {
+   "genai-int4-webgpu": {
+    "tool": "onnxruntime-genai builder",
+    "version": "0.19.0",
+    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "patches": [
+     {
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
+      "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
+     }
+    ],
+    "args": [
+     "-p",
+     "int4",
+     "-e",
+     "webgpu",
+     "--extra_options",
+     "include_hidden_states=true",
+     "exclude_mtp=true"
+    ]
+   },
+   "genai-int4-cpu": {
+    "tool": "onnxruntime-genai builder",
+    "version": "0.19.0",
+    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "patches": [
+     {
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
+      "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
+     }
+    ],
+    "args": [
+     "-p",
+     "int4",
+     "-e",
+     "webgpu",
+     "--extra_options",
+     "include_hidden_states=true",
+     "exclude_mtp=true"
+    ]
+   },
+   "genai-int8-webgpu": {
+    "tool": "onnxruntime-genai builder",
+    "version": "0.19.0",
+    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "patches": [
+     {
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
+      "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
+     }
+    ],
+    "args": [
+     "-p",
+     "int8",
+     "-e",
+     "webgpu",
+     "--extra_options",
+     "include_hidden_states=true",
+     "exclude_mtp=true"
+    ],
+    "ep": "webgpu"
+   },
+   "genai-int8-cpu": {
+    "tool": "onnxruntime-genai builder",
+    "version": "0.19.0",
+    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "patches": [
+     {
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
+      "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
+     }
+    ],
+    "args": [
+     "-p",
+     "int8",
+     "-e",
+     "webgpu",
+     "--extra_options",
+     "include_hidden_states=true",
+     "exclude_mtp=true"
+    ],
+    "ep": "webgpu"
+   },
+   "genai-fp32-cpu": {
+    "tool": "onnxruntime-genai builder",
+    "version": "0.19.0",
+    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "patches": [
+     {
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
+      "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
+     }
+    ],
+    "args": [
+     "-p",
+     "fp32",
+     "-e",
+     "cpu",
+     "--extra_options",
+     "include_hidden_states=true",
+     "exclude_mtp=true"
+    ],
+    "ep": "cpu"
+   }
+  },
+  "notes": "Metrics in training.metrics are on the dev split, read by PyTorch on the training weights (decision: LoRA model; evidence: fused model). Int4 behaviour is in provenance.parity when the parity stage ran.",
+  "parity": {
+   "genai-int4-cpu": {
+    "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
+    "runtime": "s1s2 S12.load build genai-int4-cpu (onnxruntime-node CPU, int4 graph)",
+    "dev_rows": 40,
+    "head": {
+     "n": 40,
+     "decision_agreement": 24,
+     "acc_pytorch_fp32": 1.0,
+     "acc_lib": 0.6,
+     "max_abs_prob_diff": 0.9992063870776209,
+     "margin_pearson": -0.11593896594405474,
+     "margin_mean_pytorch": 0.99910846846081,
+     "margin_mean_lib": 0.9141879966412064
+    },
+    "logits": {
+     "n": 40,
+     "decision_agreement": 37,
+     "acc_pytorch_fp32": 0.525,
+     "acc_lib": 0.5,
+     "max_abs_prob_diff": 0.3085702910548588,
+     "margin_pearson": 0.42277762363377913,
+     "margin_mean_pytorch": 0.29058451429009435,
+     "margin_mean_lib": 0.3816539770259493
+    },
+    "evidence": {
+     "n": 19,
+     "decision_agreement": 5,
+     "acc_pytorch_fp32": 0.7894736842105263,
+     "acc_lib": 0.2631578947368421,
+     "max_abs_prob_diff": 0.5303949798772709,
+     "margin_pearson": 0.2897069089372015,
+     "margin_mean_pytorch": 0.25762747502640676,
+     "margin_mean_lib": 0.4107041251727969
+    }
+   },
+   "genai-int8-cpu": {
+    "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
+    "runtime": "s1s2 S12.load build genai-int8-cpu (onnxruntime-node CPU, int8 graph)",
+    "dev_rows": 40,
+    "head": {
+     "n": 40,
+     "decision_agreement": 40,
+     "acc_pytorch_fp32": 1.0,
+     "acc_lib": 1.0,
+     "max_abs_prob_diff": 0.0209004628069071,
+     "margin_pearson": 0.973482365559967,
+     "margin_mean_pytorch": 0.99910846846081,
+     "margin_mean_lib": 0.9974851902192645
+    },
+    "logits": {
+     "n": 40,
+     "decision_agreement": 40,
+     "acc_pytorch_fp32": 0.525,
+     "acc_lib": 0.525,
+     "max_abs_prob_diff": 0.08543507316412813,
+     "margin_pearson": 0.9004244782755009,
+     "margin_mean_pytorch": 0.29058451429009435,
+     "margin_mean_lib": 0.28313251894778385
+    },
+    "evidence": {
+     "n": 19,
+     "decision_agreement": 15,
+     "acc_pytorch_fp32": 0.7894736842105263,
+     "acc_lib": 0.8947368421052632,
+     "max_abs_prob_diff": 0.17800985041426234,
+     "margin_pearson": 0.8773625830254992,
+     "margin_mean_pytorch": 0.25762747502640676,
+     "margin_mean_lib": 0.31687208694872676
+    }
+   },
+   "genai-fp32-cpu": {
+    "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
+    "runtime": "s1s2 S12.load build genai-fp32-cpu (onnxruntime-node CPU, fp32 graph)",
+    "dev_rows": 40,
+    "head": {
+     "n": 40,
+     "decision_agreement": 40,
+     "acc_pytorch_fp32": 1.0,
+     "acc_lib": 1.0,
+     "max_abs_prob_diff": 4.6238743715010244e-06,
+     "margin_pearson": 0.9999999960065754,
+     "margin_mean_pytorch": 0.99910846846081,
+     "margin_mean_lib": 0.9991087697022852
+    },
+    "logits": {
+     "n": 40,
+     "decision_agreement": 40,
+     "acc_pytorch_fp32": 0.525,
+     "acc_lib": 0.525,
+     "max_abs_prob_diff": 5.250315321725374e-06,
+     "margin_pearson": 0.9999999996283042,
+     "margin_mean_pytorch": 0.29058451429009435,
+     "margin_mean_lib": 0.2905851072210932
+    },
+    "evidence": {
+     "n": 19,
+     "decision_agreement": 19,
+     "acc_pytorch_fp32": 0.7894736842105263,
+     "acc_lib": 0.7894736842105263,
+     "max_abs_prob_diff": 3.9742629089678516e-05,
+     "margin_pearson": 0.9999999903505028,
+     "margin_mean_pytorch": 0.25762747502640676,
+     "margin_mean_lib": 0.25762215358313517
+    }
+   }
+  }
+ }
+}

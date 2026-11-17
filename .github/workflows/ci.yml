@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "s1s2-*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # typecheck + build + unit tests (stub ONNX graphs only; no model download)
+      - run: npm test
+      # every manifest shipped in the repo must pass the S1S2 package validator (manifest-only mode)
+      - run: node bin/s1s2.mjs validate manifests/*.json spec/examples
+
+  converter-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # unit tests only (no model download): layout, data, head.bin; the end-to-end proof is in converter/README.md
+      - run: pip install numpy safetensors torch --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+      - run: python -m unittest discover -s tests -v
+        working-directory: converter

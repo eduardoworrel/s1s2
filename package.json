@@ -1,0 +1,87 @@
+{
+  "name": "s1s2",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "description": "Typed decisions (predicate / choice / score) with probability and margin from one forward pass of an LLM in the browser and Node, plus generation on the same weights. Reads S1S2 packages.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./fidelity": {
+      "types": "./dist/types/fidelity.d.ts",
+      "default": "./dist/fidelity.js"
+    },
+    "./manifest": {
+      "types": "./dist/types/manifest.d.ts",
+      "default": "./dist/manifest.js"
+    },
+    "./package": {
+      "types": "./dist/types/package.d.ts",
+      "default": "./dist/package.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs && npm run build:types",
+    "build:types": "rm -rf dist/types && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && npm run build && node --test \"test/*.test.mjs\"",
+    "test:smoke": "node test/smoke/node_decode_only.mjs",
+    "validate:manifests": "node bin/s1s2.mjs validate manifests/*.json spec/examples"
+  },
+  "license": "MIT",
+  "author": "Eduardo Worrel",
+  "peerDependencies": {
+    "@huggingface/transformers": ">=3.0.0",
+    "@litertjs/core": "2.6.0",
+    "@mlc-ai/web-llm": ">=0.2.86",
+    "onnxruntime-node": ">=1.30.0",
+    "onnxruntime-web": ">=1.30.0"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/transformers": {
+      "optional": true
+    },
+    "onnxruntime-web": {
+      "optional": true
+    },
+    "onnxruntime-node": {
+      "optional": true
+    },
+    "@mlc-ai/web-llm": {
+      "optional": true
+    },
+    "@litertjs/core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "onnxruntime-node": "^1.30.0",
+    "onnxruntime-web": "1.31.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "bin": {
+    "s1s2": "./bin/s1s2.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "spec",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eduardoworrel/s1s2.git"
+  }
+}

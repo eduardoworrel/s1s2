@@ -1,0 +1,114 @@
+diff --git a/src/python/py/models/builder.py b/src/python/py/models/builder.py
+index 59878e49..355f1388 100644
+--- a/src/python/py/models/builder.py
++++ b/src/python/py/models/builder.py
+@@ -1143,6 +1143,10 @@ def get_args():
+                     GatedDeltaNet accepts 0 or 2..9. A nonzero window sets state_update_capacity=W-1;
+                     an explicit capacity must agree. Dense CPU/DML/TRT-RTX retain LinearAttention.
+                     Requires ONNX Runtime kernels that implement this attribute.
++                linear_attn_op = Use linear_attention to emit Qwen3.5/3.8 hybrid layers as LinearAttention +
++                    LinearAttentionGate on dense CUDA/WebGPU exports instead of GatedDeltaNet, which needs
++                    ONNX Runtime 1.31.0 or newer. Default selects the op by execution provider. Not supported
++                    with use_paged_attention=true.
+                 enable_cuda_fpa_intb_gemm = Select the CUDA fpA_intB MatMulNBits kernel family
+                     for weights exported in the default raw blockwise layout. Default is false.
+                     Writes ep.cuda.fpa_intb_gemm=1 to the decoder session options and only
+diff --git a/src/python/py/models/builders/qwen3_5/text.py b/src/python/py/models/builders/qwen3_5/text.py
+index 1ac5febd..069c7953 100644
+--- a/src/python/py/models/builders/qwen3_5/text.py
++++ b/src/python/py/models/builders/qwen3_5/text.py
+@@ -13,7 +13,15 @@ from ..expansions.standard import Standard
+ class Qwen35TextModel(Model):
+     make_l2_normalize = Standard.make_l2_normalize
+ 
++    def uses_gated_delta_net(self):
++        """Whether linear-attention layers are emitted as GatedDeltaNet rather than LinearAttention."""
++        if self.use_paged_attention:
++            return True
++        return self.ep in {"cuda", "webgpu"} and not getattr(self, "force_linear_attention", False)
++
+     def validate_gated_delta_net_options(self, state_window, ep):
++        if self.use_paged_attention and getattr(self, "force_linear_attention", False):
++            raise ValueError("linear_attn_op=linear_attention is not supported with use_paged_attention=true")
+         if self.use_paged_attention and ep not in {"cuda", "webgpu"}:
+             raise ValueError("Paged GatedDeltaNet exports require the CUDA or WebGPU execution provider")
+         if ep == "webgpu":
+@@ -34,9 +42,23 @@ class Qwen35TextModel(Model):
+         if ep not in {"cuda", "webgpu"} and self.context_length_attrs["state_update_capacity"]:
+             raise ValueError("Compact recurrent state capture requires the CUDA or WebGPU execution provider")
+ 
++    def select_linear_attention_op(self, extra_options):
++        """Read linear_attn_op, the opt-in that keeps LinearAttention on dense CUDA/WebGPU exports.
++
++        By default the op follows the execution provider: CUDA and WebGPU get GatedDeltaNet, and dense
++        CPU/DML/TRT-RTX keep the LinearAttention decomposition. The GatedDeltaNet graph leaves `key` and
++        `value` empty (packed QKV), which ONNX Runtime accepts from 1.31.0, so older runtimes need the
++        decomposition.
++        """
++        linear_attn_op = extra_options.get("linear_attn_op")
++        if linear_attn_op is not None and str(linear_attn_op).lower() != "linear_attention":
++            raise ValueError(
++                "linear_attn_op only accepts 'linear_attention'; omit it to select the op by execution provider."
++            )
++        self.force_linear_attention = linear_attn_op is not None
++
+     def __init__(self, config, io_dtype, onnx_dtype, ep, cache_dir, extra_options):
+-        if "linear_attn_op" in extra_options:
+-            raise ValueError("linear_attn_op is selected automatically by execution provider; remove this option. Dense CPU/DML/TRT-RTX exports retain LinearAttention.")
++        self.select_linear_attention_op(extra_options)
+         super().__init__(config, io_dtype, onnx_dtype, ep, cache_dir, extra_options)
+ 
+         self.configure_gated_delta_net_io()
+@@ -66,7 +88,7 @@ class Qwen35TextModel(Model):
+             self.context_length_attrs["state_window"],
+             self.ep,
+         )
+-        if self.context_length_attrs["state_window"] and self.ep in {"cuda", "webgpu"}:
++        if self.context_length_attrs["state_window"] and self.uses_gated_delta_net():
+             self.context_length_attrs["state_update_capacity"] = self.context_length_attrs["state_window"] - 1
+ 
+         if self.use_paged_attention:
+@@ -80,7 +102,7 @@ class Qwen35TextModel(Model):
+             self.linear_value_head_dim,
+             self.linear_key_head_dim,
+         ]
+-        if self.ep in {"cuda", "webgpu"}:
++        if self.uses_gated_delta_net():
+             self.input_types["past.recurrent"] = ir.DataType.FLOAT
+             self.input_shapes["past.recurrent"] = recurrent_shape
+             self.output_types["present.recurrent"] = ir.DataType.FLOAT
+@@ -409,7 +431,7 @@ class Qwen35TextModel(Model):
+ 
+     def make_gated_delta_net_layer(self, layer_id, linear_attn, conv_output, b_name, a_name):
+         """Run GatedDeltaNet directly from the packed convolution QKV output."""
+-        if not self.use_paged_attention and self.ep not in {"cuda", "webgpu"}:
++        if not self.uses_gated_delta_net():
+             return self.make_gated_delta_net_expansion(layer_id, linear_attn, conv_output, b_name, a_name)
+         basename = f"/model/layers.{layer_id}/linear_attn"
+         packed = self.use_paged_attention
+diff --git a/src/python/py/models/builders/smollm.py b/src/python/py/models/builders/smollm.py
+index a94fc1fe..e19474a9 100644
+--- a/src/python/py/models/builders/smollm.py
++++ b/src/python/py/models/builders/smollm.py
+@@ -17,10 +17,14 @@ class SmolLM3Model(LlamaModel):
+         # So, we temporarily modify the model's attributes before calling the
+         # base `make_attention` method, then restore them immediately after.
+         original_use_rope = self.attention_attrs["use_rope_in_attn"]
++        original_rope = self.attention_attrs["rope"]
+         original_window_size = self.window_size
+ 
+         # Enable/disable RoPE for the current layer.
+-        self.attention_attrs["use_rope_in_attn"] = bool(self.no_rope_layers[layer_id])
++        # no_rope_layers[i] = 1 means layer i uses RoPE; 0 means no RoPE.
++        has_rope = bool(self.no_rope_layers[layer_id])
++        self.attention_attrs["rope"] = has_rope
++        self.attention_attrs["use_rope_in_attn"] = has_rope and original_use_rope
+ 
+         # Set the sliding window size for the current layer.
+         assert self.layer_types[layer_id] in {"sliding_attention", "full_attention"}
+@@ -32,4 +36,5 @@ class SmolLM3Model(LlamaModel):
+ 
+         # Restore original values
+         self.attention_attrs["use_rope_in_attn"] = original_use_rope
++        self.attention_attrs["rope"] = original_rope
+         self.window_size = original_window_size

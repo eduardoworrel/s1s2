@@ -1,0 +1,20 @@
+{
+  "model": {
+    "decoder": {
+      "filename": "model.onnx",
+      "hidden_size": 16,
+      "head_size": 16,
+      "inputs": {
+        "inputs_embeds": "inputs_embeds",
+        "attention_mask": "attention_mask",
+        "past_key_names": "past_key_values.%d.key"
+      },
+      "outputs": {
+        "logits": "logits"
+      },
+      "num_hidden_layers": 1
+    },
+    "vocab_size": 128,
+    "type": "stub"
+  }
+}

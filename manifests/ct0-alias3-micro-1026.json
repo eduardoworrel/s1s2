@@ -1,0 +1,568 @@
+{
+  "schema": "s12.manifest/1",
+  "id": "ct0-alias3-micro-1026",
+  "base": {
+    "repo": "aliasrobotics/alias3-micro-1026",
+    "revision": "61c0e7100c052a252563ceb0711d15dc58bda2d0"
+  },
+  "hiddenSize": 2560,
+  "layer": {
+    "read": "final",
+    "norm": "in-graph"
+  },
+  "tokenizer": {
+    "repo": "eduardoworrel/alias3-micro-1026-ONNX-decode-only",
+    "revision": "df4eddd32fb8fdb379429fa88e0969163cf26c39",
+    "files": {
+      "tokenizer": {
+        "path": "tokenizer.json",
+        "sha256": "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523",
+        "size": 19989325
+      },
+      "config": {
+        "path": "tokenizer_config.json",
+        "sha256": "bfd46bda4ad4feb24dc16fd7a0780bcfdf6a93e8ebb9a712b9657ddc4aba6a46",
+        "size": 1192
+      }
+    }
+  },
+  "eos": [
+    {
+      "id": 248046,
+      "text": "<|im_end|>"
+    },
+    {
+      "id": 248044,
+      "text": "<|endoftext|>"
+    }
+  ],
+  "warmup": {
+    "id": 248045,
+    "text": "<|im_start|>"
+  },
+  "encoding": {
+    "kind": "tagged",
+    "template": "<|im_start|>system\nYou are a security decision function. Answer with exactly one word: Yes or No.<|im_end|>\n<|im_start|>user\n<state>{state}</state>\n<q>{question}</q><decide><|im_end|>\n<|im_start|>assistant\n",
+    "question": {
+      "predicate": "{instructions}",
+      "choice": "{instructions} {options}",
+      "score": "{instructions}"
+    },
+    "option": "<opt>{label}</opt>",
+    "optionSeparator": "",
+    "forbiddenInLabels": [
+      "<opt>",
+      "</opt>"
+    ],
+    "escapeSpecial": true
+  },
+  "markers": {
+    "decide": {
+      "text": "<decide>",
+      "at": "last-token",
+      "tokens": [
+        {
+          "id": 29,
+          "text": ">"
+        }
+      ]
+    },
+    "option": {
+      "text": "</opt>",
+      "at": "last-token",
+      "tokens": [
+        {
+          "id": 1721,
+          "text": "><"
+        },
+        {
+          "id": 1419,
+          "text": "></"
+        }
+      ]
+    },
+    "last": {
+      "text": "\n",
+      "at": "last-token",
+      "tokens": [
+        {
+          "id": 198,
+          "text": "\n"
+        }
+      ]
+    }
+  },
+  "readout": {
+    "predicate": "last",
+    "choice": "option",
+    "score": "last"
+  },
+  "logits": {
+    "predicate": {
+      "yes": {
+        "id": 9175,
+        "text": "Yes"
+      },
+      "no": {
+        "id": 2665,
+        "text": "No"
+      }
+    },
+    "choice": {
+      "map": "first-token"
+    },
+    "score": {
+      "map": "tokens",
+      "tokens": [
+        {
+          "id": 16,
+          "text": "1"
+        },
+        {
+          "id": 17,
+          "text": "2"
+        },
+        {
+          "id": 18,
+          "text": "3"
+        },
+        {
+          "id": 19,
+          "text": "4"
+        },
+        {
+          "id": 20,
+          "text": "5"
+        }
+      ]
+    }
+  },
+  "defaults": {
+    "method": {
+      "predicate": "logits",
+      "choice": "head",
+      "score": "head"
+    },
+    "instructions": {
+      "choice": "Which vulnerability class does this code contain?",
+      "score": "How severe is the security risk in this content? (1=none, 5=critical)"
+    },
+    "levels": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    "maxSafeTokens": 2048
+  },
+  "generation": {
+    "turn": "{system}<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{think}",
+    "system": "<|im_start|>system\n{system}<|im_end|>\n",
+    "think": {
+      "on": "<think>\n",
+      "off": "<think>\n\n</think>\n\n"
+    },
+    "continue": "{answer}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{think}",
+    "answers": {
+      "predicate": [
+        "No",
+        "Yes"
+      ]
+    }
+  },
+  "builds": {
+    "genai-webgpu-int4": {
+      "runtime": "genai",
+      "repo": "eduardoworrel/alias3-micro-1026-ONNX-genai",
+      "revision": "ddb6c7e0ae9d37d90362c22c2e7222634969c5f4",
+      "files": {
+        "model": {
+          "path": "webgpu/int4/model.onnx",
+          "sha256": "94d67f6e1777aa45e6e99ef39df9c2b568801ab8c5eda91c697b18d8a8f0885d",
+          "size": 489574
+        },
+        "data": {
+          "path": "webgpu/int4/model.onnx.data",
+          "sha256": "09f3f2c67c1c725434f3e58a8e68b3dbd2d9d513d5140220fab2a3c48cd0eea8",
+          "size": 2440274944
+        },
+        "genaiConfig": {
+          "path": "webgpu/int4/genai_config.json",
+          "sha256": "b1277ae68a65393c2223af97a7bde967a2ec7d00501dd065b599ca53b51a27cb",
+          "size": 2168
+        }
+      },
+      "hiddenOutput": "hidden_states",
+      "heads": {
+        "predicateChoice": {
+          "file": {
+            "path": "heads/head.bin",
+            "sha256": "1138a7745037fb2964101ac0eb17f3222403a29bc3287628271dd3144537e602",
+            "size": 2622548
+          },
+          "types": [
+            "predicate",
+            "choice"
+          ],
+          "scale": 1
+        },
+        "score": {
+          "file": {
+            "path": "heads/head_score.bin",
+            "sha256": "82640a99653d49d659737c30e53774e29428d799c3dec9db57584b38e7d9b9f3",
+            "size": 2622668
+          },
+          "types": [
+            "score"
+          ],
+          "scale": 1
+        }
+      },
+      "devices": [
+        "webgpu"
+      ],
+      "maxSafeTokens": 7200,
+      "fidelity": null,
+      "kvHeadDim": 256
+    },
+    "genai-cuda-int4": {
+      "runtime": "genai",
+      "repo": "eduardoworrel/alias3-micro-1026-ONNX-genai",
+      "revision": "ddb6c7e0ae9d37d90362c22c2e7222634969c5f4",
+      "files": {
+        "model": {
+          "path": "cuda/int4/model.onnx",
+          "sha256": "33d25536bdff99c1cf2934b028b8d9bc42b819a27419d3c978a7cf869ff7bdc5",
+          "size": 485319
+        },
+        "data": {
+          "path": "cuda/int4/model.onnx.data",
+          "sha256": "09f3f2c67c1c725434f3e58a8e68b3dbd2d9d513d5140220fab2a3c48cd0eea8",
+          "size": 2440274944
+        }
+      },
+      "hiddenOutput": "hidden_states",
+      "heads": {
+        "predicateChoice": {
+          "file": {
+            "path": "heads/head.bin",
+            "sha256": "1138a7745037fb2964101ac0eb17f3222403a29bc3287628271dd3144537e602",
+            "size": 2622548
+          },
+          "types": [
+            "predicate",
+            "choice"
+          ],
+          "scale": 1
+        },
+        "score": {
+          "file": {
+            "path": "heads/head_score.bin",
+            "sha256": "82640a99653d49d659737c30e53774e29428d799c3dec9db57584b38e7d9b9f3",
+            "size": 2622668
+          },
+          "types": [
+            "score"
+          ],
+          "scale": 1
+        }
+      },
+      "devices": [
+        "cuda"
+      ],
+      "fidelity": null,
+      "kvHeadDim": 256
+    },
+    "decode-only-q4": {
+      "runtime": "decode-only",
+      "repo": "eduardoworrel/alias3-micro-1026-ONNX-decode-only",
+      "revision": "df4eddd32fb8fdb379429fa88e0969163cf26c39",
+      "files": {
+        "model": {
+          "path": "onnx/model_q4.onnx",
+          "sha256": "56488be3910af6ab38d390000cbc5a1b81c66030da7f733911ff63717bdc086b",
+          "size": 2171542
+        },
+        "data": {
+          "path": "onnx/model_q4.onnx_data",
+          "sha256": "e33061b61bc328d62c9b8318618b9611d22757ea778e0150a76376b6a39b8dcc",
+          "size": 3029151744
+        }
+      },
+      "hiddenOutput": "/model/norm/Mul_1_output_0",
+      "heads": {
+        "predicateChoice": {
+          "file": {
+            "path": "heads/head.bin",
+            "sha256": "1138a7745037fb2964101ac0eb17f3222403a29bc3287628271dd3144537e602",
+            "size": 2622548
+          },
+          "types": [
+            "predicate",
+            "choice"
+          ],
+          "scale": 1
+        },
+        "score": {
+          "file": {
+            "path": "heads/head_score.bin",
+            "sha256": "82640a99653d49d659737c30e53774e29428d799c3dec9db57584b38e7d9b9f3",
+            "size": 2622668
+          },
+          "types": [
+            "score"
+          ],
+          "scale": 1
+        }
+      },
+      "devices": [
+        "webgpu",
+        "wasm",
+        "cpu",
+        "cuda"
+      ],
+      "fidelity": null
+    },
+    "transformers-q4": {
+      "runtime": "transformers.js",
+      "repo": "eduardoworrel/alias3-micro-1026-ONNX",
+      "revision": "960d3753f622ec9a6da2fa2f57e488fcb250f108",
+      "files": {
+        "model": {
+          "path": "onnx/model_q4.onnx",
+          "sha256": "48b13472f4fcd56eb58d0090ec3a6fe6b7037bfe567702839cdff71d659bfe11",
+          "size": 6916169
+        },
+        "data": {
+          "path": "onnx/model_q4.onnx_data",
+          "sha256": "5326cff489ae9f77ac045d74df567b92dce04bdc9db7c1c9173ba9de2a547abc",
+          "size": 1992908800
+        },
+        "data_1": {
+          "path": "onnx/model_q4.onnx_data_1",
+          "sha256": "2d691b992bce38f6fafdfb3c7cdfe3751a13961cd1765218d020092540dcc9c5",
+          "size": 1036243072
+        },
+        "config": {
+          "path": "config.json",
+          "sha256": "23e6491124868636d6f692f8717a2a7be6911d3f27997d6f3bc2fcbacb4e207b",
+          "size": 2425
+        },
+        "generationConfig": {
+          "path": "generation_config.json",
+          "sha256": "11c3e8473ba7f4a8a0be3d205877a0b784a2e3bb5be52e53fac3b63621ae4c63",
+          "size": 169
+        }
+      },
+      "hiddenOutput": "mul_13450",
+      "heads": {
+        "predicateChoice": {
+          "file": {
+            "path": "heads/head.bin",
+            "sha256": "1138a7745037fb2964101ac0eb17f3222403a29bc3287628271dd3144537e602",
+            "size": 2622548
+          },
+          "types": [
+            "predicate",
+            "choice"
+          ],
+          "scale": 1
+        },
+        "score": {
+          "file": {
+            "path": "heads/head_score.bin",
+            "sha256": "82640a99653d49d659737c30e53774e29428d799c3dec9db57584b38e7d9b9f3",
+            "size": 2622668
+          },
+          "types": [
+            "score"
+          ],
+          "scale": 1
+        }
+      },
+      "devices": [
+        "webgpu",
+        "wasm",
+        "cpu",
+        "cuda"
+      ],
+      "dtype": "q4",
+      "fidelity": null
+    },
+    "webllm-q4f32_1": {
+      "runtime": "webllm",
+      "repo": "eduardoworrel/alias3-micro-1026-MLC-q4f32_1",
+      "revision": "389c045e985ebb96769c15e59c7a2f1699a5e0bc",
+      "files": {
+        "config": {
+          "path": "mlc-chat-config.json",
+          "sha256": "a0c9b6668aceb371bb93ecab3c99266578530f4ab51f572d0d678a8571691bd5",
+          "size": 2370
+        },
+        "lib": {
+          "path": "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_86/base/Qwen3.5-4B-q4f32_1_cs1k-webgpu.wasm",
+          "sha256": "06b3d590e21c9115fee5ac5f9101d0b84d6af782e67b302fe493da57ea3f54d3",
+          "size": 7323514
+        },
+        "recoveryRows": {
+          "path": "recovery/P_q4f32_rows.i32",
+          "sha256": "2c635e818735113e185f73e84eb3caea6a6f4a06caf26b5537ac5fb683595269",
+          "size": 32768
+        },
+        "recoveryP": {
+          "path": "recovery/P_q4f32_8192.f16",
+          "sha256": "080236d45735c32a4d685803d33484c50a933db44b8ff189ebedf3127a283d00",
+          "size": 41943040
+        }
+      },
+      "hiddenOutput": "recovered-from-logits",
+      "heads": {
+        "predicateChoice": {
+          "file": {
+            "path": "heads/head.bin",
+            "sha256": "1138a7745037fb2964101ac0eb17f3222403a29bc3287628271dd3144537e602",
+            "size": 2622548
+          },
+          "types": [
+            "predicate",
+            "choice"
+          ],
+          "scale": 1
+        },
+        "score": {
+          "file": {
+            "path": "heads/head_score.bin",
+            "sha256": "82640a99653d49d659737c30e53774e29428d799c3dec9db57584b38e7d9b9f3",
+            "size": 2622668
+          },
+          "types": [
+            "score"
+          ],
+          "scale": 1
+        }
+      },
+      "devices": [
+        "webgpu"
+      ],
+      "modelId": "alias3-micro-1026-q4f32_1",
+      "fidelity": null
+    },
+    "webllm-q4f16_1": {
+      "runtime": "webllm",
+      "repo": "eduardoworrel/alias3-micro-1026-MLC-q4f16_1",
+      "revision": "c30a07c9f87a19d20da6fd06ea765b36afa8cc21",
+      "files": {
+        "config": {
+          "path": "mlc-chat-config.json",
+          "sha256": "d017efe9cee20f541c5fb9f01de79ee06d2b82839acaefa46bce53a791c04a12",
+          "size": 2370
+        },
+        "lib": {
+          "path": "model-lib.wasm",
+          "sha256": "552152bd76fd5432c6b88750a948ac44d038a3c570be6aa0f0e744067a9e2a25",
+          "size": 7466230
+        },
+        "recoveryRows": {
+          "path": "recovery/P_q4f16_rows.i32",
+          "sha256": "2c635e818735113e185f73e84eb3caea6a6f4a06caf26b5537ac5fb683595269",
+          "size": 32768
+        },
+        "recoveryP": {
+          "path": "recovery/P_q4f16_8192.f16",
+          "sha256": "5085ace411634d5e2c733f1337e6fca9a62e26047df2c84edc11c89f73819b56",
+          "size": 41943040
+        }
+      },
+      "hiddenOutput": "recovered-from-logits",
+      "heads": {
+        "predicateChoice": {
+          "file": {
+            "path": "heads/head.bin",
+            "sha256": "1138a7745037fb2964101ac0eb17f3222403a29bc3287628271dd3144537e602",
+            "size": 2622548
+          },
+          "types": [
+            "predicate",
+            "choice"
+          ],
+          "scale": 1
+        },
+        "score": {
+          "file": {
+            "path": "heads/head_score.bin",
+            "sha256": "82640a99653d49d659737c30e53774e29428d799c3dec9db57584b38e7d9b9f3",
+            "size": 2622668
+          },
+          "types": [
+            "score"
+          ],
+          "scale": 1
+        }
+      },
+      "devices": [
+        "webgpu"
+      ],
+      "modelId": "alias3-micro-1026-q4f16_1",
+      "fidelity": null
+    },
+    "litert-int4": {
+      "runtime": "litert",
+      "repo": "eduardoworrel/alias3-micro-1026-LiteRT",
+      "revision": "9c49d8ffd9ba5e837693c49c47753e6c90462bb3",
+      "files": {
+        "manifest": {
+          "path": "litert/int4/manifest.json",
+          "sha256": "60335f9667f52ea1e131fcaaf18ddd358c42ddb974a79bd8282abc719f8d5ca4",
+          "size": 34169
+        },
+        "graph": {
+          "path": "litert/int4/model.graph.tflite",
+          "sha256": "2f39fb1433640020c38b48dd5578816cb85601f0cc621e434ba318d51c432eba",
+          "size": 282002344
+        },
+        "weights": {
+          "path": "litert/int4/model.weights.bin",
+          "sha256": "09ca2af6c8c100d8165bb8d14a29aa1ffcff18200941840a949d24b5391cf0e1",
+          "size": 2102394880
+        },
+        "embed": {
+          "path": "litert/int4/embed.f16.bin",
+          "sha256": "084b44680de857f155331b175ca86e628c354f9481c77cca1a4419f0b95e1df4",
+          "size": 1271398400
+        }
+      },
+      "hiddenOutput": "hidden",
+      "heads": {
+        "predicateChoice": {
+          "file": {
+            "path": "heads/head.bin",
+            "sha256": "1138a7745037fb2964101ac0eb17f3222403a29bc3287628271dd3144537e602",
+            "size": 2622548
+          },
+          "types": [
+            "predicate",
+            "choice"
+          ],
+          "scale": 1
+        },
+        "score": {
+          "file": {
+            "path": "heads/head_score.bin",
+            "sha256": "82640a99653d49d659737c30e53774e29428d799c3dec9db57584b38e7d9b9f3",
+            "size": 2622668
+          },
+          "types": [
+            "score"
+          ],
+          "scale": 1
+        }
+      },
+      "devices": [
+        "webgpu"
+      ],
+      "maxSafeTokens": 2000,
+      "fidelity": null
+    }
+  }
+}

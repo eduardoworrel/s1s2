@@ -1,0 +1,1541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eduardoworrel/s1s2/spec/s1s2-manifest.schema.json",
+  "title": "S1S2 model package manifest (s12.manifest/1), package spec 0.2-draft",
+  "description": "Structural layer of the S1S2 package manifest. Cross-field rules a JSON Schema cannot express (placeholder order, marker/delimiter agreement, embeddings size, one head per question type per build, escalation targets, label/token counts) are normative in spec/s1s2-package.md and enforced by validateManifest (src/manifest.ts); `s1s2 validate` runs both.",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "base",
+    "hiddenSize",
+    "layer",
+    "tokenizer",
+    "eos",
+    "encoding",
+    "markers",
+    "readout",
+    "logits",
+    "defaults",
+    "generation",
+    "builds"
+  ],
+  "properties": {
+    "schema": {
+      "const": "s12.manifest/1"
+    },
+    "id": {
+      "$ref": "#/$defs/nonEmpty"
+    },
+    "base": {
+      "type": "object",
+      "required": [
+        "repo",
+        "revision"
+      ],
+      "properties": {
+        "repo": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        }
+      }
+    },
+    "hiddenSize": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "layer": {
+      "type": "object",
+      "required": [
+        "read",
+        "norm"
+      ],
+      "properties": {
+        "read": {
+          "const": "final"
+        },
+        "norm": {
+          "const": "in-graph"
+        }
+      }
+    },
+    "tokenizer": {
+      "type": "object",
+      "required": [
+        "repo",
+        "revision",
+        "files"
+      ],
+      "properties": {
+        "repo": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "files": {
+          "type": "object",
+          "required": [
+            "tokenizer",
+            "config"
+          ],
+          "properties": {
+            "tokenizer": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "config": {
+              "$ref": "#/$defs/pinnedFile"
+            }
+          }
+        }
+      }
+    },
+    "eos": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/tokenRef"
+      }
+    },
+    "warmup": {
+      "$ref": "#/$defs/tokenRef"
+    },
+    "encoding": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "tagged",
+            "kev"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "tagged"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/taggedEncoding"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "kev"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/kevEncoding"
+          }
+        }
+      ]
+    },
+    "markers": {
+      "type": "object",
+      "required": [
+        "decide",
+        "option"
+      ],
+      "properties": {
+        "decide": {
+          "$ref": "#/$defs/marker"
+        },
+        "option": {
+          "$ref": "#/$defs/marker"
+        },
+        "last": {
+          "$ref": "#/$defs/marker"
+        }
+      }
+    },
+    "readout": {
+      "type": "object",
+      "required": [
+        "predicate",
+        "choice",
+        "score"
+      ],
+      "properties": {
+        "predicate": {
+          "enum": [
+            "last",
+            "options"
+          ]
+        },
+        "choice": {
+          "const": "option"
+        },
+        "score": {
+          "enum": [
+            "last",
+            "option"
+          ]
+        }
+      }
+    },
+    "logits": {
+      "type": "object",
+      "required": [
+        "predicate",
+        "choice",
+        "score"
+      ],
+      "properties": {
+        "predicate": {
+          "type": "object",
+          "required": [
+            "yes",
+            "no"
+          ],
+          "properties": {
+            "yes": {
+              "$ref": "#/$defs/tokenRef"
+            },
+            "no": {
+              "$ref": "#/$defs/tokenRef"
+            }
+          }
+        },
+        "choice": {
+          "type": "object",
+          "required": [
+            "map"
+          ],
+          "properties": {
+            "map": {
+              "enum": [
+                "first-token",
+                "letters",
+                "tokens"
+              ]
+            },
+            "tokens": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/choiceTokenRef"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "map": {
+                "const": "tokens"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tokens"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "tokens"
+              ]
+            }
+          }
+        },
+        "score": {
+          "type": "object",
+          "required": [
+            "map"
+          ],
+          "properties": {
+            "map": {
+              "enum": [
+                "tokens",
+                "first-token"
+              ]
+            },
+            "tokens": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/tokenRef"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "map": {
+                "const": "tokens"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tokens"
+            ]
+          }
+        },
+        "temperature": {
+          "type": "object",
+          "properties": {
+            "predicate": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "choice": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "score": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": [
+        "method"
+      ],
+      "properties": {
+        "method": {
+          "type": "object",
+          "required": [
+            "predicate",
+            "choice",
+            "score"
+          ],
+          "properties": {
+            "predicate": {
+              "$ref": "#/$defs/method"
+            },
+            "choice": {
+              "$ref": "#/$defs/method"
+            },
+            "score": {
+              "$ref": "#/$defs/method"
+            }
+          }
+        },
+        "instructions": {
+          "type": "object",
+          "properties": {
+            "predicate": {
+              "type": "string"
+            },
+            "choice": {
+              "type": "string"
+            },
+            "score": {
+              "type": "string"
+            }
+          }
+        },
+        "levels": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/nonEmpty"
+          }
+        },
+        "maxSafeTokens": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "required": [
+        "turn",
+        "continue",
+        "answers"
+      ],
+      "properties": {
+        "turn": {
+          "type": "string",
+          "pattern": "\\{prompt\\}"
+        },
+        "system": {
+          "type": "string"
+        },
+        "think": {
+          "type": "object",
+          "required": [
+            "on",
+            "off"
+          ],
+          "properties": {
+            "on": {
+              "type": "string"
+            },
+            "off": {
+              "type": "string"
+            }
+          }
+        },
+        "continue": {
+          "type": "string",
+          "allOf": [
+            {
+              "pattern": "\\{prompt\\}"
+            },
+            {
+              "pattern": "\\{answer\\}"
+            }
+          ]
+        },
+        "escalate": {
+          "type": "string",
+          "pattern": "\\{prompt\\}",
+          "not": {
+            "pattern": "\\{answer\\}"
+          }
+        },
+        "answers": {
+          "type": "object",
+          "required": [
+            "predicate"
+          ],
+          "properties": {
+            "predicate": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "builds": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/build"
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/task"
+      }
+    },
+    "escalation": {
+      "$ref": "#/$defs/escalation"
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "instructions"
+      ],
+      "properties": {
+        "instructions": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "sentencePrefix": {
+          "type": "string",
+          "pattern": "^[^\\n]*$"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "license": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "SPDX license expression of the package as distributed."
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "lab": {
+      "type": "object",
+      "description": "Free-form notes from the lab-s12 study setup. Ignored by the runtime."
+    },
+    "confidence": {
+      "type": "object",
+      "required": [
+        "definition"
+      ],
+      "properties": {
+        "definition": {
+          "enum": [
+            "C1",
+            "C3",
+            "C4",
+            "C5",
+            "C6",
+            "C7",
+            "tbd-007"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "description": "Confidence definition answers report (spec 5.1); reserved hook for lab-s12 study 007, ignored by s1s2 0.1."
+    }
+  },
+  "patternProperties": {
+    "^x-": {
+      "description": "Vendor extensions. Ignored by the runtime."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Pinned 40-hex commit sha (not a branch)."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "tokenRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "choiceTokenRef": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/tokenRef"
+        }
+      ],
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/nonEmpty"
+        }
+      }
+    },
+    "pinnedFile": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repo-relative path (no leading '/', no '..' segment, no scheme) or an absolute https URL.",
+          "anyOf": [
+            {
+              "pattern": "^https://"
+            },
+            {
+              "allOf": [
+                {
+                  "not": {
+                    "pattern": "^/"
+                  }
+                },
+                {
+                  "not": {
+                    "pattern": "^[A-Za-z]+:"
+                  }
+                },
+                {
+                  "not": {
+                    "pattern": "(^|/)\\.\\.(/|$)"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "marker": {
+      "type": "object",
+      "required": [
+        "text",
+        "tokens",
+        "at"
+      ],
+      "properties": {
+        "text": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "tokens": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/tokenRef"
+          }
+        },
+        "at": {
+          "enum": [
+            "last-token",
+            "token"
+          ]
+        }
+      }
+    },
+    "method": {
+      "enum": [
+        "logits",
+        "head"
+      ]
+    },
+    "taggedEncoding": {
+      "type": "object",
+      "required": [
+        "kind",
+        "template",
+        "question",
+        "option"
+      ],
+      "properties": {
+        "kind": {
+          "const": "tagged"
+        },
+        "template": {
+          "type": "string",
+          "allOf": [
+            {
+              "pattern": "\\{state\\}"
+            },
+            {
+              "pattern": "\\{question\\}"
+            }
+          ]
+        },
+        "question": {
+          "type": "object",
+          "required": [
+            "predicate",
+            "choice",
+            "score"
+          ],
+          "properties": {
+            "predicate": {
+              "type": "string"
+            },
+            "choice": {
+              "type": "string",
+              "pattern": "\\{options\\}"
+            },
+            "score": {
+              "type": "string"
+            }
+          }
+        },
+        "option": {
+          "type": "string",
+          "pattern": "\\{label\\}"
+        },
+        "optionSeparator": {
+          "type": "string"
+        },
+        "forbiddenInLabels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmpty"
+          }
+        },
+        "escapeSpecial": {
+          "type": "boolean"
+        },
+        "escapeLiterals": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "\\S.*\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "kevEncoding": {
+      "type": "object",
+      "required": [
+        "kind",
+        "delimiters"
+      ],
+      "properties": {
+        "kind": {
+          "const": "kev"
+        },
+        "delimiters": {
+          "type": "object",
+          "required": [
+            "state",
+            "question",
+            "optionStart",
+            "optionEnd",
+            "decide"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/tokenRef"
+            },
+            "question": {
+              "$ref": "#/$defs/tokenRef"
+            },
+            "optionStart": {
+              "$ref": "#/$defs/tokenRef"
+            },
+            "optionEnd": {
+              "$ref": "#/$defs/tokenRef"
+            },
+            "decide": {
+              "$ref": "#/$defs/tokenRef"
+            }
+          }
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "suffix": {
+          "type": "string"
+        },
+        "predicateOptions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/nonEmpty"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "build": {
+      "type": "object",
+      "required": [
+        "runtime",
+        "repo",
+        "revision",
+        "files",
+        "hiddenOutput",
+        "devices",
+        "fidelity"
+      ],
+      "properties": {
+        "runtime": {
+          "enum": [
+            "genai",
+            "decode-only",
+            "transformers.js",
+            "webllm",
+            "litert"
+          ]
+        },
+        "repo": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/pinnedFile"
+          }
+        },
+        "hiddenOutput": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "heads": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "file",
+              "types"
+            ],
+            "properties": {
+              "file": {
+                "$ref": "#/$defs/pinnedFile"
+              },
+              "types": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "enum": [
+                    "predicate",
+                    "choice",
+                    "score",
+                    "evidence"
+                  ]
+                }
+              },
+              "scale": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Reader scale of a pointer head (spec 6.1): used when the head.bin header states none; default 1/sqrt(headDim) (alias3-web)."
+              },
+              "kind": {
+                "enum": [
+                  "pointer",
+                  "linear",
+                  "joint"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "head.bin",
+                  "safetensors"
+                ]
+              },
+              "temperature": {
+                "oneOf": [
+                  {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  }
+                ]
+              },
+              "scoreOffset": {
+                "type": "number"
+              },
+              "tensors": {
+                "type": "object",
+                "properties": {
+                  "weight": {
+                    "type": "string"
+                  },
+                  "bias": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "rows": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "start"
+                  ],
+                  "properties": {
+                    "start": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "end": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              },
+              "softcap": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              },
+              "read": {
+                "enum": [
+                  "decide",
+                  "last"
+                ]
+              },
+              "layer": {
+                "oneOf": [
+                  {
+                    "const": "final"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                ]
+              },
+              "config": {
+                "type": "object"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "devices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmpty"
+          }
+        },
+        "dtype": {
+          "type": "string",
+          "description": "Weight precision of the graph, e.g. int4, int8, q4f16_1, fp16."
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "kvHeadDim": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxSafeTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fidelity": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/fidelity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "escalation": {
+          "$ref": "#/$defs/escalation"
+        },
+        "norm": {
+          "type": "object",
+          "required": [
+            "file"
+          ],
+          "properties": {
+            "file": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "kind": {
+              "const": "rmsnorm"
+            },
+            "eps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "weight": {
+              "enum": [
+                "w",
+                "1+w"
+              ]
+            }
+          },
+          "description": "Out-of-graph final RMSNorm (spec 6.5): hiddenOutput is pre-norm; the runtime applies it before heads read."
+        },
+        "attention": {
+          "enum": [
+            "causal",
+            "noncausal"
+          ],
+          "description": "Attention of the decision pass (spec 7); s1s2 0.1 refuses noncausal builds."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "const": "genai"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "files": {
+                "required": [
+                  "model",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "const": "decode-only"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "files": {
+                "required": [
+                  "model",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "const": "transformers.js"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "files": {
+                "required": [
+                  "model"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "const": "webllm"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "files": {
+                "required": [
+                  "config"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "const": "litert"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "files": {
+                "required": [
+                  "manifest",
+                  "graph",
+                  "weights",
+                  "embed"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "files": {
+                "required": [
+                  "embeddings"
+                ]
+              }
+            },
+            "required": [
+              "files"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runtime": {
+                "const": "genai"
+              },
+              "files": {
+                "properties": {
+                  "embeddings": {
+                    "required": [
+                      "size"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fidelity": {
+      "type": "object",
+      "required": [
+        "reference",
+        "n"
+      ],
+      "properties": {
+        "reference": {
+          "type": "string"
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decisionChanged": {
+          "$ref": "#/$defs/perReadout"
+        },
+        "orderInversion": {
+          "$ref": "#/$defs/perReadout"
+        },
+        "measuredAt": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "perReadout": {
+      "type": "object",
+      "properties": {
+        "logits": {
+          "type": "number"
+        },
+        "head": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "escalation": {
+      "type": "object",
+      "properties": {
+        "metric": {
+          "enum": [
+            "margin",
+            "rawMargin"
+          ]
+        },
+        "below": {
+          "type": "object",
+          "properties": {
+            "predicate": {
+              "type": "number",
+              "minimum": 0
+            },
+            "choice": {
+              "type": "number",
+              "minimum": 0
+            },
+            "score": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "to": {
+          "oneOf": [
+            {
+              "const": "generate"
+            },
+            {
+              "type": "object",
+              "required": [
+                "build"
+              ],
+              "properties": {
+                "build": {
+                  "$ref": "#/$defs/nonEmpty"
+                }
+              }
+            }
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "maxNewTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "provisional": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "label": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "description": {
+              "type": "string"
+            },
+            "token": {
+              "$ref": "#/$defs/tokenRef"
+            }
+          }
+        }
+      ]
+    },
+    "task": {
+      "type": "object",
+      "required": [
+        "type",
+        "instructions"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "predicate",
+            "choice",
+            "score"
+          ]
+        },
+        "instructions": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/label"
+          }
+        },
+        "levels": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/label"
+          }
+        },
+        "tokens": {
+          "type": "object",
+          "required": [
+            "yes",
+            "no"
+          ],
+          "properties": {
+            "yes": {
+              "$ref": "#/$defs/tokenRef"
+            },
+            "no": {
+              "$ref": "#/$defs/tokenRef"
+            }
+          }
+        },
+        "method": {
+          "$ref": "#/$defs/method"
+        },
+        "escalation": {
+          "$ref": "#/$defs/escalation"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "choice"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "choices"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "levels"
+                  ]
+                },
+                {
+                  "required": [
+                    "tokens"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "score"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "choices"
+                  ]
+                },
+                {
+                  "required": [
+                    "tokens"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "predicate"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "choices"
+                  ]
+                },
+                {
+                  "required": [
+                    "levels"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "generator"
+      ],
+      "properties": {
+        "generator": {
+          "type": "object",
+          "required": [
+            "name",
+            "version"
+          ],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "version": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "commit": {
+              "type": "string"
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO 8601 date-time."
+        },
+        "base": {
+          "type": "object",
+          "required": [
+            "repo",
+            "revision"
+          ],
+          "properties": {
+            "repo": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "revision": {
+              "$ref": "#/$defs/revision"
+            },
+            "license": {
+              "$ref": "#/$defs/nonEmpty"
+            }
+          }
+        },
+        "dataset": {
+          "type": "object",
+          "required": [
+            "sha256",
+            "rows"
+          ],
+          "properties": {
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "rows": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "name": {
+              "type": "string"
+            },
+            "license": {
+              "type": "string"
+            },
+            "splits": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "training": {
+          "type": "object",
+          "required": [
+            "recipe"
+          ],
+          "properties": {
+            "recipe": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "seed": {
+              "type": "integer"
+            }
+          }
+        },
+        "builds": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "tool",
+              "version"
+            ],
+            "properties": {
+              "tool": {
+                "$ref": "#/$defs/nonEmpty"
+              },
+              "version": {
+                "$ref": "#/$defs/nonEmpty"
+              },
+              "source": {
+                "type": "string"
+              },
+              "patches": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "sha256"
+                  ],
+                  "properties": {
+                    "path": {
+                      "$ref": "#/$defs/nonEmpty"
+                    },
+                    "sha256": {
+                      "$ref": "#/$defs/sha256"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "format"
+          ],
+          "properties": {
+            "format": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "repo": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Format the package was converted from, declared by the converter (never guessed from file names)."
+        }
+      }
+    }
+  }
+}

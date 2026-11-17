@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy Checker</title>
+<script type="importmap">
+{ "imports": {
+  "onnxruntime-web/webgpu": "./vendor/ort/ort.webgpu.min.mjs",
+  "onnxruntime-web": "./vendor/ort/ort.webgpu.min.mjs",
+  "onnxruntime-common": "./vendor/ortc/index.js",
+  "@huggingface/transformers": "./vendor/tjs/transformers.web.js"
+} }
+</script>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --line: #e7e5e4; --card: #fff; --ok: #166534; --okbg: #dcfce7;
+          --no: #9a3412; --nobg: #ffedd5; --warnbg: #fef3c7; --warn: #78350f; --accent: #1d4ed8; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --card: #292524;
+          --ok: #86efac; --okbg: #14532d; --no: #fdba74; --nobg: #431407; --warnbg: #451a03; --warn: #fde68a; --accent: #93c5fd; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .notice { background: var(--warnbg); color: var(--warn); border-radius: 8px; padding: 10px 14px; margin: 0 0 18px; font-size: 14px; }
+  .notice b { font-weight: 650; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { font-weight: 600; font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  textarea { width: 100%; min-height: 180px; resize: vertical; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+             padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+  input[type=url] { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .laws { display: flex; gap: 6px; }
+  .laws button { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; font-weight: 600; }
+  .laws button[aria-pressed=true] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  button.primary { padding: 9px 18px; border-radius: 8px; border: 0; background: var(--accent); color: #fff; font-weight: 650; cursor: pointer; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.ghost { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+  .check { font-weight: 500; color: var(--fg); display: flex; gap: 6px; align-items: center; margin: 0; font-size: 14px; }
+  #status { color: var(--muted); font-size: 13px; margin-top: 10px; min-height: 1.5em; }
+  .summary { display: flex; gap: 24px; align-items: baseline; margin-bottom: 8px; flex-wrap: wrap; }
+  .big { font-size: 40px; font-weight: 750; letter-spacing: -0.02em; }
+  .summary small { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border-top: 0; }
+  .pill { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+  .yes { background: var(--okbg); color: var(--ok); } .no { background: var(--nobg); color: var(--no); }
+  .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 6px; }
+  .def { color: var(--muted); font-size: 13px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; width: 90px; margin-top: 4px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  blockquote { margin: 6px 0 0; padding: 6px 10px; border-left: 3px solid var(--line); color: var(--muted); font-size: 13px; white-space: pre-wrap; }
+  .quote { border-left-color: var(--accent); color: var(--fg); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+  @media (max-width: 640px) { .hide-sm { display: none; } .big { font-size: 32px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy Policy Checker</h1>
+  <p class="sub">Checks whether a privacy policy addresses the information requirements of a law, passage by passage, with a small language model running on this device.</p>
+  <p class="notice"><b>Not legal advice.</b> This is a research demonstration. The model can be wrong in both directions; "addressed" means a passage talks about the topic, not that it complies. Your text never leaves this device.</p>
+
+  <section class="card">
+    <div class="row" style="margin-top:0; justify-content: space-between">
+      <div class="laws" role="group" aria-label="Law">
+        <button data-law="GDPR" aria-pressed="true">GDPR</button>
+        <button data-law="LGPD" aria-pressed="false">LGPD</button>
+        <button data-law="CCPA" aria-pressed="false">CCPA</button>
+      </div>
+      <label class="check"><input type="checkbox" id="primaryOnly"> Core requirements only</label>
+    </div>
+    <div class="row">
+      <input type="url" id="url" placeholder="https://example.com/privacy (most sites block in-browser fetching; paste the text instead)">
+      <button class="ghost" id="fetch">Fetch</button>
+    </div>
+    <div style="margin-top:10px">
+      <label for="text">Policy text</label>
+      <textarea id="text" placeholder="Paste the privacy policy here…"></textarea>
+    </div>
+    <div class="row" style="justify-content: space-between">
+      <label class="check"><input type="checkbox" id="quote"> Quote the supporting sentence (slower)</label>
+      <button class="primary" id="run" disabled>Loading model…</button>
+    </div>
+    <div id="status"></div>
+  </section>
+
+  <section class="card" id="results" hidden></section>
+  <footer id="foot"></footer>
+</main>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

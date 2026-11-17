@@ -1,0 +1,216 @@
+{
+  "schema": "s12.manifest/1",
+  "id": "smollm2-135m-instruct.en",
+  "base": {
+    "repo": "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac"
+  },
+  "hiddenSize": 576,
+  "layer": {
+    "read": "final",
+    "norm": "in-graph"
+  },
+  "tokenizer": {
+    "repo": "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+    "files": {
+      "tokenizer": {
+        "path": "tokenizer.json",
+        "sha256": "9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c",
+        "size": 2104556
+      },
+      "config": {
+        "path": "tokenizer_config.json",
+        "sha256": "4ec77d44f62efeb38d7e044a1db318f6a939438425312dfa333b8382dbad98df",
+        "size": 3764
+      }
+    }
+  },
+  "eos": [
+    {
+      "id": 2,
+      "text": "<|im_end|>"
+    }
+  ],
+  "warmup": {
+    "id": 1,
+    "text": "<|im_start|>"
+  },
+  "encoding": {
+    "kind": "tagged",
+    "template": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\n<state> {state}\n <question> {question} <decide><|im_end|>\n<|im_start|>assistant\nAnswer:",
+    "question": {
+      "predicate": "{instructions}",
+      "choice": "{instructions}\n{options}",
+      "score": "{instructions}"
+    },
+    "option": " <option>{label} </option> \n",
+    "optionSeparator": "",
+    "forbiddenInLabels": [
+      "</option>",
+      "<option>"
+    ],
+    "escapeSpecial": true,
+    "escapeLiterals": [
+      "<state>",
+      " <question>",
+      " <option>",
+      " </option>",
+      " <decide>"
+    ]
+  },
+  "markers": {
+    "decide": {
+      "text": " <decide>",
+      "at": "last-token",
+      "tokens": [
+        {
+          "id": 46,
+          "text": ">"
+        }
+      ]
+    },
+    "option": {
+      "text": " </option>",
+      "at": "last-token",
+      "tokens": [
+        {
+          "id": 46,
+          "text": ">"
+        }
+      ]
+    }
+  },
+  "readout": {
+    "predicate": "last",
+    "choice": "option",
+    "score": "last"
+  },
+  "logits": {
+    "predicate": {
+      "yes": {
+        "id": 9230,
+        "text": " Yes"
+      },
+      "no": {
+        "id": 2838,
+        "text": " No"
+      }
+    },
+    "choice": {
+      "map": "tokens",
+      "tokens": [
+        {
+          "label": " Yes",
+          "id": 9230,
+          "text": " Yes"
+        },
+        {
+          "label": " No",
+          "id": 2838,
+          "text": " No"
+        }
+      ]
+    },
+    "score": {
+      "map": "first-token"
+    }
+  },
+  "defaults": {
+    "method": {
+      "predicate": "logits",
+      "choice": "logits",
+      "score": "logits"
+    },
+    "maxSafeTokens": 2048
+  },
+  "generation": {
+    "turn": "<|im_start|>system\nYou are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+    "continue": "{answer}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+    "answers": {
+      "predicate": [
+        " No",
+        " Yes"
+      ]
+    }
+  },
+  "builds": {
+    "genai-int4-webgpu": {
+      "runtime": "genai",
+      "repo": "local/SmolLM2-135M-Instruct@12fd25f7-int4-webgpu",
+      "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+      "files": {
+        "model": {
+          "path": "model.onnx",
+          "sha256": "c736cbf9cc5e383ac6717b9c37b77a061a94891f860381784665927ab2cd1588",
+          "size": 225389
+        },
+        "data": {
+          "path": "model.onnx.data",
+          "sha256": "b45c784abde5802bbd661ad99a11177b886fd918a01587d8cbc2268d6858792d",
+          "size": 76763776
+        },
+        "genaiConfig": {
+          "path": "genai_config.json",
+          "sha256": "d53bff4c6d1c8bd1a084a66abf4404da063af063d8db498ff4dbc228de93a70b",
+          "size": 1687
+        }
+      },
+      "hiddenOutput": "hidden_states",
+      "devices": [
+        "webgpu"
+      ],
+      "dtype": "int4",
+      "kvHeadDim": 64,
+      "fidelity": null
+    },
+    "genai-int4-cpu": {
+      "runtime": "genai",
+      "repo": "local/SmolLM2-135M-Instruct@12fd25f7-int4-webgpu",
+      "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+      "files": {
+        "model": {
+          "path": "model.onnx",
+          "sha256": "c736cbf9cc5e383ac6717b9c37b77a061a94891f860381784665927ab2cd1588",
+          "size": 225389
+        },
+        "data": {
+          "path": "model.onnx.data",
+          "sha256": "b45c784abde5802bbd661ad99a11177b886fd918a01587d8cbc2268d6858792d",
+          "size": 76763776
+        },
+        "genaiConfig": {
+          "path": "genai_config.json",
+          "sha256": "d53bff4c6d1c8bd1a084a66abf4404da063af063d8db498ff4dbc228de93a70b",
+          "size": 1687
+        }
+      },
+      "hiddenOutput": "hidden_states",
+      "devices": [
+        "cpu"
+      ],
+      "dtype": "int4",
+      "kvHeadDim": 64,
+      "fidelity": null
+    }
+  },
+  "lab": {
+    "note": "Generated from the lab-s12 study setup (prompts, label contract, heads); free-form, ignored by the runtime. Ask requirements as type 'choice' with choices [labels.yes, labels.no] (any order); the logits readout reads the contract's label ids pinned in logits.choice.tokens. Placeholders: {name}, {definition} (the requirement), {passage}. Placeholder names translated from the lab file's {nome_de}, {definicao}, {estado}; the sha256 values are of the original files, and the rendered text is unchanged.",
+    "section": "v3_gdpr",
+    "language": "en",
+    "cue": "Answer:",
+    "labels": {
+      "yes": " Yes",
+      "no": " No"
+    },
+    "question": "Does this passage address {name} ({definition})? Answer with one option only.",
+    "e1": "Passage:\n{passage}\n\nDoes this passage address {name} ({definition})? Answer yes or no and quote one sentence from the passage.",
+    "e2": "Passage:\n{passage}\n\nThis passage addresses {name} ({definition}). Quote the exact sentence that shows it.",
+    "prompts_sha256": "9b139028f779c27b1f9029390fea8ba8367d2f16d7d4dd7f46bb4e27d520b041",
+    "contract_sha256": "452e658f6e8353a2c3296c9b91711eb310a3bd668e31365c559a1788c007b354",
+    "model": "HuggingFaceTB/SmolLM2-135M-Instruct@12fd25f7",
+    "variant": "base",
+    "heads": {},
+    "verified_items": 200
+  }
+}
