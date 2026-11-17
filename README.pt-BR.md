@@ -51,10 +51,11 @@ Início rápido com um pacote publicado:
 ```js
 import { S1S2 } from "s1s2";
 
-const model = await S1S2.load({
+const model = await S1S2.load({  // navegador (WebGPU): os manifestos publicados ainda não listam device para Node
   manifest: "https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2/resolve/main/manifest.cnli.json",
 });
 const options = model.manifest.lab.options;  // ["Entailment", "Contradiction", "Not mentioned"]
+const ndaText = "...";                        // o texto do NDA
 const hypothesis = "Receiving Party shall destroy or return some Confidential Information upon the termination of Agreement.";
 const s = await model.decide({
   input: "Contract:\n" + ndaText,
