@@ -5,7 +5,7 @@
 
 import type { Manifest, HeadRole, Method } from "./manifest.js";
 import { canShareState, type Backend, type GenerateOptions, type PrefillResult, type StateHandle } from "./backend.js";
-import { encodeQuestion, firstTokens, optionKey, fill, type Encoded } from "./encoding.js";
+import { encodeQuestion, firstTokens, optionKey, fill, scoreLayout, appendLead, type Encoded } from "./encoding.js";
 import { normalizeQuestions, inputToText, questionEntries, splitSentences, type DecisionRequest, type DecisionsQuestion, type EvidenceRequest, type NQ } from "./questions.js";
 import { mergePolicy, manifestPolicy, shouldEscalate, type MarginPolicy } from "./margin.js";
 import { escalationProblems, type EscalationSpec } from "./manifest.js";
@@ -53,7 +53,7 @@ export interface DecideOptions {
 interface Plan { q: NQ; enc: Encoded; positions: number[]; read(r: PrefillResult): Answer }
 
 /** Token ids the logits readout reads for question `q` (`ctx` = the rendered prompt), in the order of q.values. */
-export function logitIds(e: Engine, q: NQ, ctx?: string): number[] {
+export function logitIds(e: Engine, q: NQ, ctx?: string, labels: string[] = q.values): number[] {
   const m = e.manifest;
   if (q.labelIds) {
     if (q.labelIds.length !== (q.type === "predicate" ? 2 : q.values.length)) throw new Error(`question ${q.name}: task ${q.task} pins ${q.labelIds.length} label tokens for ${q.values.length} labels`);
@@ -61,7 +61,7 @@ export function logitIds(e: Engine, q: NQ, ctx?: string): number[] {
   }
   if (q.type === "predicate") return [m.logits.predicate.no.id, m.logits.predicate.yes.id];
   // Task labels without pinned tokens: first token of each label after the prompt (whatever the manifest's global map).
-  if (q.task !== undefined && (q.type === "choice" || (q.type === "score" && m.tasks?.[q.task]?.levels))) return firstTokens(e.tok, q.values, q.type, ctx);
+  if (q.task !== undefined && (q.type === "choice" || (q.type === "score" && m.tasks?.[q.task]?.levels))) return firstTokens(e.tok, q.type === "score" ? labels : q.values, q.type, ctx);
   if (q.type === "choice") {
     if (m.logits.choice.map === "tokens") {
       const t = m.logits.choice.tokens!;
@@ -79,16 +79,19 @@ export function logitIds(e: Engine, q: NQ, ctx?: string): number[] {
     if (t.length !== q.values.length) throw new Error(`question ${q.name}: the logits score readout of this model reads ${t.length} level tokens (${t.map((x) => x.text).join(",")}); got ${q.values.length} levels`);
     return t.map((x) => x.id);
   }
-  return firstTokens(e.tok, q.values, "score", ctx);
+  return firstTokens(e.tok, labels, "score", ctx);
 }
 
 export function planQuestion(e: Engine, q: NQ, state: string, method0?: Method): Plan {
   const m = e.manifest;
   const method: Method = q.method ?? method0 ?? m.defaults.method[q.type];
-  const enc = encodeQuestion(e.tok, m, q, state);
+  let enc = encodeQuestion(e.tok, m, q, state);
+  // Score by label logits: read the levels after the lead (the space the model writes after the cue), heads unmoved.
+  const lay = q.type === "score" && method !== "head" ? scoreLayout(e.tok, m, q, enc.text) : { lead: "", labels: q.values };
+  enc = appendLead(e.tok, enc, lay.lead);
   if (enc.ids.length > e.maxSafeTokens) throw new Error(`question ${q.name}: prompt has ${enc.ids.length} tokens, over maxSafeTokens (${e.maxSafeTokens})`);
 
-  const ids = method === "head" ? [] : logitIds(e, q, enc.text);
+  const ids = method === "head" ? [] : logitIds(e, q, enc.text, lay.labels);
   const fromLogits = (L: Float32Array): Answer => {
     for (const id of ids) if (id >= L.length) throw new Error(`logits readout: token ${id} outside the vocabulary (${L.length})`);
     const T = m.logits.temperature?.[q.type] ?? 1;

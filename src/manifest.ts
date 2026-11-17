@@ -221,8 +221,12 @@ export interface Manifest {
      *  "tokens": the id pinned for each option label (`tokens[].label` = the exact choice text). Use "tokens" when the
      *  token read at the cue is not the option text's first token (lab kev markers: option "Yes", cue reads " Yes"). */
     choice: { map: "first-token" | "letters" | "tokens"; tokens?: ChoiceTokenRef[] };
-    /** "tokens": read `tokens[i]` for level i (count must equal the levels); "first-token": first token of each level label. */
-    score: { map: "tokens" | "first-token"; tokens?: TokenRef[] };
+    /** "tokens": read `tokens[i]` for level i (count must equal the levels); "first-token": first token of each level label.
+     *  `lead`: text appended after the rendered prompt before the level tokens are read by the logits readout (the
+     *  hidden-state read positions of heads do not move). Absent: " " when the prompt does not end in whitespace and the
+     *  tokenizer writes the space before a level as its own token (SmolLM2/3: " 1" = [" ", "1"]; reading the digit right
+     *  after "Answer:" puts it where the model writes a space, label mass ~1e-5 in study 012); "" disables it. */
+    score: { map: "tokens" | "first-token"; tokens?: TokenRef[]; lead?: string };
     /** Softmax temperature of the logits readout per question type (default 1): p = softmax(L / T); rawMargin is the
      *  gap of L / T. Predicate: p = sigmoid((L[yes] - L[no]) / T). */
     temperature?: Partial<Record<QType, number>>;
@@ -383,6 +387,7 @@ export function validateManifest(m: any): Manifest {
     }
     const sc = m.logits.score;
     need(["tokens", "first-token"].includes(sc?.map), 'logits.score.map: "tokens" | "first-token"');
+    if (sc?.lead !== undefined) need(typeof sc.lead === "string" && sc.lead.trim() === "", "logits.score.lead: a whitespace-only string");
     if (sc?.map === "tokens") {
       need(Array.isArray(sc.tokens) && sc.tokens.length >= 2, "logits.score.tokens: at least 2 tokens");
       (sc.tokens ?? []).forEach((t: any, i: number) => tokenRef(t, `logits.score.tokens[${i}]`));

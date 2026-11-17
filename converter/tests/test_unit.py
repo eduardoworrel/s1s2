@@ -32,6 +32,19 @@ class Layout(unittest.TestCase):
         self.assertIn("‹decide>", text)  # caller text cannot forge the marker
         self.assertEqual(text.count(" </option>"), 2)
 
+    def test_score_lead_space_token(self):
+        # SmolLM2/3-like: " 1" is [" ", "1"] -> read the levels after a space (lab-s12 study 012)
+        vocab = {}
+        def encode(s):
+            return [vocab.setdefault(p, len(vocab)) for p in ([s[:-2], " ", s[-1]] if s.endswith(tuple(" " + d for d in "12345"))
+                                                              else [s[:-1], " "] if s.endswith(" ") else [s])]
+        inv = lambda ids: "".join(k for i in ids for k, v in vocab.items() if v == i)  # noqa: E731
+        self.assertEqual(LY.score_lead(encode, inv, "Answer:"), " ")
+        self.assertEqual(LY.score_lead(encode, inv, "Answer:\n"), "")  # cue already ends in whitespace
+        # GPT-2-like: " 1" is one token -> no lead
+        one = lambda s: [hash(s) % 10 ** 6] if not s.endswith(" ") else [hash(s[:-1]) % 10 ** 6, 7]  # noqa: E731
+        self.assertEqual(LY.score_lead(one, lambda ids: " " if ids == [7] else "x", "Answer:"), "")
+
 
 class Data(unittest.TestCase):
     def _write(self, rows):

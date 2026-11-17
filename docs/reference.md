@@ -238,7 +238,7 @@ graph exposes the named hidden output.
 | `encoding` | `kind: "tagged"`: `template` with `{state}` `{question}` (chat template inline), `question` per type (`{instructions}`, `{options}`), `option` (`{label}`, `{key}`, `{index}`), `forbiddenInLabels`, `escapeSpecial`, `escapeLiterals` (plain-text markers neutralized in caller text: first character -> `‹`). `kind: "kev"`: `delimiters` { state, question, optionStart, optionEnd, decide } as `{ id, text }` (open-jev layout), optional `prefix`/`suffix`, `predicateOptions` |
 | `markers` | `decide`, `option`, `last`: `{ text, at: "last-token"|"token", tokens: [{ id, text }] }`; the token at every read position must be one of `tokens` (BPE merges: CT0's option marker reads `><` or `></`) |
 | `readout` | head key per type: predicate `"last"` (or `"options"` for kev [no, yes]), choice `"option"`, score `"last"` |
-| `logits` | `predicate: { yes, no }`, `choice: { map: "first-token"|"letters"|"tokens", tokens?: [{ label, id, text }] }`, `score: { map: "tokens"|"first-token", tokens? }` |
+| `logits` | `predicate: { yes, no }`, `choice: { map: "first-token"|"letters"|"tokens", tokens?: [{ label, id, text }] }`, `score: { map: "tokens"|"first-token", tokens?, lead? }` (`lead`: text appended after the prompt before the level tokens are read; default `" "` when the tokenizer writes the space before a level as its own token, as SmolLM2/3 do; heads keep their read position) |
 | `defaults` | `method` per type, `instructions?` per type, `levels?`, `maxSafeTokens?` |
 | `generation` | `turn` (`{system}{prompt}{think}`), `system`, `think: { on, off }`, `continue` (`{answer}{prompt}{think}`), `escalate?` (`{prompt}{think}`, no `{answer}`), `answers.predicate` [no, yes] |
 | `tasks?` | named label sets (see Tasks) |

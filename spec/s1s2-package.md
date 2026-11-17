@@ -122,7 +122,12 @@ tokenizer, or keep it verbatim here (the package is then "described, not executa
 
 Token refs `{id, text}` are checked against the tokenizer at load. `logits.predicate = {yes, no}`;
 `logits.choice.map` ∈ `first-token | letters | tokens` (`tokens`: pinned `{label, id, text}` per label);
-`logits.score = {map: "tokens", tokens} | {map: "first-token"}`.
+`logits.score = {map: "tokens", tokens, lead?} | {map: "first-token", lead?}`. **`lead`** (whitespace-only string): text
+appended after the rendered prompt before the level tokens are read by the logits readout; the hidden-state read
+positions of heads stay on the prompt without it. Absent: a reader uses `" "` when the prompt does not end in whitespace
+and the tokenizer writes the space before every level as its own token (SmolLM2/3: `" 1"` = `[" ", "1"]`), else `""`;
+with `map: "first-token"` and space-prefixed level tokens (`" 1"` one token) it reads `" " + label` after the cue. Read
+right after `Answer:` on such a tokenizer, the digits hold ~1e-5 of the probability (lab-s12 study 012).
 
 **`logits.temperature`** (0.2): `{predicate?, choice?, score?}` positive numbers (default 1). p = softmax(L / T) over
 the read tokens; predicate p = sigmoid((L[yes] − L[no]) / T); `rawMargin` is the gap of L / T. This is the

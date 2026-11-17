@@ -36,6 +36,7 @@ O que foi medido, em rodadas pré-registradas dos estudos do lab-s12. Os relató
 - Mandar para int8 os 15% de respostas com menor margem pega mais dessas trocas que escolher ao acaso (5 de 6 cenários; não no SmolLM2-135M). Há pouca acurácia em jogo: de −0,1 a +2,7 pontos.
 - O ponteiro de evidência acha a frase certa melhor que regras que ignoram o conteúdo (6 de 6 e 4 de 4 cenários). Contra a citação gerada pelo modelo, o resultado é misto: em contratos a citação gerada venceu 3 de 4.
 - Nos pesos reais do CT0, `decide()` coincide com o `askMany()` do ct0-edge até 4e-16. Os 172 prompts de teste do ct0-edge são reproduzidos de forma exata.
+- Perguntas `score` (estudo 012, teste trancado, SmolLM3-3B congelado): o head linear mediu melhor que os logits dos rótulos, erro absoluto médio de 0,49 (en, SST-5) e 0,50 (pt, B2W) níveis contra 0,60 dos logits lidos depois do espaço; lidos logo após `Answer:`, os dígitos tinham ~1e-5 da probabilidade, por isso a leitura de score por logits agora lê depois desse espaço (`logits.score.lead`).
 - Cada conversão de formato de head tem registro de fidelidade: [spec §11](spec/s1s2-package.md#11-coverage-formats--conversion--fidelity).
 
 O que não foi medido, ou não se sustentou:

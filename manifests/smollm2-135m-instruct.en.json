@@ -113,7 +113,8 @@
       ]
     },
     "score": {
-      "map": "first-token"
+      "map": "first-token",
+      "lead": " "
     }
   },
   "defaults": {

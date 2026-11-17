@@ -36,6 +36,7 @@ What has been measured. These are preregistered runs in the lab-s12 studies; the
 - Sending the 15% of answers with the lowest margin to int8 catches more of those changes than picking at random (5 of 6 settings; not on SmolLM2-135M). Little accuracy is at stake: −0.1 to +2.7 points.
 - The evidence pointer finds the right sentence better than rules that ignore the content (6 of 6 and 4 of 4 settings). Against a quote the model generates, results are mixed: on contracts the generated quote won 3 of 4.
 - On the real CT0 weights, `decide()` matches ct0-edge `askMany()` to 4e-16, and all 172 ct0-edge prompt fixtures are reproduced exactly.
+- `score` questions (study 012, held-out test, frozen SmolLM3-3B): a linear head measured better than label logits, mean absolute error 0.49 (en, SST-5) and 0.50 (pt, B2W) levels against 0.60 for the logits read after the space; read right after `Answer:` the digits held ~1e-5 of the probability, so the score logits readout now reads after that space (`logits.score.lead`).
 - Each head-format conversion has a fidelity record: [spec §11](spec/s1s2-package.md#11-coverage-formats--conversion--fidelity).
 
 What has not been measured, or did not hold:

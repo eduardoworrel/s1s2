@@ -101,6 +101,23 @@ def chat(tok, system, chat_kwargs, user, cue=""):
     return t + cue
 
 
+def score_lead(encode, decode, cue, levels=("1", "2", "3", "4", "5")):
+    """logits.score.lead for the manifest: " " when the cue does not end in whitespace and the tokenizer writes the
+    space before every level as one separate whitespace token (SmolLM2/3: " 1" = [" ", "1"]), so the model's next token
+    after the cue is that space and the level digits must be read after it (lab-s12 study 012: read right after
+    "Answer:", the digits held ~1e-5 of the probability); "" otherwise. Same rule as scoreLayout() in the library."""
+    if not cue or cue[-1].isspace():
+        return ""
+    base, sp = encode(cue), encode(cue + " ")
+    if len(sp) != len(base) + 1 or sp[:len(base)] != base or decode([sp[-1]]).strip():
+        return ""
+    for lv in levels:
+        b = encode(cue + " " + lv)
+        if b[:len(sp)] != sp or len(b) == len(sp):
+            return ""
+    return " "
+
+
 def build_encoding(tok, system=None, chat_kwargs=None, cue="Answer:"):
     """encoding + generation blocks of the manifest for this tokenizer's chat template."""
     ck = chat_kwargs or {}

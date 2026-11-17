@@ -248,6 +248,39 @@ export function taskTokens(m: Manifest): (TokenRef & { at: string })[] {
   return out;
 }
 
+/** Score questions read by label logits: the text appended after the rendered prompt before the level tokens are read
+ *  (`logits.score.lead`, or by default " " when `context` does not end in whitespace and the tokenizer writes the
+ *  space before every level as one separate whitespace token, so the model's next token after the cue is that space;
+ *  see study 012), and the level labels whose first tokens are read after it. When the tokenizer instead has
+ *  space-prefixed level tokens (" 1" as one token), the levels are read as " " + label after the cue. */
+export function scoreLayout(tok: Tok, m: Manifest, q: NQ, context?: string): { lead: string; labels: string[] } {
+  const sc = m.logits.score, none = { lead: "", labels: q.values };
+  if (sc.lead !== undefined) return { lead: sc.lead, labels: q.values };
+  if (context === undefined || /\s$/.test(context) || q.labelIds || q.type !== "score") return none;
+  const base = tok.encode(context), sp = tok.encode(context + " ");
+  const spaceAlone = sp.length === base.length + 1 && isPrefix(base, sp) && tok.decode([sp[base.length]]).trim() === "";
+  if (spaceAlone && q.values.every((l) => { const b = tok.encode(context + " " + l); return isPrefix(sp, b) && b.length > sp.length; }))
+    return { lead: " ", labels: q.values };
+  if (sc.map === "first-token" && q.values.every((l) => !/^\s/.test(l))) {
+    try {
+      const spaced = q.values.map((l) => " " + l);
+      const ids = firstTokens(tok, spaced, "score", context);
+      if (ids.every((id, i) => tok.decode([id]) === spaced[i])) return { lead: "", labels: spaced };
+    } catch { /* fall through: the plain labels */ }
+  }
+  return none;
+}
+
+/** The encoded prompt with `lead` appended (score logits readout); read positions (decide, options, last) stay on the
+ *  original prompt, so heads read the hidden states they were fitted on and only the logits move after the lead. */
+export function appendLead(tok: Tok, enc: Encoded, lead: string): Encoded {
+  if (!lead) return enc;
+  if (enc.text === undefined) return { ...enc, ids: [...enc.ids, ...tok.encode(lead)] };
+  const ids = tok.encode(enc.text + lead);
+  if (!isPrefix(enc.ids, ids) || ids.length === enc.ids.length) throw new Error(`score readout: lead ${JSON.stringify(lead)} merges with the end of the prompt (unstable token boundary); set logits.score.lead to ""`);
+  return { ...enc, ids, text: enc.text + lead };
+}
+
 /** First token of each label (logits readout); throws when two labels share it.
  *  With `context` (the rendered prompt the logits are read after), the label token is the first token that
  *  encode(context + label) adds after encode(context), as the lab-s12 label contract does; the boundary must be
