@@ -1,6 +1,6 @@
 {
   "name": "@s1s2/web",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Typed decisions (predicate / choice / score) with probability and margin from one forward pass of an LLM in the browser and Node, plus generation on the same weights. Reads S1S2 packages.",
   "keywords": [
     "llm",

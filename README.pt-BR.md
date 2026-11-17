@@ -25,7 +25,7 @@ await s.dispose(); await model.dispose();
 ## O que é
 
 - Uma biblioteca JavaScript que responde perguntas `predicate`, `choice` e `score` numa só passada, sem gerar texto. Cada resposta traz `probability`, `confidence`, `margin` e `rawMargin`.
-- `s.generate()` continua do mesmo prefill que produziu a decisão, nos backends que guardam estado.
+- `s.generate()` continua do mesmo prefill que produziu a decisão, nos backends que guardam estado. No WebGPU esse reuso (e o prefixo comum a várias perguntas) é idêntico bit a bit a um prefill completo desde a 0.1.3: nenhum bloco de prefill tem menos de 32 tokens, porque o onnxruntime-web calcula blocos menores por outro caminho numérico.
 - Uma política de margem opcional manda as respostas de margem baixa para outro build do mesmo modelo (por exemplo, de int4 para int8) ou para a geração. Não há limiar padrão: você mede o seu no seu build.
 - Runtimes: ONNX Runtime Web (grafos GenAI e decoders comuns), transformers.js, WebLLM e LiteRT.js. No Node, onnxruntime-node.
 - Lê **pacotes S1S2**: um manifesto que fixa cada arquivo por sha256 e descreve o layout do prompt, os marcadores, as leituras e os heads. A biblioteca e o formato têm o mesmo nome; o formato está especificado em [`spec/`](spec/s1s2-package.md).

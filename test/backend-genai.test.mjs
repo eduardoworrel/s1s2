@@ -45,7 +45,7 @@ const gen = async (it) => { const g = []; for await (const t of it) g.push(t); r
 const G = { temperature: 0, repetitionPenalty: 1 };
 
 test("chunked prefill, absolute positions, hidden at requested positions, logits of the last token", async () => {
-  const s = mkSession(), be = genaiFromSession(s, ort, O({ chunk: 4 }));
+  const s = mkSession(), be = genaiFromSession(s, ort, O({ chunk: 4, minBlock: 0 }));
   assert.equal(be.kind, "genai"); assert.equal(be.hiddenName, "hidden_states");
   const r = await be.prefill([3, 4, 5, 6, 7, 8, 9, 10, 11, 12], { positions: [9, 3, 3, 0] });
   assert.deepEqual(s.calls.map((c) => c.S), [4, 4, 2]);
@@ -74,7 +74,7 @@ test("greedy generate stops at the manifest EOS", async () => {
 });
 
 test("kept state: prefill(keep) keeps its tensors alive; generateFrom continues from them and frees only derived states", async () => {
-  const s = mkSession(), be = genaiFromSession(s, ort, O({ chunk: 4 }));
+  const s = mkSession(), be = genaiFromSession(s, ort, O({ chunk: 4, minBlock: 0 }));
   const ids = [1, 2, 3, 4, 5, 6];
   const r = await be.prefill(ids, { positions: [5] }, { keep: true });
   assert.ok(r.state && r.state.ids.length === 6);
@@ -98,7 +98,7 @@ test("kept state: prefill(keep) keeps its tensors alive; generateFrom continues 
 });
 
 test("snapshot -> prefillFrom(keep) twice: independent kept states; snapshot never freed by prefillFrom", async () => {
-  const s = mkSession(), be = genaiFromSession(s, ort, O({ chunk: 4 }));
+  const s = mkSession(), be = genaiFromSession(s, ort, O({ chunk: 4, minBlock: 0 }));
   const h = await be.snapshot([1, 2, 3]);
   const snapT = s.made.slice(-4);
   const a = await be.prefillFrom(h, [1, 2, 3, 4, 5], { positions: [4] }, { keep: true });

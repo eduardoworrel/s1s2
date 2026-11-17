@@ -25,7 +25,7 @@ await s.dispose(); await model.dispose();
 ## What it is
 
 - A JavaScript library that answers `predicate`, `choice` and `score` questions in one forward pass, with no generation, and reports `probability`, `confidence`, `margin` and `rawMargin` for every answer.
-- `s.generate()` continues from the same prefill that produced the decision, on backends that keep state.
+- `s.generate()` continues from the same prefill that produced the decision, on backends that keep state. On WebGPU this reuse (and the prefix shared by several questions) is bit-identical to a full prefill since 0.1.3: no prefill block is shorter than 32 tokens, because onnxruntime-web computes shorter blocks on a different numeric path.
 - An optional margin policy escalates low-margin answers to another build of the same model (for example int4 to int8) or to generation. There is no default threshold; you measure one on your own build.
 - Runtimes: ONNX Runtime Web (GenAI graphs and plain decoders), transformers.js, WebLLM and LiteRT.js, plus onnxruntime-node in Node.
 - It reads **S1S2 packages**: a manifest that pins every file by sha256 and describes the prompt layout, markers, readouts and heads. The library and the format share the name; the format is specified in [`spec/`](spec/s1s2-package.md).

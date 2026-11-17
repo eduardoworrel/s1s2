@@ -42,7 +42,7 @@ export interface LoadOptions {
   heads?: boolean;
   maxSafeTokens?: number;
   skipVersionCheck?: boolean;
-  genai?: Pick<GenaiOptions, "chunk" | "verifyEp" | "epCache" | "maxCpuNodes">;
+  genai?: Pick<GenaiOptions, "chunk" | "minBlock" | "verifyEp" | "epCache" | "maxCpuNodes">;
   decodeOnly?: { pastLen?: number; providers?: string[] };
   litert?: { wasmUrl?: string; precision?: "fp32" | "fp16"; quiet?: boolean };
   webllm?: { initProgressCallback?: (p: any) => void; appConfig?: any };

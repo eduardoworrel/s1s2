@@ -44,6 +44,12 @@ export interface Backend {
   kind: "genai" | "decode-only" | "transformers.js" | "webllm" | "litert" | (string & {});
   /** Graph output carrying the hidden state; null = logits only. */
   hiddenName: string | null;
+  /**
+   * Shortest block this backend feeds (genai: 32). A kept state then stops this many tokens before the end it was fed
+   * to, and a continuation from a state must feed at least this many tokens; decide() places its shared prefix so.
+   * Absent or 0: no constraint.
+   */
+  minBlock?: number;
   prefill(ids: number[], want: { positions: number[] }, opts?: { keep?: boolean }): Promise<PrefillResult>;
   generate(ids: number[], opts: GenerateOptions): AsyncGenerator<number>;
   dispose(): Promise<void>;

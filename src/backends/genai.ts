@@ -1,6 +1,10 @@
 // ONNX Runtime GenAI graph backend (ported from ct0-edge backends/genai.ts, generalized):
 // chunked prefill with KV/conv/recurrent state, hidden state named by the manifest, EOS from
 // the manifest, and kept states for shared prefill (prefill/prefillFrom keep + generateFrom).
+// Exact reuse: onnxruntime-web 1.31 WebGPU int4 graphs take a different numeric path for every token fed in a block
+// shorter than 32 tokens (deterministic, measured on Qwen3-0.6B in Chrome). So no prefill block is ever shorter than `minBlock` (32), and
+// a kept state stops `minBlock` tokens before the end it was fed to, so any continuation from it is >= minBlock tokens:
+// reuse is then bit-identical to a full prefill. Decode steps (one token) are the same in both paths.
 
 import { createGate, resolveGenerateOptions, checkContinuation, checkPositions, type Backend, type GenerateOptions, type StateHandle, type PrefillResult } from "../backend.js";
 import { tensorToF32, mulberry32, sample, pastNameFor, cacheDims, inputMeta, resolveHidden, checkOrtVersion } from "./common.js";
@@ -26,6 +30,19 @@ export interface GenaiOptions {
   modelKey?: string;
   /** Token embedding table for graphs built with exclude_embeds (input inputs_embeds instead of input_ids). */
   embeddings?: EmbeddingTable;
+  /**
+   * Shortest prefill block (default 32; 0 = off, the 0.1.2 chunking). ORT-web WebGPU int4 computes a block shorter than
+   * 32 tokens on a different numeric path, so continuing from a kept state is exact only when every block is >= 32.
+   */
+  minBlock?: number;
+}
+
+/** Block lengths for feeding `len` tokens: `chunk`-sized, a short tail (< minBlock) merged into the previous block. */
+export function blockPlan(len: number, chunk: number, minBlock: number): number[] {
+  const out: number[] = [];
+  for (let p = 0; p < len; p += chunk) out.push(Math.min(chunk, len - p));
+  if (minBlock > 0 && out.length > 1 && out[out.length - 1] < minBlock) out[out.length - 2] += out.pop()!;
+  return out;
 }
 
 export function parsePlacement(lines: string[]): Record<string, number> {
@@ -46,7 +63,7 @@ export function assertWebGpuPlacement(p: Record<string, number>, maxCpuNodes = 3
   if (cpu > maxCpuNodes) throw new Error(`genai: ${cpu} nodes on CPU (> ${maxCpuNodes}); probably a bundle without the WebGPU kernels. Placement: ${JSON.stringify(p)}`);
 }
 
-export type GenaiBackend = Backend & { chunk: number };
+export type GenaiBackend = Backend & { chunk: number; minBlock: number };
 
 export function genaiFromSession(session: any, ort: { Tensor: new (type: any, data: any, dims: number[], ...r: any[]) => any }, opts: GenaiOptions): GenaiBackend {
   const T = ort.Tensor;
@@ -98,6 +115,8 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
   const free = (st: Record<string, any> | null) => { if (st) for (const t of Object.values(st)) if (t?.location === "gpu-buffer") { try { t.dispose?.(); } catch { /* already freed */ } } };
 
   const gate = createGate("genai");
+  const mb = Math.floor(opts.minBlock ?? 32);
+  const minBlock = Number.isFinite(mb) && mb > 0 ? mb : 0;
 
   async function run(chunk: number[], past: number, st: Record<string, any>, wantLogits: boolean, wantHidden: boolean, keepInput: boolean) {
     const S = chunk.length;
@@ -123,18 +142,24 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
   }
   const read = async (t: any) => (typeof t.getData === "function" ? await t.getData(true) : t.data);
 
-  /** Feed ids[from.past..] on top of `from.st` (never freed: it belongs to a kept handle). */
-  async function feedAll(ids: number[], wanted: Set<number>, wantLast: boolean, signal?: AbortSignal, from?: { st: Record<string, any>; past: number }) {
+  /** Feed ids[from.past..] on top of `from.st` (never freed: it belongs to a kept handle). With `keepAt`, a block
+   *  boundary falls there and the state at that position is returned (alive) as `mid`. */
+  async function feedAll(ids: number[], wanted: Set<number>, wantLast: boolean, signal?: AbortSignal, from?: { st: Record<string, any>; past: number }, keepAt?: number) {
     let st = from?.st ?? initState(), past = from?.past ?? 0;
     const kept = from?.st;
+    let mid: Record<string, any> | undefined;
+    const start = past, cut = keepAt !== undefined && keepAt > start && keepAt < ids.length ? keepAt : undefined;
+    const plan = cut === undefined ? blockPlan(ids.length - start, self.chunk, self.minBlock)
+      : [...blockPlan(cut - start, self.chunk, self.minBlock), ...blockPlan(ids.length - cut, self.chunk, self.minBlock)];
     const hid = new Map<number, Float32Array>();
     let lastLogits: Float32Array | undefined;
+    const alive = (s: Record<string, any>) => s === kept || s === mid;
     try {
-      while (past < ids.length) {
-        if (signal?.aborted) return { st, past, hid, lastLogits, aborted: true, owned: st !== kept };
-        const chunk = ids.slice(past, past + self.chunk), last = past + chunk.length >= ids.length;
+      for (const len of plan) {
+        if (signal?.aborted) { if (mid && mid !== st) free(mid); return { st, past, hid, lastLogits, aborted: true, owned: st !== kept, mid: undefined }; }
+        const chunk = ids.slice(past, past + len), last = past + chunk.length >= ids.length;
         const need = [...wanted].filter((p) => p >= past && p < past + chunk.length);
-        const r = await run(chunk, past, st, last && wantLast, need.length > 0, st === kept);
+        const r = await run(chunk, past, st, last && wantLast, need.length > 0, alive(st));
         st = r.st;
         if (r.out.hidden) {
           const H = r.out.hidden, D = H.dims.at(-1), d = await read(H);
@@ -145,10 +170,23 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
           lastLogits = tensorToF32(d, L.type, (L.dims.at(-2) - 1) * V, V);
         }
         past += chunk.length;
+        if (past === cut) mid = st;
       }
-    } catch (e) { if (st !== kept) free(st); throw e; }
-    return { st, past, hid, lastLogits, aborted: false, owned: st !== kept };
+    } catch (e) { if (st !== kept) free(st); if (mid && mid !== st) free(mid); throw e; }
+    return { st, past, hid, lastLogits, aborted: false, owned: st !== kept, mid };
   }
+
+  /** Where a kept state of a prefill over [start, n) stops: n - minBlock (so every continuation is >= minBlock tokens),
+   *  provided [start, n - minBlock) is itself >= minBlock; otherwise null (no state is kept: continue by a full prefill). */
+  const keepPoint = (start: number, n: number): number | null => {
+    const M = self.minBlock;
+    if (!M) return n;
+    const kp = n - M;
+    return kp - start >= M ? kp : null;
+  };
+  const checkTail = (k: number, n: number) => {
+    if (self.minBlock && n - k < self.minBlock) throw new Error(`genai: continuation of ${n - k} tokens past the kept state; shared prefill feeds at least minBlock (${self.minBlock}) tokens so it stays exact on WebGPU. Keep the state earlier, or prefill from scratch`);
+  };
 
   const snaps = new WeakMap<StateHandle, Record<string, any>>();
   const handle = (ids: number[], st: Record<string, any>): StateHandle => {
@@ -163,10 +201,17 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
     snaps.set(h, st);
     return h;
   };
-  const finish = (ids: number[], f: Awaited<ReturnType<typeof feedAll>>, positions: number[], keep?: boolean): PrefillResult => {
+  const finish = (ids: number[], f: Awaited<ReturnType<typeof feedAll>>, positions: number[], keep: boolean | undefined, kp: number | null): PrefillResult => {
     const res: PrefillResult = { hiddens: positions.map((p) => f.hid.get(p)!), lastLogits: f.lastLogits! };
-    if (keep) res.state = handle(ids, f.st); else if (f.owned) free(f.st);
+    if (keep && kp === ids.length) { res.state = handle(ids, f.st); return res; }
+    if (keep && kp !== null && f.mid) res.state = handle(ids.slice(0, kp), f.mid);
+    if (f.owned) free(f.st);
     return res;
+  };
+  const prefillTo = async (ids: number[], positions: number[], keep: boolean | undefined, from?: { st: Record<string, any>; past: number }) => {
+    const kp = keep ? keepPoint(from?.past ?? 0, ids.length) : null;
+    const f = await feedAll(ids, new Set(positions), true, undefined, from, kp ?? undefined);
+    return finish(ids, f, positions, keep, kp);
   };
   const stateOf = (h: StateHandle) => { const st = snaps.get(h); if (!st) throw new Error("genai: unknown or released state handle"); return st; };
   const needHidden = (positions: number[]) => { if (positions.length && !hiddenName) throw new Error("genai: this build has no hidden output; use method 'logits'"); };
@@ -179,6 +224,7 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
     let st: Record<string, any> | null = null, owned = false;
     try {
       if (o.signal?.aborted) return;
+      if (from) checkTail(from.past, ids.length);
       const f = await feedAll(ids, new Set(), true, o.signal, from);
       st = f.st; owned = f.owned; if (f.aborted) return;
       let past = f.past, logits = f.lastLogits!;
@@ -198,17 +244,19 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
 
   const self: GenaiBackend = {
     kind: "genai",
-    chunk: Math.max(1, opts.chunk ?? 128),
+    minBlock,
+    chunk: Math.max(1, Math.floor(opts.chunk ?? 128) || 1, minBlock),
     hiddenName,
     dispose() { return gate.dispose(async () => { try { await session.release?.(); } finally { await emb?.close?.(); } }); },
     async prefill(ids, want, o = {}) {
       gate.assertLive(); checkPositions("genai", ids, want.positions); needHidden(want.positions);
       const rel = await gate.acquire();
-      try { return finish(ids, await feedAll(ids, new Set(want.positions), true), want.positions, o.keep); } finally { rel(); }
+      try { return await prefillTo(ids, want.positions, o.keep); } finally { rel(); }
     },
     async snapshot(ids) {
       gate.assertLive();
       if (!ids.length) throw new Error("genai: snapshot of empty ids");
+      if (ids.length < self.minBlock) throw new Error(`genai: snapshot of ${ids.length} tokens; a kept state needs at least minBlock (${self.minBlock}) tokens to stay exact on WebGPU`);
       const rel = await gate.acquire();
       try { return handle(ids, (await feedAll(ids, new Set(), false)).st); } finally { rel(); }
     },
@@ -216,8 +264,9 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
       gate.assertLive();
       const st = stateOf(h);
       const k = checkContinuation("genai", h, ids, want.positions); needHidden(want.positions);
+      checkTail(k, ids.length);
       const rel = await gate.acquire();
-      try { return finish(ids, await feedAll(ids, new Set(want.positions), true, undefined, { st, past: k }), want.positions, o.keep); } finally { rel(); }
+      try { return await prefillTo(ids, want.positions, o.keep, { st, past: k }); } finally { rel(); }
     },
     async *generate(ids, o) {
       gate.assertLive();

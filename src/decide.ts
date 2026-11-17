@@ -189,6 +189,17 @@ export function sharedPrefix(plans: { enc: Encoded; positions: number[] }[]): nu
   return k;
 }
 
+/**
+ * Shared-prefix length on a backend with a minimum block M (genai on WebGPU: 32): the snapshot must hold >= M tokens and
+ * every continuation from it must feed >= M (2M when that prefill keeps a state, which stops M before its end), so the
+ * reuse is bit-identical to a full prefill. `limits[i]` = the largest prefix plan i allows. Below M: 0 (no sharing).
+ */
+export function backOff(k: number, limits: number[], minBlock: number): number {
+  if (!minBlock) return k;
+  const kk = Math.min(k, ...limits);
+  return kk >= minBlock ? kk : 0;
+}
+
 export interface GenerateResult {
   text: string;
   tokenIds: number[];
@@ -291,7 +302,7 @@ export async function decide(e: Engine, req: DecisionRequest, opts: DecideOption
   const keep = (opts.keepState ?? true) && canShareState(be);
   const answers: Answer[] = [], states: (StateHandle | undefined)[] = [];
   let evidence: EvidenceAnswer | null = null;
-  const k = all.length > 1 && be.snapshot && be.prefillFrom ? sharedPrefix(all) : 0;
+  const k = all.length > 1 && be.snapshot && be.prefillFrom ? backOff(sharedPrefix(all), all.map((p, i) => p.enc.ids.length - (keep && i < plans.length ? 2 : 1) * (be.minBlock ?? 0)), be.minBlock ?? 0) : 0;
   // The evidence pass keeps no state: System 2 continues from a question's prefill, never from the evidence prompt.
   const take = (i: number, r0: PrefillResult) => {
     const r = e.norm && r0.hiddens.length ? { ...r0, hiddens: r0.hiddens.map((h) => applyNorm(e.norm!, h)) } : r0;

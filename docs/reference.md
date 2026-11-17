@@ -195,12 +195,20 @@ Answers echo `name` and carry `margin`, `rawMargin` and `path` (above). `predica
 Questions about the same input share the prefill of the common prefix (system turn + state) on backends with
 snapshots, then each question runs only its own tokens.
 
+Exact reuse on WebGPU: onnxruntime-web (1.31.1, int4 genai graphs) computes any token fed in a prefill block shorter
+than 32 tokens on a different numeric path (up to ~0.5 logit apart), so from 0.1.3 the genai backend never feeds a
+block shorter than 32 (`minBlock`, `genai: { minBlock: 0 }` turns it off): the shared prefix stops at least 32 tokens
+before each question's end (64 when its state is kept), and a kept state stops 32 tokens before the end of its
+prefill. Shared prefill and prefix reuse are then bit-identical to a full prefill (Chrome on an Apple M2 Pro, published
+Qwen3-0.6B package: 32 of 32 decisions, 6 of 6 System-2 continuations); the cost is up to 64 tokens prefilled again per question. Prompts shorter
+than 64 tokens keep no state (`sharedPrefill: false`, a fresh prefill of the same ids).
+
 ### Session: `s.generate(prompt, { question?, think?, maxNewTokens, temperature, ..., onToken })`
 
 Continues **after** the decision prompt of `question` (default: the first): appends the decided answer, closes the
 turn, and opens a new user turn with `prompt` (manifest `generation.continue`). The token ids are the decision
 prompt's ids followed by the separately tokenized continuation; they are never re-tokenized. With a state-keeping
-backend the kept prefill is reused (`sharedPrefill: true`, `reusedTokens` = decision prompt length); otherwise the
+backend the kept prefill is reused (`sharedPrefill: true`, `reusedTokens` = tokens served from the kept state: on genai the decision prompt length minus 32, see exact reuse above); otherwise the
 **same ids** are prefilled again (`sharedPrefill: false`), so both paths see identical input.
 
 `decide(..., { keepState: false })` keeps nothing. Kept states live until `s.dispose()`.

@@ -1,5 +1,5 @@
 export { S1S2, S12, assertBackend, nodeFloat16Workaround, type LoadOptions } from "./model.js";
-export { decide, generate, planQuestion, planEvidence, logitIds, sharedPrefix, DecisionSession, type Engine, type DecideOptions, type GenerateOpts, type GenerateResult, type SessionGenerateOptions, type EscalationTarget } from "./decide.js";
+export { decide, generate, planQuestion, planEvidence, logitIds, sharedPrefix, backOff, DecisionSession, type Engine, type DecideOptions, type GenerateOpts, type GenerateResult, type SessionGenerateOptions, type EscalationTarget } from "./decide.js";
 export { mergePolicy, manifestPolicy, shouldEscalate, thresholdFromQuantile, MARGIN_POLICY_DEFAULTS, PROVISIONAL_NOTE, type MarginPolicy } from "./margin.js";
 export { validateManifest, headFor, fileUrl, ManifestError, MANIFEST_SCHEMA, LEGACY_MANIFEST_SCHEMAS, isLegacyManifestSchema, type ManifestSchemaId, RUNTIMES, REQUIRED_ROLES, type Manifest, type BuildSpec, type QType, type Method, type RuntimeName, type TokenRef, type ChoiceTokenRef, type PinnedFile, type Marker, type Fidelity, type TaggedEncoding, type KevEncoding, type HeadSpec, type HeadRole, HEAD_ROLES, type HeadKind, HEAD_KINDS, type EvidenceSpec, type EscalationSpec, type TaskSpec, type LabelSpec, type Provenance, provenanceProblems } from "./manifest.js";
 export { normalizeQuestions, inputToText, questionEntries, splitSentences, type EvidenceRequest, type DecisionRequest, type DecisionsQuestion, type DecisionInput, type NQ, type ChoiceSpec, type LevelSpec } from "./questions.js";
@@ -9,7 +9,7 @@ export { wrapTokenizer, tokenizerFromJson, tokenOffsets, type Tok } from "./tok.
 export { Files, IntegrityError, sha256Hex, verifyFileOnce } from "./files.js";
 export { canShareState, createGate, resolveGenerateOptions, GENERATE_DEFAULTS, type Backend, type StateHandle, type PrefillResult, type GenerateOptions } from "./backend.js";
 export { planBuilds, deviceFor, autoOrder, detectPlatform, detectWebGPU, webgpuStatus, GENAI_BROWSER_CPU_NOTE, detectCuda, type Device, type DeviceChoice, type Caps, type Plan } from "./runtime.js";
-export { genaiFromSession, createGenai, wrapSession, parsePlacement, assertWebGpuPlacement } from "./backends/genai.js";
+export { genaiFromSession, createGenai, wrapSession, parsePlacement, assertWebGpuPlacement, blockPlan } from "./backends/genai.js";
 export { createDecodeOnly } from "./backends/decodeOnly.js";
 export { embeddingTable, embeddingTableFromBytes, httpRangeTable, fileTable, f16ToF32, type EmbeddingTable } from "./backends/embeddings.js";
 export { transformersJsFromModel } from "./backends/transformersjs.js";
