@@ -1,4 +1,4 @@
-// Pointer (bilinear) head stored as safetensors in fp32 (Kev head.pt converted, lab-s12 head.safetensors):
+// Pointer (bilinear) head stored as safetensors in fp32 (Kev head.pt converted, the model cards' head.safetensors):
 // tensors q.weight [D, H], q.bias [D], k.weight [D, H], k.bias [D]. Same math as head.bin (readout.ts headScore):
 // z = scale * (Wq h_q + bq) . (Wk h_k + bk) / T + score_offset; no fp16 rounding of the weights.
 // Reference: sglang@da614ba python/sglang/srt/layers/pointer_head.py PointerPooler (scale 1/sqrt(head_dim)).

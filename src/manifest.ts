@@ -46,7 +46,7 @@ export interface TaggedEncoding {
   /** Rewrite special-token look-alikes in caller text (<|x|> -> <¦x¦>, as open-jev) so text cannot inject structure. */
   escapeSpecial?: boolean;
   /** Literal strings neutralized in caller text (after escapeSpecial), in order: every occurrence of each
-   *  (trimmed) literal gets its first character replaced by "‹" (the lab-s12 escape for plain-text
+   *  (trimmed) literal gets its first character replaced by "‹" (the escape for plain-text
    *  markers: "<option>" -> "‹option>"), so caller text cannot forge a marker. */
   escapeLiterals?: string[];
 }
@@ -100,17 +100,17 @@ export const HEAD_KINDS: readonly HeadKind[] = ["pointer", "linear", "joint"];
 /**
  * Evidence selector (optional). A pointer head over the passage's sentences: the prompt is the choice layout of this
  * manifest's encoding with one option per sentence (whitespace collapsed), and the head reads the query at the decide
- * marker and one key at each option marker (lab-s12 study 005, "citation as System 1"). The head file is a build head
+ * marker and one key at each option marker (citation as a one-pass decision, measured on SmolLM3-3B, S5-nano and Jurema-7B). The head file is a build head
  * whose `types` include "evidence".
  */
 export interface EvidenceSpec {
   /** Question text the head was trained with; placeholder {requirement} (filled from the request). */
   instructions: string;
   /** Prepended to each (whitespace-collapsed) sentence inside its option, when the head was trained with a separator the
-   *  option template does not carry (lab-s12 plain-text markers: "<option> " + sentence, while the template is
+   *  option template does not carry (plain-text markers: "<option> " + sentence, while the template is
    *  " <option>{label} </option> \n" because its decision labels already start with a space). Default "". */
   sentencePrefix?: string;
-  /** Free-text provenance (e.g. "lab-s12 study 005, dev-selected epoch"). */
+  /** Free-text provenance (e.g. "evidence head, epoch chosen by dev loss"). */
   source?: string;
 }
 
@@ -155,7 +155,7 @@ export interface BuildSpec {
  * threshold: a number only exists once someone measured it for that model/build/readout.
  */
 export interface EscalationSpec {
-  /** Answer field the thresholds apply to: "margin" (probability gap, study 002's definition; default) or "rawMargin". */
+  /** Answer field the thresholds apply to: "margin" (probability gap p(1st) - p(2nd); default) or "rawMargin". */
   metric?: "margin" | "rawMargin";
   /** Escalate answers whose metric is strictly below this, per question type. A type without a threshold is never escalated. */
   below?: Partial<Record<QType, number>>;
@@ -166,9 +166,9 @@ export interface EscalationSpec {
   /** to "generate": the user turn appended after the decision prompt; placeholder {options} (the labels, comma-separated). */
   prompt?: string;
   maxNewTokens?: number;
-  /** True until a measured result backs the thresholds (lab-s12: study 002, H4/G4a). */
+  /** True until a measured result backs the thresholds. */
   provisional?: boolean;
-  /** Free-text provenance of the thresholds (e.g. "dev quantile 0.15, study 001"). */
+  /** Free-text provenance of the thresholds (e.g. "15% quantile of the dev margins"). */
   source?: string;
 }
 
@@ -227,7 +227,7 @@ export interface Manifest {
      *  `lead`: text appended after the rendered prompt before the level tokens are read by the logits readout (the
      *  hidden-state read positions of heads do not move). Absent: " " when the prompt does not end in whitespace and the
      *  tokenizer writes the space before a level as its own token (SmolLM2/3: " 1" = [" ", "1"]; reading the digit right
-     *  after "Answer:" puts it where the model writes a space, label mass ~1e-5 in study 012); "" disables it. */
+     *  after "Answer:" puts it where the model writes a space, label mass ~1e-5 on SST-5 / B2W with SmolLM3-3B); "" disables it. */
     score: { map: "tokens" | "first-token"; tokens?: TokenRef[]; lead?: string };
     /** Softmax temperature of the logits readout per question type (default 1): p = softmax(L / T); rawMargin is the
      *  gap of L / T. Predicate: p = sigmoid((L[yes] - L[no]) / T). */
@@ -262,7 +262,7 @@ export interface Manifest {
   license?: string;
   /** Where the package came from (base model, data, recipe, tools). Optional; see Provenance. */
   provenance?: Provenance;
-  /** Confidence definition answers report (spec 5.1). Reserved hook for lab-s12 study 007; ignored by s1s2 0.1. */
+  /** Confidence definition answers report (spec 5.1). Reserved hook until a comparison of confidence definitions is done; ignored by s1s2 0.1. */
   confidence?: { definition: "C1" | "C3" | "C4" | "C5" | "C6" | "C7" | "tbd-007"; source?: string; [k: string]: unknown };
 }
 

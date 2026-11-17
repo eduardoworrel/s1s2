@@ -471,7 +471,7 @@
     },
     "lab": {
       "type": "object",
-      "description": "Free-form notes from the lab-s12 study setup. Ignored by the runtime."
+      "description": "Free-form notes from the training setup (prompts, label contract, heads). Ignored by the runtime."
     },
     "confidence": {
       "type": "object",
@@ -494,7 +494,7 @@
           "type": "string"
         }
       },
-      "description": "Confidence definition answers report (spec 5.1); reserved hook for lab-s12 study 007, ignored by s1s2 0.1."
+      "description": "Confidence definition answers report (spec 5.1); reserved hook until a comparison of confidence definitions is done, ignored by s1s2 0.1."
     }
   },
   "patternProperties": {

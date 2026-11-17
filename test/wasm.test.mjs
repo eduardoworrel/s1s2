@@ -1,6 +1,6 @@
 // Browser CPU path (onnxruntime-web WASM) through the public S1S2.load: a genai build whose manifest lists device
 // "wasm" loads on the CPU when WebGPU is absent (navigator.gpu missing or no adapter), with the session options of
-// lab-s12 study 011 arm C; builds without "wasm" are refused with the reason; cpuFallback: false opts out.
+// the measured browser-CPU route; builds without "wasm" are refused with the reason; cpuFallback: false opts out.
 // The browser is simulated (window/document defined); the "onnxruntime-web" module is a stand-in that records the
 // session options and runs the toy graph on onnxruntime-node CPU, so the decisions can be compared with Node CPU.
 import test from "node:test";
@@ -57,7 +57,7 @@ const req = { input: "We share data with partners.", questions: [
   { type: "choice", name: "c", instructions: "Is it so?", choices: [" Yes", " No"], method: "logits" },
   { type: "predicate", name: "p", instructions: "Is it so?", method: "logits" }] };
 
-test("no navigator.gpu: a build listing \"wasm\" loads on the browser CPU with the study 011 C session options; same decisions as Node CPU", async () => {
+test("no navigator.gpu: a build listing \"wasm\" loads on the browser CPU with the measured browser-CPU session options; same decisions as Node CPU", async () => {
   const log = [];
   const lib = await inBrowser({}, () => browserLoad(manifest(["webgpu", "wasm"]), log));
   assert.equal(lib.device, "wasm");

@@ -20,7 +20,7 @@ function f16ToF32(h: number): number {
 }
 
 /** Reader scale of a head (spec 6.1), alias3-web semantics (aliasrobotics/alias3-web@2ab2e60 `aliasweb.mjs`:
- *  `scale: meta.scale ?? 1 / Math.sqrt(d)`): header `scale`, else 1 when the header carries the lab-s12 marker
+ *  `scale: meta.scale ?? 1 / Math.sqrt(d)`): header `scale`, else 1 when the header carries the marker
  *  `scale_folded_into_q` (the factor was multiplied into q/qb before writing), else the manifest's `heads.<name>.scale`,
  *  else 1/sqrt(headDim). Header and manifest must agree when both state it. A head written with the factor folded and no
  *  key at all (ct0-edge heads) MUST be declared `scale: 1` in the manifest, or it is read 1/sqrt(headDim) too small. */
@@ -113,14 +113,14 @@ interface AnswerBase {
   method: "logits" | "head";
   /**
    * Margin of the decision: probability of the top label minus that of the runner-up (predicate: |2p - 1|).
-   * Unit-free, in [0, 1]; this is lab-s12 study 002's definition ("margin = p(1st) - p(2nd)").
+   * Unit-free, in [0, 1]; the definition used by the escalation tests ("margin = p(1st) - p(2nd)").
    * Score via logits: top-1 minus top-2 level probability (the decided level is the rounded expectation, which can
    * differ from the arg-max level). null for the score head: one scalar, no runner-up.
    */
   margin: number | null;
   /**
    * Same gap in the readout's raw score space (logit gap, or head score gap; predicate |score(yes) - score(no)|).
-   * Does not saturate when p does (the lab-s12 dev probe ranked by this). Units differ per readout and
+   * Does not saturate when p does (an exploratory probe on development data ranked by this). Units differ per readout and
    * model: compare only within one (model, build, readout, question type). null for the score head.
    */
   rawMargin: number | null;
@@ -137,7 +137,7 @@ export interface EscalationRecord {
   /** Value of `metric` on the System-1 answer. */
   margin: number;
   threshold: number;
-  /** True while the threshold is not backed by a measured result (lab-s12 study 002). */
+  /** True while the threshold is not backed by a measured result. */
   provisional: boolean;
   /** Where the threshold came from (manifest note, or "call"). */
   source: string;

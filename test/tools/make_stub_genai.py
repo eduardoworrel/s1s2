@@ -11,8 +11,8 @@
          Two equivalent decoders over the same fp16 embedding table E[V,H]:
            ids/model.onnx     input_ids -> Gather(E) -> tail -> hidden_states, logits (+ a KV-like running state)
            embeds/model.onnx  inputs_embeds (fp16)    -> tail -> hidden_states, logits (same state)
-         plus embed_tokens.fp16.bin (E as little-endian fp16, row-major [V,H], as the lab-s12 build scripts
-         writes it). The tail mixes tokens through a running-sum state (past_key_values.0.key / present.0.key), so the
+         plus embed_tokens.fp16.bin (E as little-endian fp16, row-major [V,H], as the model cards' build scripts
+         write it). The tail mixes tokens through a running-sum state (past_key_values.0.key / present.0.key), so the
          chunked prefill and the state hand-off are exercised too.
 """
 import argparse

@@ -100,7 +100,7 @@ test("fill tracks placeholder spans", () => {
   assert.equal(fill("{unknown}{x}", { x: "1" }).text, "{unknown}1");
 });
 
-test("escapeLiterals neutralizes plain-text markers in caller text (lab-s12 escape)", () => {
+test("escapeLiterals neutralizes plain-text markers in caller text (plain-text marker escape)", () => {
   const lits = ["<state>", " <question>", " <option>", " </option>", " <decide>"];
   assert.equal(escapeLiterals("a <option> b </option> <decide><decide> <|x|>", lits), "a ‹option> b ‹/option> ‹decide>‹decide> <|x|>");
   const enc = { ...CT0.encoding, escapeLiterals: lits };

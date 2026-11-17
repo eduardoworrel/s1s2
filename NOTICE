@@ -21,7 +21,7 @@ open-jev (https://github.com/nico-martin/open-jev)
 
 onnxruntime-genai (https://github.com/microsoft/onnxruntime-genai)
   Copyright (c) Microsoft Corporation. MIT License.
-  converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch is a diff against its
+  converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch is a diff against its
   model builder (src/python/py/models).
 
 MIT license text, for the MIT entries above: Permission is hereby granted, free of charge, to any person obtaining a copy of

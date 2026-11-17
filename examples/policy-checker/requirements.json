@@ -1,6 +1,6 @@
 {
  "source": {
-  "lab": "lab-s12",
+  "lab": "the GDPR/LGPD/CCPA privacy benchmark behind the model cards (requirement prompts and definitions)",
   "prompts_sha256": "9b139028f779c27b1f9029390fea8ba8367d2f16d7d4dd7f46bb4e27d520b041",
   "requirements_v3_sha256": "88277ae09c9408075e88473074a108d68e30ced1c34012bbe7dde33cb2861a6c",
   "requirements_v4_sha256": "9297292e92f2fdaf42f4bab6f45f878608b0364ca47226971fa9a7b75e7ebc8a",

@@ -196,7 +196,7 @@
     }
   },
   "lab": {
-    "note": "Generated from the lab-s12 study setup (prompts, label contract, heads); free-form, ignored by the runtime. Ask requirements as type 'choice' with choices [labels.yes, labels.no] (any order); the logits readout reads the contract's label ids pinned in logits.choice.tokens. Placeholders: {name}, {definition} (the requirement), {passage}. Placeholder names translated from the lab file's {nome_de}, {definicao}, {estado}; the sha256 values are of the original files, and the rendered text is unchanged.",
+    "note": "Generated from the training setup of the privacy-benchmark specialists (prompts, label contract, heads); free-form, ignored by the runtime. Ask requirements as type 'choice' with choices [labels.yes, labels.no] (any order); the logits readout reads the contract's label ids pinned in logits.choice.tokens. Placeholders: {name}, {definition} (the requirement), {passage}. Placeholder names translated from the lab file's {nome_de}, {definicao}, {estado}; the sha256 values are of the original files, and the rendered text is unchanged.",
     "section": "v3_lgpd",
     "language": "pt",
     "cue": "Resposta:",

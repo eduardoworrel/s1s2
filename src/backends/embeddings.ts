@@ -1,7 +1,7 @@
 // Token embedding table kept outside the graph (ONNX Runtime GenAI builder option exclude_embeds=true): the graph
 // takes inputs_embeds instead of input_ids, and the lib looks the rows up. File layout (manifest file role
 // "embeddings"): float16 little-endian, row-major [vocab, hidden], row `id` at byte offset id * hidden * 2 — what
-// the lab-s12 build scripts write (embed_tokens.fp16.bin). No scaling is applied here: a model that
+// the build scripts of the model cards' builds write (embed_tokens.fp16.bin). No scaling is applied here: a model that
 // scales its embeddings must do it in the graph.
 
 export interface EmbeddingTable {

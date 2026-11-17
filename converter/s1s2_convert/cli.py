@@ -4,10 +4,10 @@ Stages (each resumable: a finished stage leaves <work>/.done-<stage> and is skip
   prepare   read + split the dataset, build the prompt layout for the model's chat template, discover marker / label
             tokens, write the draft manifest, encode every training/dev prompt WITH s1s2 (`s1s2 encode`) and check
             the Python rendering gives the same ids and read positions
-  train     LoRA + decision head (lab-s12 001 recipe; --recipe joint-k by default), dev-selected
-  fuse      merge the LoRA into the base weights (same keys and files; fp32 under joint-k)
-  evidence  evidence head on the fused model (lab-s12 005 recipe), only when rows carry `evidence`
-  build     ONNX Runtime GenAI 0.19 int4 WebGPU graph with hidden_states (+ lab-s12 builder fixes)
+  train     LoRA + decision head (--recipe kev by default: 2 epochs, Kev's learning-rate rule), dev-selected
+  fuse      merge the LoRA into the base weights (same keys and files; fp32 under --recipe kev)
+  evidence  evidence head on the fused model (head only, backbone frozen), only when rows carry `evidence`
+  build     ONNX Runtime GenAI 0.19 int4 WebGPU graph with hidden_states (+ two shipped builder fixes)
   package   package directory + manifest.json + provenance, then `s1s2 validate --strict`
   parity    PyTorch (fused, fp32) vs s1s2 on the int4 graph (onnxruntime-node CPU) over the dev rows
 
@@ -27,7 +27,7 @@ from pathlib import Path
 from . import __version__
 from . import data as D
 from . import layout as LY
-from .train import RECIPES, DEFAULT_RECIPE
+from .train import RECIPES, RECIPE_ALIASES, DEFAULT_RECIPE, recipe_id
 from .util import log, write_json, read_json, read_jsonl, write_jsonl, run, done, mark_done, lib_dir, now_iso, sha256_file
 
 STAGES = ["prepare", "train", "fuse", "evidence", "build", "package", "parity"]
@@ -77,9 +77,10 @@ def args_parser():
     ap.add_argument("--chat-kwargs", default="{}", help='JSON kwargs for apply_chat_template, e.g. {"enable_thinking": false}')
     ap.add_argument("--cue", default="Answer:", help="text after the generation prompt (the answer cue)")
     ap.add_argument("--id", help="package id (default: <model name>-s1s2)")
-    ap.add_argument("--recipe", choices=sorted(RECIPES), default=None,
-                    help=f"training recipe (default: {DEFAULT_RECIPE}, or the one prepare recorded): joint-k = 2 epochs, lr 1e-4 "
-                         "if the checkpoint has <= 1B parameters else 5e-5, fp32 fusion; preregistered = 1 epoch, lr 5e-5, base-dtype fusion")
+    ap.add_argument("--recipe", type=recipe_id, choices=sorted(RECIPES), default=None,
+                    help=f"training recipe (default: {DEFAULT_RECIPE}, or the one prepare recorded): kev = 2 epochs, lr 1e-4 "
+                         "if the checkpoint has <= 1B parameters else 5e-5 (Kev's rule), fp32 fusion; short = 1 epoch, lr 5e-5, "
+                         f"base-dtype fusion. Deprecated aliases: {', '.join(f'{k} = {v}' for k, v in sorted(RECIPE_ALIASES.items()))}")
     ap.add_argument("--epochs", type=int, default=None, help="training epochs (default: the recipe's)")
     ap.add_argument("--lr", type=float, default=None, help="peak lr of LoRA and head (default: the recipe's)")
     ap.add_argument("--head-lr", type=float, default=None, help="peak lr of the head (kev head_lr; default: --lr)")
@@ -222,8 +223,9 @@ def encoded_rows(W, kind, split):
 
 
 def prepared_recipe(a, prep):
-    """The recipe prepare recorded (work dirs from before --recipe: preregistered); a different --recipe is refused."""
-    recipe = prep.get("recipe", "preregistered")
+    """The recipe prepare recorded (work dirs from before --recipe: short; old names map to the new ones); a different
+    --recipe is refused."""
+    recipe = recipe_id(prep.get("recipe", "short"))
     if a.recipe and a.recipe != recipe:
         raise SystemExit(f"--recipe {a.recipe}: this work dir was prepared with --recipe {recipe} (run prepare again in a new --work)")
     return recipe
@@ -281,7 +283,7 @@ def stage_package(a, W):
         ev_info = read_json(W / "evidence" / "evidence.json")
         heads["evidence"] = (W / "evidence" / "head", ["evidence"])
         evidence = {"instructions": prep["evidence_template"], "sentencePrefix": LY.APOS,
-                    "source": f"s1s2-convert {__version__}: lab-s12 005 recipe on the fused model, epoch {ev_info['selected']['epoch']} chosen by dev loss; PyTorch fp32 reference, int4 see provenance.parity"}
+                    "source": f"s1s2-convert {__version__}: evidence head trained on the fused model (head only), epoch {ev_info['selected']['epoch']} chosen by dev loss; PyTorch fp32 reference, int4 see provenance.parity"}
     builds, bprov = [], {}
     for prec in ("int4", "int8", "fp16", "fp32"):
         if (W / f"build-{prec}.json").exists():

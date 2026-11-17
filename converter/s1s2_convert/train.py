@@ -1,6 +1,7 @@
-"""Training: LoRA + decision head jointly (lab-s12 001 recipe), then the evidence head (lab-s12 005 recipe).
+"""Training: LoRA + decision head jointly, then the evidence head.
 
-Decision recipe (the lab-s12 study 001 trainer, which follows Kev @2074cc44; reimplemented here, same numbers):
+Decision recipe (the trainer behind the GDPR/LGPD/CCPA specialists in the model cards, which follows Kev @2074cc44;
+reimplemented here, same numbers):
   LoRA r=16, alpha=32, dropout 0.05 on q/k/v/o/gate/up/down of the decoder layers (+ in_proj_qkv/z/a/b, out_proj on a
   hybrid Gated-DeltaNet backbone) (the trainer's LoRA targets); pointer head dp=256 from scratch (head.py); loss = cross
   entropy of the head over the options, mean per row (the trainer's per-row loss); AdamW, weight decay 0.01, OneCycleLR
@@ -10,14 +11,15 @@ Decision recipe (the lab-s12 study 001 trainer, which follows Kev @2074cc44; rei
   on the dev split (evaluated every --eval-every steps and at the end of each epoch). Option order is re-drawn every
   epoch (seeded).
   Epochs, lr and fusion dtype come from the recipe (RECIPES):
-    joint-k (default): the lab-s12 study 001 "Kev epochs and learning-rate arm" with fp32 fusion (lab-s12 notice 042):
-      2 epochs; lr by the Kev rule, 1e-4 if the checkpoint has <= 1B parameters, 5e-5 above (LoRA and head); LoRA fused
-      in fp32.
-    preregistered: the study 001 preregistered recipe: 1 epoch, lr 5e-5, fusion in the base dtype.
+    kev (default; old name joint-k): the Kev-faithful recipe: 2 epochs; lr by Kev's rule, 1e-4 if the checkpoint has
+      <= 1B parameters, 5e-5 above (LoRA and head); LoRA fused in fp32. On the three-law privacy benchmark (held-out
+      test, scored once) it was more accurate than `short`; these are the variants called joint_k in the model cards.
+    short (old name preregistered): the shorter recipe fixed before any result: 1 epoch, lr 5e-5, fusion in the base
+      dtype.
   Not reproduced (declared): kev data augmentation (none-of-the-above / distractor options), later kev stages,
   temperature calibration, resumable checkpoints.
 
-Evidence recipe (lab-s12 study 005): head only, backbone frozen (the fused decision model),
+Evidence recipe (the citation-head trainer): head only, backbone frozen (the fused decision model),
   initialised from the decision head; AdamW lr 1e-4, weight decay 0.01, batch 32 items, up to 8 epochs, clip 1.0,
   seed 1, fp32; loss per item = -log sum_{k in targets} p_k; epoch chosen by the dev loss (epoch 0 = the init head).
 """
@@ -34,15 +36,24 @@ LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", 
 LORA_TARGETS_HYBRID = ["in_proj_qkv", "in_proj_z", "in_proj_a", "in_proj_b", "out_proj"]
 
 
-KEV_LR_LIMIT = 1e9  # Kev rule (lab-s12 notice 042): <= 1B parameters -> 1e-4; above -> 5e-5
+KEV_LR_LIMIT = 1e9  # Kev's rule: <= 1B parameters -> 1e-4; above -> 5e-5
 KEV_LR = {"up_to_1B": 1e-4, "above": 5e-5}
-KEV_LR_SOURCE = "kev @2074cc44 AGENTS.md:19-20 and docs/model-cards/kev-4b.md:149 (0.8B 1e-4; 4B/9B 5e-5); 1B limit: lab-s12 notice 042"
+KEV_LR_SOURCE = "kev @2074cc44 AGENTS.md:19-20 and docs/model-cards/kev-4b.md:149 (0.8B 1e-4; 4B/9B 5e-5); 1B limit: our interpolation (Kev has no model between 0.8B and 4B)"
 RECIPES = {
-    "joint-k": {"name": "lab-s12 study 001 Kev epochs and learning-rate arm, fp32 fusion (notice 042)",
-                "epochs": 2, "lr": "kev-rule", "fuse_fp32": True},
-    "preregistered": {"name": "lab-s12 study 001 preregistered recipe", "epochs": 1, "lr": 5e-5, "fuse_fp32": False},
+    "kev": {"name": "Kev-faithful recipe: 2 epochs, Kev's learning-rate rule, fp32 fusion",
+            "epochs": 2, "lr": "kev-rule", "fuse_fp32": True},
+    "short": {"name": "short recipe: 1 epoch, lr 5e-5, base-dtype fusion", "epochs": 1, "lr": 5e-5, "fuse_fp32": False},
 }
-DEFAULT_RECIPE = "joint-k"
+RECIPE_ALIASES = {"joint-k": "kev", "preregistered": "short"}  # deprecated names (s1s2-convert 0.1.0)
+DEFAULT_RECIPE = "kev"
+
+
+def recipe_id(name):
+    """Canonical recipe name; the deprecated aliases map to their new names."""
+    name = RECIPE_ALIASES.get(name, name)
+    if name not in RECIPES:
+        raise SystemExit(f"unknown recipe {name!r} (known: {', '.join(sorted(RECIPES))})")
+    return name
 
 
 def checkpoint_params(model_dir):
@@ -64,7 +75,7 @@ def kev_lr(n_params):
 
 def recipe_lr(recipe, model_dir, lr=None):
     """-> (lr, rule): the explicit lr if given, else the recipe's (the Kev rule counts the checkpoint's parameters)."""
-    r = RECIPES[recipe]
+    r = RECIPES[recipe_id(recipe)]
     if lr is not None:
         return lr, {"explicit": True}
     if r["lr"] != "kev-rule":
@@ -87,7 +98,7 @@ def load_model(model_dir, device):
 
 
 def passes(rows, batch):
-    """Rows of one optimizer step in passes of up to `batch`, longest first (as the study 001 trainer, no token cap)."""
+    """Rows of one optimizer step in passes of up to `batch`, longest first (as the original trainer, no token cap)."""
     order = sorted(rows, key=lambda r: -len(r["ids"]))
     return [order[i:i + batch] for i in range(0, len(order), batch)]
 
@@ -207,6 +218,7 @@ def train_decision(model_dir, train_rows, dev_rows, out, *, device="cpu", epochs
     head.load_state_dict(head_sd)
     contract = {"kind": "decision", "read": {"query": "decide marker", "keys": "option markers"}, "selected": sel}
     c = H.save(head, out / "head", contract)
+    recipe = recipe_id(recipe)
     info = {"recipe": f"{RECIPES[recipe]['name']}: joint LoRA + pointer head (Kev @2074cc44)", "recipe_id": recipe,
             "hyperparameters": {"lora_r": lora_r, "lora_alpha": 2 * lora_r, "lora_dropout": 0.05, "lora_targets": lora_regex(hybrid),
                                 "head_dim": H.HEAD_DIM, "lr": lr, "head_lr": head_lr, "weight_decay": 0.01, "schedule": "OneCycleLR pct_start 0.1",
@@ -287,7 +299,7 @@ def train_evidence(fused_dir, init_head_dir, train_rows, dev_rows, out, *, devic
     head.load_state_dict(best[1])
     c = H.save(head, out / "head", {"kind": "evidence", "read": {"query": "decide marker", "keys": "one option marker per sentence"},
                                     "selected": best[0], "init": str(init_head_dir)})
-    info = {"recipe": "lab-s12 study 005 evidence head: head only on the fused model, init from the decision head",
+    info = {"recipe": "evidence head: head only on the fused model, init from the decision head",
             "hyperparameters": {"lr": lr, "weight_decay": 0.01, "batch": batch, "epochs": epochs, "grad_clip": 1.0, "seed": seed, "precision": "fp32"},
             "selection": "lowest dev loss (epoch 0 = init head)", "selected": best[0], "history": hist, "head": c["files"],
             "rows": {"train": len(tr), "dev": len(dv)}}
@@ -297,9 +309,9 @@ def train_evidence(fused_dir, init_head_dir, train_rows, dev_rows, out, *, devic
 
 def fuse(base_dir, adapter, scale, dest, fp32=False):
     """W' = W + scale * B @ A on the SAME keys and files of the base checkpoint; other files copied byte for byte.
-    Same as the study 001 trainer's merge step.
+    Same as the original trainer's merge step.
     fp32=False: the sum is rounded to the weight's original dtype (the trainer's default path).
-    fp32=True (lab-s12 notice 042): W' = fp32(float64(W) + float64(scale) * sum_k B[:, k] A[k, :]), the outer products
+    fp32=True (the Kev-faithful recipe): W' = fp32(float64(W) + float64(scale) * sum_k B[:, k] A[k, :]), the outer products
     summed in a fixed order (elementwise only: the same result on any machine) and rounded once to fp32; EVERY floating
     tensor written in fp32 (the unfused ones losslessly); config.json dtype float32 (the GenAI builder loads with dtype
     "auto"); the index total_size recomputed."""
@@ -374,7 +386,7 @@ def fuse(base_dir, adapter, scale, dest, fp32=False):
     info = {"modules_fused": len(delta), "scale": scale, "files": sorted(set(wmap.values())),
             "relative_delta_norm": {"mean": sum(norms) / len(norms), "max": max(norms)},
             "adapter_sha256": hashlib.sha256(Path(adapter).read_bytes()).hexdigest()}
-    info.update({"dtype": "float32", "rule": "fp32(float64(W) + float64(scale) * sum_k B[:,k] A[k,:]) (lab-s12 notice 042)"}
+    info.update({"dtype": "float32", "rule": "fp32(float64(W) + float64(scale) * sum_k B[:,k] A[k,:])"}
                 if fp32 else {"dtype": "base"})
     return info
 

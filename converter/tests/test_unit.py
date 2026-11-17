@@ -33,7 +33,7 @@ class Layout(unittest.TestCase):
         self.assertEqual(text.count(" </option>"), 2)
 
     def test_score_lead_space_token(self):
-        # SmolLM2/3-like: " 1" is [" ", "1"] -> read the levels after a space (lab-s12 study 012)
+        # SmolLM2/3-like: " 1" is [" ", "1"] -> read the levels after a space (measured on SST-5 / B2W)
         vocab = {}
         def encode(s):
             return [vocab.setdefault(p, len(vocab)) for p in ([s[:-2], " ", s[-1]] if s.endswith(tuple(" " + d for d in "12345"))
@@ -109,21 +109,39 @@ class Recipe(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self._ckpt(d, 1000)
             self.assertEqual(T.checkpoint_params(d), 1000)
-            lr, rule = T.recipe_lr("joint-k", d)
+            lr, rule = T.recipe_lr("kev", d)
             self.assertEqual((lr, rule["kev_rule"]["checkpoint_params"]), (1e-4, 1000))
-            self.assertEqual(T.recipe_lr("preregistered", d)[0], 5e-5)
-            self.assertEqual(T.recipe_lr("joint-k", d, lr=3e-5), (3e-5, {"explicit": True}))
+            self.assertEqual(T.recipe_lr("short", d)[0], 5e-5)
+            self.assertEqual(T.recipe_lr("kev", d, lr=3e-5), (3e-5, {"explicit": True}))
 
     def test_defaults(self):
         from s1s2_convert import cli, train as T
         a = cli.args_parser().parse_args(["train", "--work", "w"])
         self.assertEqual((a.recipe, a.epochs, a.lr), (None, None, None))
-        self.assertEqual(T.DEFAULT_RECIPE, "joint-k")
+        self.assertEqual(T.DEFAULT_RECIPE, "kev")
         self.assertEqual({k: (v["epochs"], v["lr"], v["fuse_fp32"]) for k, v in T.RECIPES.items()},
-                         {"joint-k": (2, "kev-rule", True), "preregistered": (1, 5e-5, False)})
+                         {"kev": (2, "kev-rule", True), "short": (1, 5e-5, False)})
         with self.assertRaises(SystemExit):  # a later stage cannot switch the recipe prepare used
-            cli.prepared_recipe(cli.args_parser().parse_args(["train", "--work", "w", "--recipe", "preregistered"]), {"recipe": "joint-k"})
-        self.assertEqual(cli.prepared_recipe(a, {}), "preregistered")  # work dirs from before --recipe
+            cli.prepared_recipe(cli.args_parser().parse_args(["train", "--work", "w", "--recipe", "short"]), {"recipe": "kev"})
+        self.assertEqual(cli.prepared_recipe(a, {}), "short")  # work dirs from before --recipe
+
+    def test_deprecated_recipe_aliases(self):
+        from s1s2_convert import cli, train as T
+        parse = lambda *x: cli.args_parser().parse_args(["train", "--work", "w", *x])
+        self.assertEqual(parse("--recipe", "joint-k").recipe, "kev")
+        self.assertEqual(parse("--recipe", "preregistered").recipe, "short")
+        self.assertEqual(parse("--recipe", "short").recipe, "short")
+        # work dirs prepared under the old names keep working with either name
+        self.assertEqual(cli.prepared_recipe(parse("--recipe", "kev"), {"recipe": "joint-k"}), "kev")
+        self.assertEqual(cli.prepared_recipe(parse(), {"recipe": "preregistered"}), "short")
+        with self.assertRaises(SystemExit):
+            cli.prepared_recipe(parse("--recipe", "joint-k"), {"recipe": "preregistered"})
+        with tempfile.TemporaryDirectory() as d:
+            self._ckpt(d, 1000)
+            self.assertEqual(T.recipe_lr("joint-k", d), T.recipe_lr("kev", d))
+            self.assertEqual(T.recipe_lr("preregistered", d), T.recipe_lr("short", d))
+        with self.assertRaises(SystemExit):
+            parse("--recipe", "bogus")
 
 
 class Fuse(unittest.TestCase):

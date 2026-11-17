@@ -67,7 +67,7 @@ export interface RenderedTagged {
   questionStart: number;
 }
 
-/** The lab-s12 escape for plain-text markers: each trimmed literal found in `text` gets its first character
+/** The escape for plain-text markers (used by the specialists in the model cards): each trimmed literal found in `text` gets its first character
  *  replaced by "‹" (all occurrences), in the given order. */
 export function escapeLiterals(text: string, literals: readonly string[]): string {
   let t = text;
@@ -123,8 +123,8 @@ function checkMarker(ids: number[], pos: number, mk: Marker, what: string): void
 const isPrefix = (a: number[], b: number[]) => a.length <= b.length && a.every((x, i) => x === b[i]);
 
 /**
- * Token position of the text span [a, b) inside the encoding `total` of `text`, by prefix encoding (as the lab-s12
- * prompt builder does): encode(text[:a]) must be a prefix of encode(text[:b]), which must be a prefix of
+ * Token position of the text span [a, b) inside the encoding `total` of `text`, by prefix encoding (as the
+ * specialists' prompt builder does): encode(text[:a]) must be a prefix of encode(text[:b]), which must be a prefix of
  * `total`, and the span must add at least one token. Returns the index of the span's last token. Works for any
  * tokenizer (byte-level BPE or SentencePiece), unlike offsets from incremental decoding.
  */
@@ -147,7 +147,7 @@ function offsetsIfInvertible(tok: Tok, text: string, ids: number[]): [number, nu
 /**
  * Read positions of a tagged prompt. When decoding reconstructs the prompt, the read token is the token covering the
  * marker's last character (character offsets; it may straddle the next text, e.g. '><'). Otherwise (SentencePiece)
- * positions come from prefix encoding exactly as lab-s12 measures them (spanLastToken), which needs a stable boundary
+ * positions come from prefix encoding exactly as the specialists' prompt builder measures them (spanLastToken), which needs a stable boundary
  * at the marker's end. In both cases the token id at every read position is asserted against the manifest marker.
  */
 export function encodeTagged(tok: Tok, m: Manifest, q: NQ, state: string): Encoded {
@@ -251,7 +251,7 @@ export function taskTokens(m: Manifest): (TokenRef & { at: string })[] {
 /** Score questions read by label logits: the text appended after the rendered prompt before the level tokens are read
  *  (`logits.score.lead`, or by default " " when `context` does not end in whitespace and the tokenizer writes the
  *  space before every level as one separate whitespace token, so the model's next token after the cue is that space;
- *  see study 012), and the level labels whose first tokens are read after it. When the tokenizer instead has
+ *  measured on SST-5 / B2W with SmolLM3-3B), and the level labels whose first tokens are read after it. When the tokenizer instead has
  *  space-prefixed level tokens (" 1" as one token), the levels are read as " " + label after the cue. */
 export function scoreLayout(tok: Tok, m: Manifest, q: NQ, context?: string): { lead: string; labels: string[] } {
   const sc = m.logits.score, none = { lead: "", labels: q.values };
@@ -283,7 +283,7 @@ export function appendLead(tok: Tok, enc: Encoded, lead: string): Encoded {
 
 /** First token of each label (logits readout); throws when two labels share it.
  *  With `context` (the rendered prompt the logits are read after), the label token is the first token that
- *  encode(context + label) adds after encode(context), as the lab-s12 label contract does; the boundary must be
+ *  encode(context + label) adds after encode(context), as the specialists' label contract does; the boundary must be
  *  stable. Without it, the label is encoded alone (kev encodings). */
 export function firstTokens(tok: Tok, labels: string[], type: QType, context?: string): number[] {
   const base = context === undefined ? null : tok.encode(context);

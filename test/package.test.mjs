@@ -58,7 +58,7 @@ test("lab notes, x- extensions, license and provenance are allowed; malformed pr
   m.lab = { anything: true }; m["x-vendor"] = 1; m.license = "Apache-2.0";
   m.provenance = { generator: { name: "s1s2-convert", version: "0.1.0" }, createdAt: "2026-11-15T00:00:00Z",
     base: { repo: "a/b", revision: "0".repeat(40), license: "Apache-2.0" }, dataset: { sha256: "a".repeat(64), rows: 3 },
-    training: { recipe: "lab-s12 001", seed: 1 }, builds: { x: { tool: "onnxruntime-genai builder", version: "0.19.0", patches: [{ path: "p.patch", sha256: "b".repeat(64) }] } } };
+    training: { recipe: "kev", seed: 1 }, builds: { x: { tool: "onnxruntime-genai builder", version: "0.19.0", patches: [{ path: "p.patch", sha256: "b".repeat(64) }] } } };
   assert.deepEqual(await schemaProblems(m), []);
   validateManifest(m);
   const bad = clone(m); bad.provenance.dataset.sha256 = "short"; bad.provenance.generator = { name: "x" };

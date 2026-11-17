@@ -158,7 +158,7 @@ test("mergePolicy / shouldEscalate / thresholdFromQuantile", () => {
   assert.deepEqual(p.below, { choice: 2, predicate: 1 });
   assert.equal(p.provisional, true); assert.equal(p.source, "a < b");
   assert.equal(mergePolicy().source, MARGIN_POLICY_DEFAULTS.source);
-  assert.match(MARGIN_POLICY_DEFAULTS.source, /provisional - set by study 002/);
+  assert.match(MARGIN_POLICY_DEFAULTS.source, /provisional - no measured threshold/);
   assert.equal(p.metric, "margin", "default metric: the probability gap");
   assert.deepEqual(shouldEscalate({ type: "choice", margin: 1.5 }, p), { threshold: 2, value: 1.5 });
   assert.equal(shouldEscalate({ type: "choice", margin: 3, rawMargin: 0.1 }, p), null, "reads margin, not rawMargin");

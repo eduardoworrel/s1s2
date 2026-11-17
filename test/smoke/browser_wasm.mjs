@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Smoke: the public S1S2.load on the browser CPU path. Headless Chrome with WebGPU hidden (navigator.gpu undefined, no
-// GPU), cross-origin isolated page (ORT's default threads, as in lab-s12 study 011 arm C), the built dist/index.js with
+// GPU), cross-origin isolated page (ORT's default threads, as in the browser-CPU measurement), the built dist/index.js with
 // its default imports resolved by an import map ("onnxruntime-web/wasm" -> ort.wasm.min.mjs, the bundle the study
 // measured). Loads a published manifest from the Hub (or a local JSON with --manifest-file), asserts device "wasm",
 // that the WASM binary used is ort-wasm-simd-threaded.wasm (not the WebGPU/JSEP one), and runs one decision.

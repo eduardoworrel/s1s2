@@ -5,7 +5,8 @@ decision-head type found in the published ecosystem** (survey of published head 
 whether s1s2 0.1 executes it, and adds what converters need to translate a published head without silent loss
 (explicit scale, logits temperature, linear and joint heads, out-of-graph norm, layer taps, attention mode, declared
 source format, a fidelity record per conversion). **No head type is recommended here** (section 12): which type a
-package should use is the question of lab-s12 study 008, and which confidence number an answer reports is study 007.
+package should use needs a head-type comparison on the same backbones and data, and which confidence number an
+answer reports needs a comparison of confidence definitions; neither is done.
 
 Machine-readable structure: [`s1s2-manifest.schema.json`](s1s2-manifest.schema.json) (JSON Schema 2020-12).
 Cross-field rules a schema cannot express are listed in each section and enforced by `validateManifest`
@@ -58,20 +59,20 @@ manifest's, `norm.bin` parses, and `genai_config.json` agrees with `hiddenSize` 
 | `generation` | yes | System 2 templates. |
 | `builds` | yes | Name → build (section 7). |
 | `tasks`, `escalation`, `evidence` | no | Sections 4.3, 8, 6.7. |
-| `confidence` | no | Section 5.1 (hook for study 007). |
+| `confidence` | no | Section 5.1 (reserved hook). |
 | `license`, `provenance` | no | Section 9. |
 | `lab`, `x-*` | no | Free notes / vendor extensions, ignored by the runtime. Converters keep source-format facts that have no field yet under `x-<format>`. |
 
 ## 3. Prompt layout and read positions
 
-Most published formats keep the prompt **in the reader's code**, not in the checkpoint (`formatos-head.md` §0.4).
+Most published formats keep the prompt **in the reader's code**, not in the checkpoint (survey of published head formats, 2026-11).
 A package MUST carry the layout its head was trained with, because the runtime has nothing else to go by:
 
 | Source format | Where the source keeps the prompt | S1S2 encoding |
 |---|---|---|
 | Kev `head.pt`, GGUF `kev` | `kev.py` / `kev/model.py` (special-token delimiters), GGUF `tokenizer.chat_template.systemone` | `kev` (3.2) |
 | alias3-web, ct0-edge | `aliasweb.mjs` (Kev delimiters) / lab manifests | `kev` / `tagged` |
-| lab-s12 | manifest | `tagged` |
+| plain-text-marker heads (the model cards' specialists) | manifest | `tagged` |
 | JEV (`judge_config.json`) | `JEV_TEMPLATE` "bare-v1" in transformers `configuration_jev.py` | `tagged` when reducible; else `decision-template` (3.5) |
 | pplx-decider / d3 (`decision_config.json`) | `DECIDER_PROMPTS[prompt]` + `DECIDER_TEMPLATE` in `configuration_jev.py` | `decision-template` (3.5) |
 | transformers `DecisionConfig` | `decision_template.jinja` | `decision-template` (3.5) |
@@ -127,7 +128,7 @@ appended after the rendered prompt before the level tokens are read by the logit
 positions of heads stay on the prompt without it. Absent: a reader uses `" "` when the prompt does not end in whitespace
 and the tokenizer writes the space before every level as its own token (SmolLM2/3: `" 1"` = `[" ", "1"]`), else `""`;
 with `map: "first-token"` and space-prefixed level tokens (`" 1"` one token) it reads `" " + label` after the cue. Read
-right after `Answer:` on such a tokenizer, the digits hold ~1e-5 of the probability (lab-s12 study 012).
+right after `Answer:` on such a tokenizer, the digits hold ~1e-5 of the probability (measured on SST-5 / B2W with SmolLM3-3B).
 
 **`logits.temperature`** (0.2): `{predicate?, choice?, score?}` positive numbers (default 1). p = softmax(L / T) over
 the read tokens; predicate p = sigmoid((L[yes] − L[no]) / T); `rawMargin` is the gap of L / T. This is the
@@ -141,12 +142,12 @@ package that needs them is not executable in 0.2.
 ## 5. Margin and confidence
 
 Every System-1 answer carries `margin` = p(1st) − p(2nd) and `rawMargin` = the same gap in the readout's raw score space
-(0.1, study 002). Linear and joint heads produce scores like logits, so both fields are defined for them; the pointer
+(0.1). Linear and joint heads produce scores like logits, so both fields are defined for them; the pointer
 **score** head on `"last"` (sigmoid) has `null`.
 
-### 5.1 `confidence` (hook, pending study 007)
+### 5.1 `confidence` (reserved hook)
 
-Engines call different numbers "confidence" (seven definitions, C1–C7, in the lab-s12 study 007 preregistration). Every definition except C2 is a
+Engines call different numbers "confidence" (seven definitions, C1–C7, listed in a planned comparison of confidence definitions). Every definition except C2 is a
 function of the K option scores and the temperature, so it can be computed for **every head type** at answer time; C2
 (p_top × label_mass) exists only for label-token logits. Manifest key (optional, reserved):
 
@@ -155,7 +156,7 @@ confidence: { definition: "C1" | "C3" | "C4" | "C5" | "C6" | "C7" | "tbd-007", s
 ```
 
 s1s2 0.1 ignores it and keeps reporting `confidence` = p(1st) (C1) plus `margin` (C4) and `rawMargin` (C5). When
-study 007 reports, this section names the definition(s) per question type and head type and the runtime computes them;
+that comparison is done, this section names the definition(s) per question type and head type and the runtime computes them;
 no definition is preferred before that.
 
 ## 6. Heads
@@ -164,10 +165,10 @@ no definition is preferred before that.
 
 | `kind` | What it computes | Reads | Published as | s1s2 0.1 |
 |---|---|---|---|---|
-| `pointer` | z_k = scale · (Wq h_q + bq)·(Wk h_k + bk) / T + offset; p = softmax_k | h at decide marker vs h at each option marker | alias3-web `head.bin` (+`norm.bin`), Kev `head.pt` (fp32), GGUF `kev` (`cls.output` = q‖k), lab-s12 / ct0-edge `head.bin` | executable (`head.bin`, safetensors) |
+| `pointer` | z_k = scale · (Wq h_q + bq)·(Wk h_k + bk) / T + offset; p = softmax_k | h at decide marker vs h at each option marker | alias3-web `head.bin` (+`norm.bin`), Kev `head.pt` (fp32), GGUF `kev` (`cls.output` = q‖k), model-card specialists / ct0-edge `head.bin` | executable (`head.bin`, safetensors) |
 | `linear` | z_i = softcap(W[r0+i]·h + b) / T(type), i < n options | h at one position (decide marker or last token) | pplx-decider / d3 `readout.safetensors` (rows = option codes), JEV `head.safetensors` (`proj`, slot ranges, softcap), Standard One `classifier` | executable |
 | `joint` | all options of all questions of one prompt together (span means, evidence routing over the prompt, attention between questions, lexical prior from LM-head rows) | h at every prompt token + LM-head rows of option tokens | Clef `joint_head.safetensors` | reader executable (`jointScores`), not routed by `decide()` |
-| label logits (no head) | z = L[label token] / T(type) | next-token logits at the last position | transformers `DecisionConfig`, Standard One `lm_rows`, vLLM `classifier_from_token`, lab-s12 `logits` | executable (temperature; not logit_scale/softcap) |
+| label logits (no head) | z = L[label token] / T(type) | next-token logits at the last position | transformers `DecisionConfig`, Standard One `lm_rows`, vLLM `classifier_from_token`, model-card specialists `logits` | executable (temperature; not logit_scale/softcap) |
 | layer-tap heads | any of the above on an intermediate layer | h at layer n | Standard One SH (`taps: ["final", 19]`, a transformer head) | described (6.6) |
 
 ### 6.1 `head.bin` (pointer, fp16) — the alias3-web layout
@@ -187,10 +188,10 @@ key; those must declare `scale: 1`, below.)
 z = scale · ((Wq h_q + bq) · (Wk h_k + bk)) / temperature + score_offset
 ```
 
-**Scale (normative).** The reader's scale is, in order: the header's `scale`; else `1` when the header has the lab-s12
+**Scale (normative).** The reader's scale is, in order: the header's `scale`; else `1` when the header has the
 marker `scale_folded_into_q` (the factor was multiplied into q/qb); else the build head's `scale` in the manifest; else
 **1/sqrt(headDim)** (alias3-web). Header and manifest MUST agree when both state it. Writers MUST write `scale`
-explicitly (`1.0` when folded, together with `scale_folded_into_q: 1/sqrt(headDim)` for the lab-s12 convention), so readers that know only one convention agree. `s1s2 validate` warns on a head.bin
+explicitly (`1.0` when folded, together with `scale_folded_into_q: 1/sqrt(headDim)` for the folded convention), so readers that know only one convention agree. `s1s2 validate` warns on a head.bin
 whose scale is stated nowhere. Compatibility proof: s1s2 `test/alias3web.test.mjs` runs the vendored alias3-web
 reader and s1s2 on the real `head.bin` + `norm.bin`: identical probabilities (max |Δp| = 0).
 
@@ -304,7 +305,7 @@ converted from a non-commercial source (e.g. `cc-by-nc-4.0`) keeps that license.
 format from its user (`s1s2-heads from-<format>`), never infer it from file names: `head.bin`, `head.pt` and
 `decision.json` each name several incompatible layouts on the Hub. Format ids: `kev-head.pt`, `gguf-kev`,
 `alias3-web-head.bin`, `decision-config-readout`, `jev-judge-config`, `transformers-decision-config`,
-`standard-one-readout-v2`, `clef-joint-head`, `lab-s12-head.bin`, `ct0-edge-head.bin`.
+`standard-one-readout-v2`, `clef-joint-head`, `folded-scale-head.bin` (head.bin with `scale_folded_into_q`, the model cards' heads), `ct0-edge-head.bin`.
 
 ### 9.2 Conversion fidelity record (0.2)
 
@@ -334,7 +335,7 @@ because no S1S2 manifest has been published and every local head.bin was invento
 
 | Heads | Header | Read in 0.2 | Action |
 |---|---|---|---|
-| 306 lab-s12 heads (unpublished) | `scale_folded_into_q: 0.0625` | scale 1 (unchanged) | none (the lab's head writer is frozen while its studies run; writing `scale: 1.0` there is pending) |
+| 306 heads of the model cards' training runs (unpublished) | `scale_folded_into_q: 0.0625` | scale 1 (unchanged) | none (that head writer was frozen while the measurements ran; writing `scale: 1.0` there is pending) |
 | ct0 `head.bin` (sha `1138a774…`, T 2.0, offset 16.27) and `head_score.bin` (`82640a99…`), pinned 14× in `manifests/ct0-alias3-micro-1026.json`, published in `eduardoworrel/alias3-micro-1026-*` | no scale key, folded | 1/16 without the manifest | manifest declares `scale: 1` on every head (the Hub files cannot change) |
 | other unpublished ct0 heads | no scale key, folded | — | not in any S1S2 manifest; declare `scale: 1` if ever packaged |
 | alias3-web `f586cb80…` | no scale key, not folded | 1/16 (= its own reader) | none |
@@ -365,12 +366,12 @@ n = questions; Δp = max |p_ref − p_lib|; synthetic = seeded hidden states on 
 
 ## 12. Recommended head type and confidence: TBD
 
-**Recommended head type: to be decided by lab-s12 study 008** (the same backbone(s) and
+**Recommended head type: to be decided by a head-type comparison** (the same backbone(s) and
 training data with each head type, compared on accuracy, calibration and margin, int4 robustness, latency and size in
-the browser). **Recommended confidence definition: to be decided by study 007.** Until then every head type above is a
+the browser). **Recommended confidence definition: to be decided by a comparison of confidence definitions.** Until then every head type above is a
 peer; the order of the tables is not a preference.
 
-**Study 008 (2026-11-16) does not change this.** Its report (unpublished) is descriptive: dev-B, one
+**A first head-type comparison (2026-11-16) does not change this.** It is descriptive: development data, one
 3B backbone, two tasks, two seeds.
 - No head type beat the label-token logits on balanced accuracy.
 - The pointer head tied the logits on ContractNLI and led the other hidden-state heads there.

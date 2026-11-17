@@ -1,4 +1,4 @@
-// Score questions read by label logits (study 012 of lab-s12): SmolLM2/3 tokenizers write " 1" as [" ", "1"], so after
+// Score questions read by label logits (measured on SST-5 / B2W with SmolLM3-3B): SmolLM2/3 tokenizers write " 1" as [" ", "1"], so after
 // a prompt ending in "Answer:" the model's next token is the space and the digits carry ~1e-5 of the probability. The
 // default layout reads the level tokens after that space; the hidden-state read position of a head does not move.
 import test from "node:test";
@@ -9,7 +9,7 @@ import { toy, toyManifest, TOY_ID as ID, TOY_PIECES } from "./helpers.mjs";
 const LEVELS = ["1", "2", "3", "4", "5"];
 const SPACE = ID.get("▁"), COLON = ID.get(":"), DIGITS = LEVELS.map((d) => ID.get(d));
 
-// A model like the ones of study 012: after the cue it writes a space first; after the space, the digit "4".
+// A model like SmolLM3-3B there: after the cue it writes a space first; after the space, the digit "4".
 function modelLogits(ids) {
   const L = new Float32Array(TOY_PIECES.length);
   if (ids.at(-1) === COLON) L[SPACE] = 12;

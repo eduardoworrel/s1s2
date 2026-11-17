@@ -189,7 +189,7 @@ export class S1S2 {
           if (platform === "browser") {
             const graph = await files.bytes(b.repo, b.revision, b.files.model);
             const dataUrl = await files.large(b.repo, b.revision, b.files.data);
-            // CPU (WASM): the onnxruntime-web/wasm bundle unless modules.ort is given (study 011 arm C route).
+            // CPU (WASM): the onnxruntime-web/wasm bundle unless modules.ort is given (the route measured on the browser CPU).
             if (d === "wasm") return await createGenai(graph, dataUrl, basename(b.files.data.path), { ...gopts, ort: mods.ort, providers: ["wasm"], modelKey: b.files.model.sha256 });
             return await createGenai(graph, dataUrl, basename(b.files.data.path), { ...gopts, modelKey: b.files.model.sha256 });
           }
@@ -285,7 +285,7 @@ export class S1S2 {
         const norm = opts.heads === false || !b.norm ? undefined : await loadBuildNorm(m, b, files);
         await assertBackend(m, b, backend);
         const s = new S1S2(m, plan, { manifest: m, tok, backend, heads, norm, maxSafeTokens: opts.maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
-        if (plan.device === "wasm" && !webgpu && (opts.device ?? "auto") === "auto") reasons.unshift(`WebGPU is not available (${gpu.reason}): running on the browser CPU (WASM), slower than WebGPU${plan.runtime === "genai" ? " (7.5-16.5x in lab-s12 study 011)" : ""}`);
+        if (plan.device === "wasm" && !webgpu && (opts.device ?? "auto") === "auto") reasons.unshift(`WebGPU is not available (${gpu.reason}): running on the browser CPU (WASM), slower than WebGPU${plan.runtime === "genai" ? " (7.5-16.5x when measured)" : ""}`);
         if (reasons.length) s.fallbackReason = reasons.join("; ");
         s.withBuildLoader((build) => S1S2.load({ ...opts, manifest: m, build, runtime: undefined })); // parsed once: one manifest fetch per load
         status(`ready: ${plan.build} (${plan.runtime}, ${plan.device})`);

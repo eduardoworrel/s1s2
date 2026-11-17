@@ -52,7 +52,7 @@ Especialistas S1S2 publicados. Os repositórios ONNX rodam no navegador com esta
 | ContractNLI + CLINC150 + SIB-200 | S5-nano | [S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [S5-nano-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-LoRA) |
 | ContractNLI + CLINC150 + SIB-200 | SmolLM3-3B | [SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA) |
 
-Fallback para CPU: sem WebGPU, o `S1S2.load` roda no CPU do navegador (onnxruntime-web WASM; `model.device === "wasm"`, desligável com `cpuFallback: false`) os builds cujo manifesto lista o device `"wasm"`: 7,5–16,5× mais lento que WebGPU, mesmas decisões em ≥116/120 itens (lab-s12, estudo 011 braço C); entradas longas (ContractNLI) nos modelos de 1,7B e 3B não couberam em 2 horas para 120 itens. O S5-nano não roda lá (sem kernel WASM para GatedDeltaNet).
+Fallback para CPU: sem WebGPU, o `S1S2.load` roda no CPU do navegador (onnxruntime-web WASM; `model.device === "wasm"`, desligável com `cpuFallback: false`) os builds cujo manifesto lista o device `"wasm"`: 7,5–16,5× mais lento que WebGPU, mesmas decisões em ≥116/120 itens (120 itens de desenvolvimento por tarefa, Chrome num Apple M2 Pro); entradas longas (ContractNLI) nos modelos de 1,7B e 3B não couberam em 2 horas para 120 itens. O S5-nano não roda lá (sem kernel WASM para GatedDeltaNet).
 
 Início rápido com um pacote publicado:
 
@@ -78,13 +78,13 @@ Os heads foram treinados com as palavras exatas das opções e da pergunta: use 
 
 ## Estado: alfa
 
-O que foi medido, em rodadas pré-registradas dos estudos do lab-s12. Os relatórios ainda não foram publicados.
+O que foi medido. Em cada rodada, as hipóteses, a divisão dos dados e a regra de pontuação foram fixadas antes de rodar, e os testes trancados foram lidos uma vez só.
 
 - A margem aponta as decisões que o int4 troca em relação ao bf16 (8 de 8 cenários).
 - Mandar para int8 os 15% de respostas com menor margem pega mais dessas trocas que escolher ao acaso (5 de 6 cenários; não no SmolLM2-135M). Há pouca acurácia em jogo: de −0,1 a +2,7 pontos.
 - O ponteiro de evidência acha a frase certa melhor que regras que ignoram o conteúdo (6 de 6 e 4 de 4 cenários). Contra a citação gerada pelo modelo, o resultado é misto: em contratos a citação gerada venceu 3 de 4.
 - Nos pesos reais do CT0, `decide()` coincide com o `askMany()` do ct0-edge até 4e-16. Os 172 prompts de teste do ct0-edge são reproduzidos de forma exata.
-- Perguntas `score` (estudo 012, teste trancado, SmolLM3-3B congelado): o head linear mediu melhor que os logits dos rótulos, erro absoluto médio de 0,49 (en, SST-5) e 0,50 (pt, B2W) níveis contra 0,60 dos logits lidos depois do espaço; lidos logo após `Answer:`, os dígitos tinham ~1e-5 da probabilidade, por isso a leitura de score por logits agora lê depois desse espaço (`logits.score.lead`).
+- Perguntas `score` (notas de 1 a 5: SST-5 em inglês, avaliações da B2W em português; teste trancado, lido uma vez; SmolLM3-3B congelado): o head linear mediu melhor que os logits dos rótulos, erro absoluto médio de 0,49 (en, SST-5) e 0,50 (pt, B2W) níveis contra 0,60 dos logits lidos depois do espaço; lidos logo após `Answer:`, os dígitos tinham ~1e-5 da probabilidade, por isso a leitura de score por logits agora lê depois desse espaço (`logits.score.lead`).
 - Cada conversão de formato de head tem registro de fidelidade: [spec §11](spec/s1s2-package.md#11-coverage-formats--conversion--fidelity).
 
 O que não foi medido, ou não se sustentou:

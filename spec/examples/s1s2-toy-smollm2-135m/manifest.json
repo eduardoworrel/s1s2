@@ -448,7 +448,7 @@
  "evidence": {
   "instructions": "This passage addresses {requirement}. Which of the passage's sentences below shows it? Answer with one option only.",
   "sentencePrefix": " ",
-  "source": "s1s2-convert 0.1.0: lab-s12 005 recipe on the fused model, epoch 8 chosen by dev loss; PyTorch fp32 reference, int4 see provenance.parity"
+  "source": "s1s2-convert 0.1.0: evidence head trained on the fused model (head only), epoch 8 chosen by dev loss; PyTorch fp32 reference, int4 see provenance.parity"
  },
  "license": "Apache-2.0",
  "provenance": {
@@ -484,7 +484,7 @@
    }
   },
   "training": {
-   "recipe": "lab-s12 study 001 joint LoRA + pointer head (Kev @2074cc44)",
+   "recipe": "joint LoRA + pointer head (Kev @2074cc44)",
    "seed": 1,
    "hyperparameters": {
     "lora_r": 16,
@@ -543,7 +543,7 @@
     "adapter_sha256": "007529aeff2f2389537866ffac5c6e7c6f4dd6dd73636d3bc8ce0b6efd2a20c4"
    },
    "evidence": {
-    "recipe": "lab-s12 study 005 evidence head: head only on the fused model, init from the decision head",
+    "recipe": "evidence head: head only on the fused model, init from the decision head",
     "hyperparameters": {
      "lr": 0.0001,
      "weight_decay": 0.01,
@@ -564,10 +564,10 @@
    "genai-int4-webgpu": {
     "tool": "onnxruntime-genai builder",
     "version": "0.19.0",
-    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "source": "pip onnxruntime-genai==0.19.0 + s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
     "patches": [
      {
-      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
       "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
       "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
      }
@@ -585,10 +585,10 @@
    "genai-int4-cpu": {
     "tool": "onnxruntime-genai builder",
     "version": "0.19.0",
-    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "source": "pip onnxruntime-genai==0.19.0 + s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
     "patches": [
      {
-      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
       "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
       "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
      }
@@ -606,10 +606,10 @@
    "genai-int8-webgpu": {
     "tool": "onnxruntime-genai builder",
     "version": "0.19.0",
-    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "source": "pip onnxruntime-genai==0.19.0 + s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
     "patches": [
      {
-      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
       "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
       "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
      }
@@ -628,10 +628,10 @@
    "genai-int8-cpu": {
     "tool": "onnxruntime-genai builder",
     "version": "0.19.0",
-    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "source": "pip onnxruntime-genai==0.19.0 + s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
     "patches": [
      {
-      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
       "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
       "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
      }
@@ -650,10 +650,10 @@
    "genai-fp32-cpu": {
     "tool": "onnxruntime-genai builder",
     "version": "0.19.0",
-    "source": "pip onnxruntime-genai==0.19.0 + https://github.com/eduardoworrel/onnxruntime-genai lab-s12/builder-0.19.0-fixes",
+    "source": "pip onnxruntime-genai==0.19.0 + s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
     "patches": [
      {
-      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch",
+      "path": "converter/s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch",
       "sha256": "2cf6b1f86881122819e89ce61bbd56ac4af240bf1d8035b06bed6b2abfa6857f",
       "description": "38cbf9c3f5752df736fec060172960f42b2a2a2a SmolLM3 NoPE: disable RoPE instead of unfusing it; b4bb8aec7176501b0971d01d6e7335c99ddbd7ba Qwen3.5 linear_attn_op=linear_attention for dense CUDA/WebGPU"
      }

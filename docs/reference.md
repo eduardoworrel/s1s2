@@ -64,7 +64,7 @@ Every answer has:
 
 | field | |
 |---|---|
-| `margin` | probability of the top label minus the runner-up (predicate: `\|2p − 1\|`), in [0, 1]. This is the definition used by lab-s12 study 002. Score via logits: top-1 minus top-2 level probability (the reported level is the rounded expectation). `null` for the score head (a scalar has no runner-up). |
+| `margin` | probability of the top label minus the runner-up (predicate: `\|2p − 1\|`), in [0, 1]. This is the definition the int4 -> int8 escalation test used. Score via logits: top-1 minus top-2 level probability (the reported level is the rounded expectation). `null` for the score head (a scalar has no runner-up). |
 | `rawMargin` | the same gap in the readout's raw score space (logit gap or head-score gap). It does not saturate when p does; units differ per model, build and readout. `null` for the score head. |
 | `path` | `"s1"`, or `"escalated"` when a policy acted; then `escalation` records `metric`, `margin` (the value read), `threshold`, `provisional`, `source`, `to`, and per target: `build` + `from` (the System-1 answer it replaced), or `text` + `sharedPrefill` + `reusedTokens` + `finishReason`. |
 
@@ -86,13 +86,13 @@ carry `target`, an engine for `{ build }`). Thresholds without a `to` are refuse
   to the caller).
 
 **What is and is not measured.** The library has **no default threshold**: `MARGIN_POLICY_DEFAULTS` holds only the
-prompt and token budget, marked `"provisional - set by study 002"`, and any threshold without `provisional: false`
+prompt and token budget, marked `"provisional - no measured threshold"`, and any threshold without `provisional: false`
 is reported as provisional. An early exploratory dev probe found:
 where a model's readout works, the int4 margin predicts int4-vs-bf16 decision flips (AUC 0.86–0.99), and escalating
 the lowest-margin 15% catches 57–100% of them against 15% for a random gate; but those flips are 3–6% of items and
-about half are benign, so at most ~1 pp of accuracy is at stake. Study 002 then confirmed, at a fixed 15% dev quantile, that int4 -> int8 escalation catches more flips than a random
-gate in 5 of 6 cells (not on SmolLM2-135M), with −0.1 to +2.7 pp of accuracy at stake. **Escalating System 1 to System 2 by margin is not measured anywhere**, and is not part of
-study 002. See [system1-on-device-patterns.md](system1-on-device-patterns.md).
+about half are benign, so at most ~1 pp of accuracy is at stake. A later test with the threshold fixed in advance then confirmed, at a fixed 15% dev quantile, that int4 -> int8 escalation catches more flips than a random
+gate in 5 of 6 cells (not on SmolLM2-135M), with −0.1 to +2.7 pp of accuracy at stake. **Escalating System 1 to System 2 by margin is not measured anywhere**, and was not part of
+that test. See [system1-on-device-patterns.md](system1-on-device-patterns.md).
 
 ## Evidence selector (which sentence shows it)
 
@@ -114,16 +114,16 @@ s.evidence; // { index, sentence, probability, probabilities, sentences, margin,
 Manifest: `evidence: { instructions, sentencePrefix?, source? }`, where `instructions` is the question the head was trained with
 (`{requirement}` is filled from the request; `evidence.instructions` in the request replaces it, untested wording), and
 a head in the build: `heads: { "evidence-005": { file, types: ["evidence"] } }`. `sentencePrefix` is prepended to each sentence
-inside its option when the head was trained with a separator the option template does not carry (lab-s12 plain-text
+inside its option when the head was trained with a separator the option template does not carry (plain-text
 markers: `" "`, because the template's decision labels already start with a space). Without `sentences` the input is split
 by `splitSentences` (break after `. ! ? …` before whitespace, no abbreviation list); this is a convenience and not the
 segmentation any measurement used, so pass your own sentences when the result matters. `margin` is p(1st) − p(2nd),
 the same definition as the answers'; no margin policy acts on it.
 
-**What is measured.** lab-s12 study 005 trained these heads (SmolLM3-3B, S5-nano, Jurema-7B joint s1; bf16 PyTorch):
-on its confirmatory set the chosen sentence was a concise hit above chance and above a content-blind rule in all six
+**What is measured.** These heads were trained on the GDPR/LGPD specialists (SmolLM3-3B, S5-nano, Jurema-7B joint s1;
+bf16 PyTorch): on a held-out set scored once under a rule fixed in advance, the chosen sentence was a concise hit above chance and above a content-blind rule in all six
 model × law cells (GDPR, LGPD composite passages). **Whether the int4 browser graph
-picks the same sentences is not measured yet** (study 006a is descriptive, on dev items only).
+picks the same sentences is not measured yet** (one descriptive check, on development items only).
 
 ## Tasks (any label set)
 
@@ -222,7 +222,7 @@ transformers.js, decode-only. genai runs on onnxruntime-node CPU only for builds
 
 ### Browser CPU fallback (WASM)
 
-CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists device `"wasm"` on the browser CPU (onnxruntime-web WASM; `model.device === "wasm"`, opt out with `cpuFallback: false`): 7.5–16.5× slower than WebGPU, same decisions in ≥116/120 items (lab-s12 study 011 arm C); long inputs (ContractNLI) on the 1.7B and 3B models did not fit a 2-hour budget for 120 items. S5-nano cannot run there (no WASM kernel for GatedDeltaNet).
+CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists device `"wasm"` on the browser CPU (onnxruntime-web WASM; `model.device === "wasm"`, opt out with `cpuFallback: false`): 7.5–16.5× slower than WebGPU, same decisions in ≥116/120 items (120 development items per task, Chrome on an Apple M2 Pro); long inputs (ContractNLI) on the 1.7B and 3B models did not fit a 2-hour budget for 120 items. S5-nano cannot run there (no WASM kernel for GatedDeltaNet).
 
 * WebGPU is "absent" when `navigator.gpu` is missing or `requestAdapter()` gives no adapter (`webgpuStatus()` returns
   the reason). With `device: "auto"` (default) the loader then picks a genai build that lists `"wasm"`, also when
@@ -231,7 +231,7 @@ CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists devic
 * `cpuFallback: false`: with `device: "auto"` and no WebGPU, throw instead of moving to the CPU (any runtime).
 * After load: `model.device` is `"webgpu"` or `"wasm"`; on an automatic move `model.fallbackReason` says why.
   Warn users about speed when it is `"wasm"`.
-* The route is the one study 011 arm C measured: the `onnxruntime-web/wasm` bundle (`ort-wasm-simd-threaded.wasm`,
+* The route is the one measured on the browser CPU: the `onnxruntime-web/wasm` bundle (`ort-wasm-simd-threaded.wasm`,
   not the WebGPU/JSEP binary), `InferenceSession.create(graph, { executionProviders: ["wasm"], externalData })` with
   ORT's default threads and optimization level, then the same genai backend (`wrapSession`) as WebGPU. Pass
   `modules.ort` to use another onnxruntime-web module. ORT uses several threads only on a cross-origin isolated page
@@ -285,7 +285,7 @@ Non-Hub large files need `allowUnverified: true`. Any mismatch throws `Integrity
 * `node bin/s1s2.mjs encode <manifest> --tokenizer-dir <dir> --in rows.jsonl --out out.jsonl`: the ids and read positions
   s1s2 builds (tokenizer only).
 * Converter (HF model + labelled JSONL -> package): [`converter/`](converter/README.md).
-* Head types (spec 6, all peers; which one to recommend is open, lab-s12 study 008): `pointer` (`head.bin` in the
+* Head types (spec 6, all peers; which one to recommend is open): `pointer` (`head.bin` in the
   alias3-web layout, read with `scale = header.scale ?? 1/sqrt(headDim)`, or fp32 safetensors), `linear` (pplx/d3
   readout, JEV slots + softcap), `joint` (Clef: `jointScores`, `encodeJointSchema`; not routed by `decide()` yet), label
   logits with per-type `logits.temperature`; out-of-graph final RMSNorm per build (`norm`, alias3-web `norm.bin`).
@@ -312,8 +312,8 @@ tensor data in `Uint16Array`; with native `Float16Array` the binding reads fed-b
   encodes to `▁>`, and decoding inserts `▁` after special tokens, so neither "encode the marker alone" nor offsets
   from incremental decoding hold. Marker and label tokens are verified where they are read: the load-time check
   renders a probe prompt and requires an accepted marker token at every read position (plus `decode([id]) == text`);
-  when decoding does not reconstruct the prompt, read positions come from prefix encoding exactly as the lab-s12 prompt builder (stable boundary required); the logits label token is the first token that
-  `encode(prompt + label)` adds after `encode(prompt)`, as the lab-s12 label contract does. Byte-level BPE prompts keep
+  when decoding does not reconstruct the prompt, read positions come from prefix encoding exactly as the specialists' prompt builder does (stable boundary required); the logits label token is the first token that
+  `encode(prompt + label)` adds after `encode(prompt)`, as the specialists' label contract does. Byte-level BPE prompts keep
   the character-offset path unchanged. EOS, warmup, yes/no and kev delimiters still must encode alone to their id.
   Checked: the lib reproduces the lab plans (ids, decide and option positions, label ids) on 3064/3064 dev prompts of
   EuroLLM-1.7B-Instruct and salamandra-2b-instruct, and 100% of the SmolLM2/SmolLM3 plans

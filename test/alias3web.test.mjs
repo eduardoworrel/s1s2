@@ -55,7 +55,7 @@ test("alias3-web layout without a scale key: s1s2 = alias3-web reader (1/sqrt(he
   }
 });
 
-test("lab-s12 heads (1/sqrt(d) folded, scale_folded_into_q) and ct0 heads (folded, no key + manifest scale 1) keep their meaning", () => {
+test("plain-text-marker heads (1/sqrt(d) folded, scale_folded_into_q) and ct0 heads (folded, no key + manifest scale 1) keep their meaning", () => {
   const r = rng(11), D = 4, H = 8, s = 1 / Math.sqrt(D);
   const q = randArr(r, D * H), qb = randArr(r, D), k = randArr(r, D * H), kb = randArr(r, D);
   const fold = (a) => a.map((x) => x * s); // s = 1/2 is exact in fp16

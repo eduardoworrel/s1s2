@@ -301,7 +301,8 @@ export async function createGenai(model: string | Uint8Array, dataUrl: string, d
 }
 
 /**
- * Browser CPU path, as measured by lab-s12 study 011 arm C: the onnxruntime-web WASM bundle (`onnxruntime-web/wasm`,
+ * Browser CPU path, as measured (Chrome on an Apple M2 Pro, 120 development items per task): the onnxruntime-web WASM
+ * bundle (`onnxruntime-web/wasm`,
  * ort-wasm-simd-threaded.wasm), `executionProviders: ["wasm"]` with the external data, ORT's default threads and
  * optimization level, outputs on the CPU, no EP-placement probe; then the same wrapSession as WebGPU.
  */

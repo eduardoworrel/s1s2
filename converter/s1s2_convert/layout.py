@@ -6,7 +6,7 @@ runtime sends. The Python port below (fill / escape / render, ported from s1s2 s
 discover the marker token ids and the label tokens before a manifest exists, and as a second opinion: the encode stage
 compares its ids with s1s2's and stops on any difference.
 
-Layout (the plain-text marker layout of the lab-s12 studies):
+Layout (the plain-text marker layout of the specialists in the model cards):
   user turn  = "<state> {state}\\n <question> {question} <decide>"
   question   = "{instructions}\\n{options}"
   option     = " <option>{label} </option> \\n"     label = " " + dataset label
@@ -104,8 +104,8 @@ def chat(tok, system, chat_kwargs, user, cue=""):
 def score_lead(encode, decode, cue, levels=("1", "2", "3", "4", "5")):
     """logits.score.lead for the manifest: " " when the cue does not end in whitespace and the tokenizer writes the
     space before every level as one separate whitespace token (SmolLM2/3: " 1" = [" ", "1"]), so the model's next token
-    after the cue is that space and the level digits must be read after it (lab-s12 study 012: read right after
-    "Answer:", the digits held ~1e-5 of the probability); "" otherwise. Same rule as scoreLayout() in the library."""
+    after the cue is that space and the level digits must be read after it (measured on SST-5 / B2W with SmolLM3-3B:
+    read right after "Answer:", the digits held ~1e-5 of the probability); "" otherwise. Same rule as scoreLayout() in the library."""
     if not cue or cue[-1].isspace():
         return ""
     base, sp = encode(cue), encode(cue + " ")
@@ -164,7 +164,7 @@ class Discovery:
         self.ids["decide"].add(p["ids"][p["decide"]])
         for o in p["options"]:
             self.ids["option"].add(p["ids"][o])
-        for lab in labels_after:  # first token the label adds after the prompt (as the lab-s12 label contract reads it)
+        for lab in labels_after:  # first token the label adds after the prompt (as the specialists' label contract reads it)
             b = self.encode(p["text"] + lab)
             if b[:len(p["ids"])] != p["ids"] or len(b) == len(p["ids"]):
                 raise SystemExit(f"label {lab!r} merges with the end of the prompt (unstable boundary)")

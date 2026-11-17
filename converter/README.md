@@ -1,8 +1,8 @@
 # s1s2-convert
 
 Turns a Hugging Face causal LM plus a labelled JSONL into an **S1S2 package** ([spec](../spec/s1s2-package.md))
-that s1s2 loads: LoRA + pointer decision head (lab-s12 study 001 recipe), optional evidence head (study 005
-recipe), LoRA fused into the weights, an ONNX Runtime GenAI 0.19 int4 WebGPU graph with `hidden_states`, `head.bin`
+that s1s2 loads: LoRA + pointer decision head (the recipe behind the GDPR/LGPD/CCPA specialists in the model cards), optional
+evidence head (picks the supporting sentence), LoRA fused into the weights, an ONNX Runtime GenAI 0.19 int4 WebGPU graph with `hidden_states`, `head.bin`
 files, and a manifest with provenance and license. The output passes `s1s2 validate --strict`.
 
 ```
@@ -14,12 +14,14 @@ cd converter && uv venv .venv && uv pip install --python .venv/bin/python -e .  
 
 Training and export are memory-heavy; on a small machine run one stage at a time.
 
-**Why this default.** In lab-s12 study 001 the joint specialist trained with 2 epochs, Kev's learning-rate rule and fp32
-fusion (`joint_k`) was, on the locked test, more accurate than the preregistered recipe (1 epoch, lr 5e-5, bf16 fusion)
-on every law for all five models that had both (e.g. GDPR: Jurema-7B 85.5 → 88.4%, S5-nano 87.1 → 89.4%), and it made
+**Why this default.** On a three-law privacy benchmark (GDPR, LGPD, CCPA; held-out test, scored once), the joint
+specialist trained with the Kev-faithful recipe (`--recipe kev`: 2 epochs, Kev's learning-rate rule, fp32 fusion;
+`joint_k` in the model cards) was more accurate than the shorter recipe fixed before any result (`--recipe short`:
+1 epoch, lr 5e-5, bf16 fusion) on every law for all five models that had both (e.g. GDPR: Jurema-7B 85.5 → 88.4%, S5-nano 87.1 → 89.4%), and it made
 EuroLLM-1.7B (GDPR 53.2 → 83.0%) and Salamandra-2B (59.5 → 81.9%) learn the task, where one epoch left them near chance.
-One seed, chosen on dev, descriptive (outside the study's confirmatory families); SmolLM2-135M stays near chance with
-either recipe. `--recipe` is set at `prepare` (it fixes the epochs in the plan) and later stages refuse a different one.
+One seed, chosen on the development split; a descriptive comparison, not a hypothesis test fixed in advance; SmolLM2-135M stays near chance with
+either recipe. `--recipe` is set at `prepare` (it fixes the epochs in the plan) and later stages refuse a different one. The old
+names `joint-k` (= `kev`) and `preregistered` (= `short`) still work as deprecated aliases.
 
 ## Input
 
@@ -32,11 +34,11 @@ options; each is shown and read as `" " + label`.
 
 | Stage | What | Source of the recipe |
 |---|---|---|
-| prepare | dataset split; prompt layout from the model's chat template (plain-text markers, cue `--cue`); marker/label tokens discovered on every prompt and on s1s2's load-time probe; **all prompts encoded by s1s2 itself** (`s1s2 encode`) and compared with the Python rendering (stops on any difference) | lab-s12 prompt builder |
-| train | `--recipe joint-k` (default): 2 epochs, lr 1e-4 if the checkpoint has ≤ 1B parameters else 5e-5 (Kev's rule, LoRA and head). `--recipe preregistered`: 1 epoch, lr 5e-5. Both: LoRA r16/α32/dropout 0.05 on q/k/v/o/gate/up/down (+ DeltaNet projections on hybrids), pointer head dp=256 from scratch, CE over options, AdamW wd 0.01, OneCycle pct 0.1, clip 1.0, batch 4×2, bf16+checkpointing on CUDA (fp32 on CPU), option order re-drawn per epoch, dev-selected. `--epochs`/`--lr` override | reimplemented from the lab-s12 study 001 trainer (follows Kev @2074cc44); joint-k = its "Kev epochs and learning-rate arm" (notice 042) |
-| fuse | W' = W + s·BA on the same keys/files; joint-k: delta and sum in float64, rounded once to fp32, all tensors and `config.json` in fp32; preregistered: rounded to the base dtype | same as the study 001 trainer's merge step (its fp32 path for joint-k) |
-| evidence | head only on the fused model, init from the decision head, lr 1e-4, batch 32, ≤8 epochs, multi-target loss, epoch by dev loss | reimplemented from the lab-s12 study 005 trainer |
-| build | `builder.py -p int4 -e webgpu --extra_options include_hidden_states=true exclude_mtp=true` from a copy of pip `onnxruntime-genai==0.19.0` patched with `s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch` (or `--builder-src` a checkout). `--precision int8/fp16/fp32` for more builds | lab-s12 builds |
+| prepare | dataset split; prompt layout from the model's chat template (plain-text markers, cue `--cue`); marker/label tokens discovered on every prompt and on s1s2's load-time probe; **all prompts encoded by s1s2 itself** (`s1s2 encode`) and compared with the Python rendering (stops on any difference) | the prompt builder behind the model cards' specialists |
+| train | `--recipe kev` (default): 2 epochs, lr 1e-4 if the checkpoint has ≤ 1B parameters else 5e-5 (Kev's rule, LoRA and head). `--recipe short`: 1 epoch, lr 5e-5. Both: LoRA r16/α32/dropout 0.05 on q/k/v/o/gate/up/down (+ DeltaNet projections on hybrids), pointer head dp=256 from scratch, CE over options, AdamW wd 0.01, OneCycle pct 0.1, clip 1.0, batch 4×2, bf16+checkpointing on CUDA (fp32 on CPU), option order re-drawn per epoch, dev-selected. `--epochs`/`--lr` override | reimplemented from the trainer behind the model cards' specialists (follows Kev @2074cc44); `kev` = its Kev-faithful variant (`joint_k`) |
+| fuse | W' = W + s·BA on the same keys/files; kev: delta and sum in float64, rounded once to fp32, all tensors and `config.json` in fp32; short: rounded to the base dtype | same as that trainer's merge step (its fp32 path for `kev`) |
+| evidence | head only on the fused model, init from the decision head, lr 1e-4, batch 32, ≤8 epochs, multi-target loss, epoch by dev loss | reimplemented from the trainer of the citation heads |
+| build | `builder.py -p int4 -e webgpu --extra_options include_hidden_states=true exclude_mtp=true` from a copy of pip `onnxruntime-genai==0.19.0` patched with `s1s2_convert/patches/onnxruntime-genai-0.19.0-builder-fixes.patch` (or `--builder-src` a checkout). `--precision int8/fp16/fp32` for more builds | the builds in the model cards |
 | package | files + manifest (`genai-<prec>-webgpu` and `-cpu` per graph, heads, `evidence`, `tasks` when the question is fixed, `license`, `provenance` with `source.format`); head.bin headers state `"scale": 1` + `s1s2 validate --strict` | `head.py` = port of the Kev PointerHead (Apache-2.0, see NOTICE) |
 | parity | dev rows: PyTorch fp32 on the fused weights vs s1s2 `S1S2.load` on a build (onnxruntime-node CPU); writes the build's `fidelity` (spec 7) and `provenance.parity.<build>` | |
 
@@ -57,7 +59,7 @@ End-to-end on `HuggingFaceTB/SmolLM2-135M-Instruct@12fd25f7` with the toy set `e
 dev; 8 epochs, `--lr 1e-4 --head-lr 1e-3`; CPU training ~9 min). The package itself is not published; its manifest is in `spec/examples/`. Its head.bin files predate the `"scale"` header key and are accepted through `scale_folded_into_q` (spec 6.1); new runs write both.
 
 * prepare: the manifest's encoding / markers / logits / generation / eos / warmup are **identical** to the lab's own
-  SmolLM2 manifest (lab-s12 study 001);
+  SmolLM2 manifest (the one used on the privacy benchmark);
   s1s2 encoding == Python rendering on all 3120 prompts.
 * `s1s2 validate --strict` on the package: ok (13 files sha256-checked, heads parsed).
 * s1s2 loads it (`S1S2.load`, build `genai-*-cpu`, onnxruntime-node CPU, heads `choice` + `evidence`) and answers

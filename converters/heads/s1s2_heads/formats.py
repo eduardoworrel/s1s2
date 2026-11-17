@@ -382,7 +382,7 @@ def from_transformers_decision(a) -> None:
 
 
 def from_lm_rows(a) -> None:
-    """Standard One jev-gpu-readout-v2 (.npz): no public artifact was found (formatos-head.md 2.7); runs on a local file."""
+    """Standard One jev-gpu-readout-v2 (.npz): no public artifact was found (survey of published head formats, 2026-11); runs on a local file."""
     z = np.load(a.npz, allow_pickle=False)
     meta = json.loads(str(z["metadata"]))
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)

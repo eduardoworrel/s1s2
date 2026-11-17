@@ -52,7 +52,7 @@ Published S1S2 specialists. The ONNX repos run in the browser with this library 
 | ContractNLI + CLINC150 + SIB-200 | S5-nano | [S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [S5-nano-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-LoRA) |
 | ContractNLI + CLINC150 + SIB-200 | SmolLM3-3B | [SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA) |
 
-CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists device `"wasm"` on the browser CPU (onnxruntime-web WASM; `model.device === "wasm"`, opt out with `cpuFallback: false`): 7.5–16.5× slower than WebGPU, same decisions in ≥116/120 items (lab-s12 study 011 arm C); long inputs (ContractNLI) on the 1.7B and 3B models did not fit a 2-hour budget for 120 items. S5-nano cannot run there (no WASM kernel for GatedDeltaNet).
+CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists device `"wasm"` on the browser CPU (onnxruntime-web WASM; `model.device === "wasm"`, opt out with `cpuFallback: false`): 7.5–16.5× slower than WebGPU, same decisions in ≥116/120 items (120 development items per task, Chrome on an Apple M2 Pro); long inputs (ContractNLI) on the 1.7B and 3B models did not fit a 2-hour budget for 120 items. S5-nano cannot run there (no WASM kernel for GatedDeltaNet).
 
 Quick start with a published package:
 
@@ -78,13 +78,13 @@ The heads were trained with exact option words and question wording: use the one
 
 ## Status: alpha
 
-What has been measured. These are preregistered runs in the lab-s12 studies; the reports are not published yet.
+What has been measured. In each run the hypotheses, data split and scoring rule were fixed before it ran, and held-out test sets were scored once.
 
 - The margin flags the decisions that int4 changes compared with bf16 (8 of 8 settings).
 - Sending the 15% of answers with the lowest margin to int8 catches more of those changes than picking at random (5 of 6 settings; not on SmolLM2-135M). Little accuracy is at stake: −0.1 to +2.7 points.
 - The evidence pointer finds the right sentence better than rules that ignore the content (6 of 6 and 4 of 4 settings). Against a quote the model generates, results are mixed: on contracts the generated quote won 3 of 4.
 - On the real CT0 weights, `decide()` matches ct0-edge `askMany()` to 4e-16, and all 172 ct0-edge prompt fixtures are reproduced exactly.
-- `score` questions (study 012, held-out test, frozen SmolLM3-3B): a linear head measured better than label logits, mean absolute error 0.49 (en, SST-5) and 0.50 (pt, B2W) levels against 0.60 for the logits read after the space; read right after `Answer:` the digits held ~1e-5 of the probability, so the score logits readout now reads after that space (`logits.score.lead`).
+- `score` questions (1–5 ratings: SST-5 in English, B2W reviews in Portuguese; held-out test, frozen SmolLM3-3B): a linear head measured better than label logits, mean absolute error 0.49 (en, SST-5) and 0.50 (pt, B2W) levels against 0.60 for the logits read after the space; read right after `Answer:` the digits held ~1e-5 of the probability, so the score logits readout now reads after that space (`logits.score.lead`).
 - Each head-format conversion has a fidelity record: [spec §11](spec/s1s2-package.md#11-coverage-formats--conversion--fidelity).
 
 What has not been measured, or did not hold:

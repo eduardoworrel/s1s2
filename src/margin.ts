@@ -1,24 +1,24 @@
 // Margin policy ("margin gate"): escalate low-margin System-1 answers.
 //
-// Every answer carries `margin` (probability gap, study 002's definition) and `rawMargin` (readout.ts). A policy
+// Every answer carries `margin` (probability gap: p(1st) - p(2nd)) and `rawMargin` (readout.ts). A policy
 // says which one it reads and, per question type, below which value an answer is
 // escalated, and to what: another build of the same manifest (e.g. int4 -> int8), or System 2 on the same weights
 // continuing from the decision prefill. Named MarginPolicy to stay clear of backend.ts's concurrency `Gate`.
 //
-// Status of the numbers. The library ships NO default threshold. lab-s12's dev probe (exploratory) ranked items by rawMargin and escalated a fixed share (5-20%), not an absolute margin;
-// study 002 (H4/G4a) used the 10%/15% quantiles of dev-B int4 margins, per model and task. Absolute
+// Status of the numbers. The library ships NO default threshold. An exploratory probe on development data ranked items by rawMargin and escalated a fixed share (5-20%), not an absolute margin;
+// the int4 -> int8 escalation test used the 10%/15% quantiles of int4 margins on development data, per model and task. Absolute
 // thresholds differ per model, build and readout. A threshold is either measured by the user for their build
 // (`thresholdFromQuantile` over their own margins) or comes from a manifest that says where it came from. Every
-// default below is provisional: study 002 fixed quantiles per model and task, not a threshold that transfers.
+// default below is provisional: that test fixed quantiles per model and task, not a threshold that transfers.
 // S1 -> S2 escalation ("generate") is NOT measured anywhere; the generated text is attached and the typed decision
 // is left unchanged.
 
 import type { EscalationSpec, Manifest, QType } from "./manifest.js";
 import type { Answer } from "./readout.js";
 
-export const PROVISIONAL_NOTE = "provisional - set by study 002";
+export const PROVISIONAL_NOTE = "provisional - no measured threshold";
 
-/** Library defaults (no thresholds). Provisional - set by study 002. */
+/** Library defaults (no thresholds). Provisional: no measured threshold backs them. */
 export const MARGIN_POLICY_DEFAULTS: Readonly<Required<Pick<EscalationSpec, "prompt" | "maxNewTokens" | "provisional" | "source">>> = Object.freeze({
   prompt: "Reconsider the question above step by step, then state your final answer as one of: {options}.",
   maxNewTokens: 256,
@@ -74,7 +74,7 @@ export function shouldEscalate(a: Pick<Answer, "type" | "margin" | "rawMargin">,
 }
 
 /**
- * Threshold that escalates the lowest-margin share `q` of a calibration set (what lab-s12's dev probe did: rank by
+ * Threshold that escalates the lowest-margin share `q` of a calibration set (what the exploratory probe did: rank by
  * margin, escalate a fixed budget). Returns the smallest margin NOT escalated, so `margin < threshold` selects
  * floor(q * n) items when margins are distinct. Calibrate on your own build and readout; never reuse across models.
  */
