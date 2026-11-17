@@ -45,6 +45,9 @@ def _cases_pointer(inp: Inputs, H: int, n: int, seed: int, scale: float = 1.0):
 
 
 # ---------------------------------------------------------------- Kev head.pt (pointer, fp32)
+KEV_META_DEFAULTS = {"head_dim": 256, "temperature": 1.0}  # kev@2074cc44 kev/checkpoint.py Meta: head_dim, temperature
+
+
 def from_kev_headpt(a) -> None:
     import torch
     from . import refs
@@ -52,7 +55,11 @@ def from_kev_headpt(a) -> None:
     p = hub_file(a.repo, a.revision, "head.pt")
     # sglang@da614ba configs/model_config.py load_pointer_head: defaults, then torch.load(weights_only=True)
     from_cfg = {"option_isolation": False, "special_embeddings": False}
-    meta = {**from_cfg, **torch.load(p, map_location="cpu", weights_only=True)}
+    raw = torch.load(p, map_location="cpu", weights_only=True)
+    # Fields older head.pt files did not write get Kev's own reader defaults (kev@2074cc44 kev/checkpoint.py Meta), e.g.
+    # jaredpalmer/kev-0.6b@dece6dba predates "head.pt carries the fitted temperature" -> temperature 1.0 (raw logits).
+    defaults = {k: v for k, v in KEV_META_DEFAULTS.items() if k not in raw}
+    meta = {**from_cfg, **defaults, **raw}
     for name in ("option_isolation", "special_embeddings"):
         if meta[name]:
             raise SystemExit(f"head.pt {name} is not supported (changes the prompt or attention mask)")
@@ -78,7 +85,8 @@ def from_kev_headpt(a) -> None:
     for fname, spec, tol in (("head.safetensors", {"kind": "pointer", "format": "safetensors"}, TOL_FP32), ("head.bin", {"kind": "pointer", "format": "head.bin"}, TOL_FP16)):
         ours = [r["scores"][0] for r in run_lib(out / fname, spec, cases, inp)]
         files[fname] = compare(ref, ours, tol_p=tol)
-    src = _source("kev-head.pt", a.repo, a.revision, ["head.pt"], base=meta.get("base"), baseRevision=meta.get("base_revision"))
+    src = _source("kev-head.pt", a.repo, a.revision, ["head.pt"], base=meta.get("base"), baseRevision=meta.get("base_revision"),
+                  **({"defaults": defaults} if defaults else {}))
     fragment = {"heads": {
         "pointer-fp32": {"file": pinned(out / "head.safetensors", "heads/head.safetensors"), "types": ["predicate", "choice", "score"], "kind": "pointer", "format": "safetensors", "scale": scale, "temperature": T, "source": "kev-head.pt"},
         "pointer-fp16": {"file": pinned(out / "head.bin", "heads/head.bin"), "types": ["predicate", "choice", "score"], "kind": "pointer", "format": "head.bin", "scale": scale, "source": "kev-head.pt"}},
