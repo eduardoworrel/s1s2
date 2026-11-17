@@ -82,5 +82,76 @@ class HeadBin(unittest.TestCase):
             self.assertEqual(c2["files"], c["files"])
 
 
+class Recipe(unittest.TestCase):
+    def _ckpt(self, d, n):
+        import torch
+        from safetensors.torch import save_file
+        save_file({"model.embed_tokens.weight": torch.zeros(n, 1, dtype=torch.bfloat16)}, str(Path(d) / "model.safetensors"))
+
+    def test_kev_rule(self):
+        from s1s2_convert import train as T
+        self.assertEqual(T.kev_lr(135_000_000), 1e-4)
+        self.assertEqual(T.kev_lr(1_000_000_000), 1e-4)
+        self.assertEqual(T.kev_lr(1_660_000_000), 5e-5)
+        with tempfile.TemporaryDirectory() as d:
+            self._ckpt(d, 1000)
+            self.assertEqual(T.checkpoint_params(d), 1000)
+            lr, rule = T.recipe_lr("joint-k", d)
+            self.assertEqual((lr, rule["kev_rule"]["checkpoint_params"]), (1e-4, 1000))
+            self.assertEqual(T.recipe_lr("preregistered", d)[0], 5e-5)
+            self.assertEqual(T.recipe_lr("joint-k", d, lr=3e-5), (3e-5, {"explicit": True}))
+
+    def test_defaults(self):
+        from s1s2_convert import cli, train as T
+        a = cli.args_parser().parse_args(["train", "--work", "w"])
+        self.assertEqual((a.recipe, a.epochs, a.lr), (None, None, None))
+        self.assertEqual(T.DEFAULT_RECIPE, "joint-k")
+        self.assertEqual({k: (v["epochs"], v["lr"], v["fuse_fp32"]) for k, v in T.RECIPES.items()},
+                         {"joint-k": (2, "kev-rule", True), "preregistered": (1, 5e-5, False)})
+        with self.assertRaises(SystemExit):  # a later stage cannot switch the recipe prepare used
+            cli.prepared_recipe(cli.args_parser().parse_args(["train", "--work", "w", "--recipe", "preregistered"]), {"recipe": "joint-k"})
+        self.assertEqual(cli.prepared_recipe(a, {}), "preregistered")  # work dirs from before --recipe
+
+
+class Fuse(unittest.TestCase):
+    def _base(self, d):
+        import torch
+        from safetensors.torch import save_file
+        g = torch.Generator().manual_seed(0)
+        w = torch.randn(6, 5, generator=g).to(torch.bfloat16)
+        n = torch.randn(5, generator=g).to(torch.bfloat16)
+        save_file({"model.layers.0.self_attn.q_proj.weight": w, "model.norm.weight": n}, str(Path(d) / "model.safetensors"), metadata={"format": "pt"})
+        (Path(d) / "config.json").write_text(json.dumps({"torch_dtype": "bfloat16", "hidden_size": 5}))
+        A, B = torch.randn(2, 5, generator=g) * 0.01, torch.randn(6, 2, generator=g) * 0.01
+        ad = Path(d) / "adapter.safetensors"
+        save_file({"base_model.model.model.layers.0.self_attn.q_proj.lora_A.default.weight": A,
+                   "base_model.model.model.layers.0.self_attn.q_proj.lora_B.default.weight": B}, str(ad))
+        return w, n, A, B, ad
+
+    def test_fp32_and_base_dtype(self):
+        import torch
+        from safetensors.torch import load_file
+        from s1s2_convert.train import fuse
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d) / "base"
+            base.mkdir()
+            w, n, A, B, ad = self._base(base)
+            info = fuse(base, ad, 2.0, Path(d) / "f32", fp32=True)
+            out = load_file(str(Path(d) / "f32" / "model.safetensors"))
+            ref = (w.double() + 2.0 * (B.double() @ A.double())).to(torch.float32)
+            self.assertEqual(out["model.layers.0.self_attn.q_proj.weight"].dtype, torch.float32)
+            self.assertTrue(torch.allclose(out["model.layers.0.self_attn.q_proj.weight"], ref, rtol=0, atol=1e-7))
+            self.assertTrue(torch.equal(out["model.norm.weight"], n.float()))  # unfused tensors: fp32, lossless
+            self.assertEqual(json.loads((Path(d) / "f32" / "config.json").read_text())["torch_dtype"], "float32")
+            self.assertEqual(info["dtype"], "float32")
+            info = fuse(base, ad, 2.0, Path(d) / "bf16")
+            out = load_file(str(Path(d) / "bf16" / "model.safetensors"))
+            self.assertEqual(out["model.layers.0.self_attn.q_proj.weight"].dtype, torch.bfloat16)
+            self.assertTrue(torch.equal(out["model.layers.0.self_attn.q_proj.weight"], (w.float() + (B @ A) * 2.0).to(torch.bfloat16)))
+            self.assertTrue(torch.equal(out["model.norm.weight"], n))
+            self.assertEqual((Path(d) / "bf16" / "config.json").read_bytes(), (base / "config.json").read_bytes())
+            self.assertEqual(info["dtype"], "base")
+
+
 if __name__ == "__main__":
     unittest.main()

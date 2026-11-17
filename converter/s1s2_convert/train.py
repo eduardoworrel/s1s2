@@ -3,11 +3,17 @@
 Decision recipe (the lab-s12 study 001 trainer, which follows Kev @2074cc44; reimplemented here, same numbers):
   LoRA r=16, alpha=32, dropout 0.05 on q/k/v/o/gate/up/down of the decoder layers (+ in_proj_qkv/z/a/b, out_proj on a
   hybrid Gated-DeltaNet backbone) (the trainer's LoRA targets); pointer head dp=256 from scratch (head.py); loss = cross
-  entropy of the head over the options, mean per row (the trainer's per-row loss); AdamW lr 5e-5 (kev 4B/9B recipe;
-  --lr), weight decay 0.01, OneCycleLR pct_start 0.1 with the same lr for the head, grad-norm clip 1.0, effective batch
-  8 = 4 x 2 accumulation, rows of one step grouped in passes by length; bf16 autocast + gradient checkpointing on CUDA
-  (fp32 on CPU); --head-lr (kev's head_lr option) gives the head its own peak lr, default the same; selection: the checkpoint with the lowest head loss on the dev split (evaluated every --eval-every
-  steps and at the end of each epoch). Option order is re-drawn every epoch (seeded).
+  entropy of the head over the options, mean per row (the trainer's per-row loss); AdamW, weight decay 0.01, OneCycleLR
+  pct_start 0.1 with the same lr for the head, grad-norm clip 1.0, effective batch 8 = 4 x 2 accumulation, rows of one
+  step grouped in passes by length; bf16 autocast + gradient checkpointing on CUDA (fp32 on CPU); --head-lr (kev's
+  head_lr option) gives the head its own peak lr, default the same; selection: the checkpoint with the lowest head loss
+  on the dev split (evaluated every --eval-every steps and at the end of each epoch). Option order is re-drawn every
+  epoch (seeded).
+  Epochs, lr and fusion dtype come from the recipe (RECIPES):
+    joint-k (default): the lab-s12 study 001 "Kev epochs and learning-rate arm" with fp32 fusion (lab-s12 notice 042):
+      2 epochs; lr by the Kev rule, 1e-4 if the checkpoint has <= 1B parameters, 5e-5 above (LoRA and head); LoRA fused
+      in fp32.
+    preregistered: the study 001 preregistered recipe: 1 epoch, lr 5e-5, fusion in the base dtype.
   Not reproduced (declared): kev data augmentation (none-of-the-above / distractor options), later kev stages,
   temperature calibration, resumable checkpoints.
 
@@ -26,6 +32,45 @@ from .util import log, write_json, read_jsonl
 
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 LORA_TARGETS_HYBRID = ["in_proj_qkv", "in_proj_z", "in_proj_a", "in_proj_b", "out_proj"]
+
+
+KEV_LR_LIMIT = 1e9  # Kev rule (lab-s12 notice 042): <= 1B parameters -> 1e-4; above -> 5e-5
+KEV_LR = {"up_to_1B": 1e-4, "above": 5e-5}
+KEV_LR_SOURCE = "kev @2074cc44 AGENTS.md:19-20 and docs/model-cards/kev-4b.md:149 (0.8B 1e-4; 4B/9B 5e-5); 1B limit: lab-s12 notice 042"
+RECIPES = {
+    "joint-k": {"name": "lab-s12 study 001 Kev epochs and learning-rate arm, fp32 fusion (notice 042)",
+                "epochs": 2, "lr": "kev-rule", "fuse_fp32": True},
+    "preregistered": {"name": "lab-s12 study 001 preregistered recipe", "epochs": 1, "lr": 5e-5, "fuse_fp32": False},
+}
+DEFAULT_RECIPE = "joint-k"
+
+
+def checkpoint_params(model_dir):
+    """Parameters stored in the checkpoint's safetensors (headers only; a tied embedding counts once)."""
+    from safetensors import safe_open
+    n = 0
+    for f_name in sorted(Path(model_dir).glob("*.safetensors")):
+        with safe_open(str(f_name), "pt") as f:
+            for k in f.keys():
+                n += math.prod(f.get_slice(k).get_shape())
+    if not n:
+        raise SystemExit(f"{model_dir}: no safetensors to count parameters")
+    return n
+
+
+def kev_lr(n_params):
+    return KEV_LR["up_to_1B"] if n_params <= KEV_LR_LIMIT else KEV_LR["above"]
+
+
+def recipe_lr(recipe, model_dir, lr=None):
+    """-> (lr, rule): the explicit lr if given, else the recipe's (the Kev rule counts the checkpoint's parameters)."""
+    r = RECIPES[recipe]
+    if lr is not None:
+        return lr, {"explicit": True}
+    if r["lr"] != "kev-rule":
+        return r["lr"], {"fixed": r["lr"]}
+    n = checkpoint_params(model_dir)
+    return kev_lr(n), {"kev_rule": {"checkpoint_params": n, "limit": KEV_LR_LIMIT, "lrs": KEV_LR, "source": KEV_LR_SOURCE}}
 
 
 def lora_regex(hybrid):
@@ -59,7 +104,7 @@ def tensors(rows, pad_id, device):
 
 
 def train_decision(model_dir, train_rows, dev_rows, out, *, device="cpu", epochs=1, lr=5e-5, head_lr=None, lora_r=16, batch=4, accum=2,
-                   eval_every=0, seed=1, max_steps=0):
+                   eval_every=0, seed=1, max_steps=0, recipe=DEFAULT_RECIPE, lr_rule=None):
     """train_rows: [{ids, decide, options, target, epoch}] (one entry per row per epoch); dev_rows: [{ids, decide, options, target}]."""
     import torch
     import torch.nn.functional as F
@@ -162,10 +207,10 @@ def train_decision(model_dir, train_rows, dev_rows, out, *, device="cpu", epochs
     head.load_state_dict(head_sd)
     contract = {"kind": "decision", "read": {"query": "decide marker", "keys": "option markers"}, "selected": sel}
     c = H.save(head, out / "head", contract)
-    info = {"recipe": "lab-s12 study 001 joint LoRA + pointer head (Kev @2074cc44)",
+    info = {"recipe": f"{RECIPES[recipe]['name']}: joint LoRA + pointer head (Kev @2074cc44)", "recipe_id": recipe,
             "hyperparameters": {"lora_r": lora_r, "lora_alpha": 2 * lora_r, "lora_dropout": 0.05, "lora_targets": lora_regex(hybrid),
                                 "head_dim": H.HEAD_DIM, "lr": lr, "head_lr": head_lr, "weight_decay": 0.01, "schedule": "OneCycleLR pct_start 0.1",
-                                "grad_clip": 1.0, "batch": batch, "accum": accum, "epochs": epochs, "steps": total, "seed": seed,
+                                "grad_clip": 1.0, "batch": batch, "accum": accum, "epochs": epochs, "steps": total, "seed": seed, "lr_rule": lr_rule,
                                 "precision": "bf16 autocast + gradient checkpointing" if cuda else "fp32 (CPU)", "device": device},
             "selection": "lowest dev head loss", "selected": sel, "history": history, "lora_scale": 2.0,
             "head": c["files"], "seconds": round(time.time() - t0, 1)}
@@ -250,13 +295,19 @@ def train_evidence(fused_dir, init_head_dir, train_rows, dev_rows, out, *, devic
     return info
 
 
-def fuse(base_dir, adapter, scale, dest):
-    """W' = W + scale * B @ A on the SAME keys and files of the base checkpoint (original dtype); other files copied
-    byte for byte. Same as the study 001 trainer's merge step (default, non-fp32 path)."""
+def fuse(base_dir, adapter, scale, dest, fp32=False):
+    """W' = W + scale * B @ A on the SAME keys and files of the base checkpoint; other files copied byte for byte.
+    Same as the study 001 trainer's merge step.
+    fp32=False: the sum is rounded to the weight's original dtype (the trainer's default path).
+    fp32=True (lab-s12 notice 042): W' = fp32(float64(W) + float64(scale) * sum_k B[:, k] A[k, :]), the outer products
+    summed in a fixed order (elementwise only: the same result on any machine) and rounded once to fp32; EVERY floating
+    tensor written in fp32 (the unfused ones losslessly); config.json dtype float32 (the GenAI builder loads with dtype
+    "auto"); the index total_size recomputed."""
     import json
     import os
     import shutil
     import hashlib
+    import torch
     from safetensors import safe_open
     from safetensors.torch import load_file, save_file
     base_dir, dest = Path(base_dir), Path(dest)
@@ -281,7 +332,7 @@ def fuse(base_dir, adapter, scale, dest):
         cand = [k for k in (f"model.{rel}.weight", f"model.language_model.{rel}.weight") if k in wmap]
         if len(cand) != 1:
             raise SystemExit(f"{mod}: {len(cand)} candidate keys in the checkpoint ({cand})")
-        delta[cand[0]] = (ab["B"].float() @ ab["A"].float()) * scale
+        delta[cand[0]] = ab if fp32 else (ab["B"].float() @ ab["A"].float()) * scale
     tmp = dest.with_name(dest.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
@@ -292,13 +343,23 @@ def fuse(base_dir, adapter, scale, dest):
             meta = f.metadata()
             for k in f.keys():
                 t = f.get_tensor(k)
-                if k in delta:
+                if k in delta and fp32:
+                    d = _delta_f64(delta[k], scale)
+                    if tuple(d.shape) != tuple(t.shape):
+                        raise SystemExit(f"{k}: delta {tuple(d.shape)} != weight {tuple(t.shape)}")
+                    norms.append(float(d.norm() / t.double().norm()))
+                    t = (t.double() + d).to(torch.float32)
+                    del d
+                    used.add(k)
+                elif k in delta:
                     d = delta[k]
                     if tuple(d.shape) != tuple(t.shape):
                         raise SystemExit(f"{k}: delta {tuple(d.shape)} != weight {tuple(t.shape)}")
                     norms.append(float(d.norm() / t.float().norm()))
                     t = (t.float() + d).to(t.dtype)
                     used.add(k)
+                elif fp32 and t.is_floating_point():
+                    t = t.to(torch.float32)
                 outd[k] = t.contiguous()
         save_file(outd, str(tmp / f_name), metadata=meta)
     if used != set(delta):
@@ -306,8 +367,54 @@ def fuse(base_dir, adapter, scale, dest):
     for p in sorted(base_dir.iterdir()):
         if p.is_file() and not p.name.endswith(".safetensors") and p.name != "PROVENANCE.json":
             shutil.copyfile(p, tmp / p.name)
+    if fp32:
+        _set_fp32(tmp)
     shutil.rmtree(dest, ignore_errors=True)
     os.replace(tmp, dest)
-    return {"modules_fused": len(delta), "scale": scale, "files": sorted(set(wmap.values())),
+    info = {"modules_fused": len(delta), "scale": scale, "files": sorted(set(wmap.values())),
             "relative_delta_norm": {"mean": sum(norms) / len(norms), "max": max(norms)},
             "adapter_sha256": hashlib.sha256(Path(adapter).read_bytes()).hexdigest()}
+    info.update({"dtype": "float32", "rule": "fp32(float64(W) + float64(scale) * sum_k B[:,k] A[k,:]) (lab-s12 notice 042)"}
+                if fp32 else {"dtype": "base"})
+    return info
+
+
+def _delta_f64(ab, scale):
+    """scale * B @ A in float64 as outer products summed in the order k = 0..r-1 (deterministic across machines)."""
+    import torch
+    B, A = ab["B"].to(torch.float64), ab["A"].to(torch.float64)
+    d = torch.zeros((B.shape[0], A.shape[1]), dtype=torch.float64)
+    for k in range(B.shape[1]):
+        d += B[:, k:k + 1] * A[k:k + 1, :]
+    return d * float(scale)
+
+
+DTYPE_BYTES = {"F64": 8, "F32": 4, "BF16": 2, "F16": 2, "I64": 8, "I32": 4, "I16": 2, "I8": 1, "U8": 1, "BOOL": 1}
+
+
+def _set_fp32(folder):
+    """After an fp32 fusion: dtype float32 in config.json (and its text_config); index total_size from the real bytes."""
+    import json
+    from safetensors import safe_open
+    folder = Path(folder)
+    cfg_f = folder / "config.json"
+    if cfg_f.exists():
+        cfg = json.loads(cfg_f.read_text())
+        for c in (cfg, cfg.get("text_config") or {}):
+            for k in ("torch_dtype", "dtype"):
+                if k in c:
+                    c[k] = "float32"
+        if "torch_dtype" not in cfg and "dtype" not in cfg:
+            cfg["dtype"] = "float32"
+        cfg_f.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
+    idx = folder / "model.safetensors.index.json"
+    if idx.exists():
+        j = json.loads(idx.read_text())
+        total = 0
+        for f_name in sorted(set(j["weight_map"].values())):
+            with safe_open(str(folder / f_name), "pt") as f:
+                for k in f.keys():
+                    sl = f.get_slice(k)
+                    total += DTYPE_BYTES[sl.get_dtype()] * math.prod(sl.get_shape())
+        j.setdefault("metadata", {})["total_size"] = total
+        idx.write_text(json.dumps(j, indent=2, ensure_ascii=False) + "\n")

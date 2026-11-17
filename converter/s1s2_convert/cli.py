@@ -4,8 +4,8 @@ Stages (each resumable: a finished stage leaves <work>/.done-<stage> and is skip
   prepare   read + split the dataset, build the prompt layout for the model's chat template, discover marker / label
             tokens, write the draft manifest, encode every training/dev prompt WITH s1s2 (`s1s2 encode`) and check
             the Python rendering gives the same ids and read positions
-  train     LoRA + decision head (lab-s12 001 recipe), dev-selected
-  fuse      merge the LoRA into the base weights (same keys and files)
+  train     LoRA + decision head (lab-s12 001 recipe; --recipe joint-k by default), dev-selected
+  fuse      merge the LoRA into the base weights (same keys and files; fp32 under joint-k)
   evidence  evidence head on the fused model (lab-s12 005 recipe), only when rows carry `evidence`
   build     ONNX Runtime GenAI 0.19 int4 WebGPU graph with hidden_states (+ lab-s12 builder fixes)
   package   package directory + manifest.json + provenance, then `s1s2 validate --strict`
@@ -27,6 +27,7 @@ from pathlib import Path
 from . import __version__
 from . import data as D
 from . import layout as LY
+from .train import RECIPES, DEFAULT_RECIPE
 from .util import log, write_json, read_json, read_jsonl, write_jsonl, run, done, mark_done, lib_dir, now_iso, sha256_file
 
 STAGES = ["prepare", "train", "fuse", "evidence", "build", "package", "parity"]
@@ -76,8 +77,11 @@ def args_parser():
     ap.add_argument("--chat-kwargs", default="{}", help='JSON kwargs for apply_chat_template, e.g. {"enable_thinking": false}')
     ap.add_argument("--cue", default="Answer:", help="text after the generation prompt (the answer cue)")
     ap.add_argument("--id", help="package id (default: <model name>-s1s2)")
-    ap.add_argument("--epochs", type=int, default=1)
-    ap.add_argument("--lr", type=float, default=5e-5)
+    ap.add_argument("--recipe", choices=sorted(RECIPES), default=None,
+                    help=f"training recipe (default: {DEFAULT_RECIPE}, or the one prepare recorded): joint-k = 2 epochs, lr 1e-4 "
+                         "if the checkpoint has <= 1B parameters else 5e-5, fp32 fusion; preregistered = 1 epoch, lr 5e-5, base-dtype fusion")
+    ap.add_argument("--epochs", type=int, default=None, help="training epochs (default: the recipe's)")
+    ap.add_argument("--lr", type=float, default=None, help="peak lr of LoRA and head (default: the recipe's)")
     ap.add_argument("--head-lr", type=float, default=None, help="peak lr of the head (kev head_lr; default: --lr)")
     ap.add_argument("--lora-r", type=int, default=16)
     ap.add_argument("--batch", type=int, default=4)
@@ -102,6 +106,8 @@ def stage_prepare(a, W):
         raise SystemExit("prepare: --model and --data are required")
     base = resolve_model(a.model, a.revision, a.repo, a.license_id)
     labels = a.labels.split(",") if a.labels else None
+    recipe = a.recipe or DEFAULT_RECIPE
+    epochs = a.epochs if a.epochs is not None else RECIPES[recipe]["epochs"]
     rows, dmeta = D.load(a.data, a.question_template, labels, a.dev_fraction, a.seed)
     labels = dmeta["labels"]
     tok = AutoTokenizer.from_pretrained(base["dir"], local_files_only=True)
@@ -113,7 +119,7 @@ def stage_prepare(a, W):
     rng = random.Random(a.seed)
     plan = []
     for r in rows:
-        for e in range(a.epochs if r["split"] == "train" else 1):
+        for e in range(epochs if r["split"] == "train" else 1):
             perm = labels[:]
             rng.shuffle(perm)
             p = disc.add("choice", r["question"], [LY.option_text(l) for l in perm], r["text"], labels_after=texts)
@@ -198,7 +204,7 @@ def stage_prepare(a, W):
                                     "logits_choice_map": choice_logits["map"], "question_template": a.question_template,
                                     "evidence_template": a.evidence_template if dmeta["evidence_rows"] else None,
                                     "cue": a.cue, "system": a.system, "chat_kwargs": json.loads(a.chat_kwargs), "id": pid,
-                                    "epochs": a.epochs, "seed": a.seed, "prompts": len(plan), "lib_encode_identical": len(plan)})
+                                    "recipe": recipe, "epochs": epochs, "seed": a.seed, "prompts": len(plan), "lib_encode_identical": len(plan)})
     log("prepare", f"{len(rows)} rows ({dmeta['splits']}), labels {labels}, {len(plan)} prompts; s1s2 encoding == Python rendering on all")
 
 
@@ -214,19 +220,31 @@ def encoded_rows(W, kind, split):
     return out
 
 
+def prepared_recipe(a, prep):
+    """The recipe prepare recorded (work dirs from before --recipe: preregistered); a different --recipe is refused."""
+    recipe = prep.get("recipe", "preregistered")
+    if a.recipe and a.recipe != recipe:
+        raise SystemExit(f"--recipe {a.recipe}: this work dir was prepared with --recipe {recipe} (run prepare again in a new --work)")
+    return recipe
+
+
 def stage_train(a, W):
-    from .train import train_decision
+    from .train import train_decision, recipe_lr
     prep = read_json(W / "prepare.json")
+    recipe = prepared_recipe(a, prep)
+    lr, rule = recipe_lr(recipe, prep["base"]["dir"], a.lr)
+    log("train", f"recipe {recipe}: {prep['epochs']} epoch(s), lr {lr:g}" + (f" (Kev rule, {rule['kev_rule']['checkpoint_params'] / 1e9:.3f}B parameters)" if "kev_rule" in rule else ""))
     train_decision(prep["base"]["dir"], encoded_rows(W, "decision", "train"), encoded_rows(W, "decision", "dev"), W / "train",
-                   device=a.device, epochs=prep["epochs"], lr=a.lr, head_lr=a.head_lr, lora_r=a.lora_r, batch=a.batch, accum=a.accum,
-                   eval_every=a.eval_every, seed=prep["seed"], max_steps=a.max_steps)
+                   device=a.device, epochs=prep["epochs"], lr=lr, head_lr=a.head_lr, lora_r=a.lora_r, batch=a.batch, accum=a.accum,
+                   eval_every=a.eval_every, seed=prep["seed"], max_steps=a.max_steps, recipe=recipe, lr_rule=rule)
 
 
 def stage_fuse(a, W):
     from .train import fuse
     prep = read_json(W / "prepare.json")
     tr = read_json(W / "train" / "train.json")
-    info = fuse(prep["base"]["dir"], W / "train" / "adapter.safetensors", tr["lora_scale"], W / "fused")
+    info = fuse(prep["base"]["dir"], W / "train" / "adapter.safetensors", tr["lora_scale"], W / "fused",
+                fp32=RECIPES[prepared_recipe(a, prep)]["fuse_fp32"])
     write_json(W / "fuse.json", info)
     log("fuse", f"{info['modules_fused']} modules fused, relative delta norm mean {info['relative_delta_norm']['mean']:.2e}")
 

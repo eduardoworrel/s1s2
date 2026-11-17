@@ -14,6 +14,13 @@ cd converter && uv venv .venv && uv pip install --python .venv/bin/python -e .  
 
 Training and export are memory-heavy; on a small machine run one stage at a time.
 
+**Why this default.** In lab-s12 study 001 the joint specialist trained with 2 epochs, Kev's learning-rate rule and fp32
+fusion (`joint_k`) was, on the locked test, more accurate than the preregistered recipe (1 epoch, lr 5e-5, bf16 fusion)
+on every law for all five models that had both (e.g. GDPR: Jurema-7B 85.5 → 88.4%, S5-nano 87.1 → 89.4%), and it made
+EuroLLM-1.7B (GDPR 53.2 → 83.0%) and Salamandra-2B (59.5 → 81.9%) learn the task, where one epoch left them near chance.
+One seed, chosen on dev, descriptive (outside the study's confirmatory families); SmolLM2-135M stays near chance with
+either recipe. `--recipe` is set at `prepare` (it fixes the epochs in the plan) and later stages refuse a different one.
+
 ## Input
 
 One JSON object per line: `text` (passage), `question` or `requirement` (filled into `--question-template`), `label`,
@@ -26,8 +33,8 @@ options; each is shown and read as `" " + label`.
 | Stage | What | Source of the recipe |
 |---|---|---|
 | prepare | dataset split; prompt layout from the model's chat template (plain-text markers, cue `--cue`); marker/label tokens discovered on every prompt and on s1s2's load-time probe; **all prompts encoded by s1s2 itself** (`s1s2 encode`) and compared with the Python rendering (stops on any difference) | lab-s12 prompt builder |
-| train | LoRA r16/α32/dropout 0.05 on q/k/v/o/gate/up/down (+ DeltaNet projections on hybrids), pointer head dp=256 from scratch, CE over options, AdamW wd 0.01, OneCycle pct 0.1, clip 1.0, batch 4×2, bf16+checkpointing on CUDA (fp32 on CPU), option order re-drawn per epoch, dev-selected | reimplemented from the lab-s12 study 001 trainer (follows Kev @2074cc44) |
-| fuse | W' = W + s·BA on the same keys/files | same as the study 001 trainer's merge step |
+| train | `--recipe joint-k` (default): 2 epochs, lr 1e-4 if the checkpoint has ≤ 1B parameters else 5e-5 (Kev's rule, LoRA and head). `--recipe preregistered`: 1 epoch, lr 5e-5. Both: LoRA r16/α32/dropout 0.05 on q/k/v/o/gate/up/down (+ DeltaNet projections on hybrids), pointer head dp=256 from scratch, CE over options, AdamW wd 0.01, OneCycle pct 0.1, clip 1.0, batch 4×2, bf16+checkpointing on CUDA (fp32 on CPU), option order re-drawn per epoch, dev-selected. `--epochs`/`--lr` override | reimplemented from the lab-s12 study 001 trainer (follows Kev @2074cc44); joint-k = its "Kev epochs and learning-rate arm" (notice 042) |
+| fuse | W' = W + s·BA on the same keys/files; joint-k: delta and sum in float64, rounded once to fp32, all tensors and `config.json` in fp32; preregistered: rounded to the base dtype | same as the study 001 trainer's merge step (its fp32 path for joint-k) |
 | evidence | head only on the fused model, init from the decision head, lr 1e-4, batch 32, ≤8 epochs, multi-target loss, epoch by dev loss | reimplemented from the lab-s12 study 005 trainer |
 | build | `builder.py -p int4 -e webgpu --extra_options include_hidden_states=true exclude_mtp=true` from a copy of pip `onnxruntime-genai==0.19.0` patched with `s1s2_convert/patches/onnxruntime-genai-0.19.0-lab-s12-fixes.patch` (or `--builder-src` a checkout). `--precision int8/fp16/fp32` for more builds | lab-s12 builds |
 | package | files + manifest (`genai-<prec>-webgpu` and `-cpu` per graph, heads, `evidence`, `tasks` when the question is fixed, `license`, `provenance` with `source.format`); head.bin headers state `"scale": 1` + `s1s2 validate --strict` | `head.py` = port of the Kev PointerHead (Apache-2.0, see NOTICE) |
