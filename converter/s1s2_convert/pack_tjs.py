@@ -368,7 +368,8 @@ def stage_pin(a):
             b["fidelity"]["notes"] += " " + a.browser
         write_json(out / mn, m)
     lib = lib_dir(a.lib)
-    subprocess.run(["node", str(lib / "bin" / "s1s2.mjs"), "validate", "--strict", *[str(out / mn) for mn in meta["manifests"]]], check=True)
+    only = ["--manifest-only"] if meta.get("hydratedAt") else []  # hydrated folders hold manifests + card only, no weights
+    subprocess.run(["node", str(lib / "bin" / "s1s2.mjs"), "validate", "--strict", *only, *[str(out / mn) for mn in meta["manifests"]]], check=True)
     log(STAGE, f"pinned {meta['manifests']} to {a.revision}")
 
 
@@ -380,6 +381,78 @@ def _front_matter(text):
 def _section(body, title):
     m = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", body, re.S | re.M)
     return m.group(1).strip() if m else None
+
+
+LIB_URL = "https://github.com/eduardoworrel/s1s2/blob/1ecbd80d380a78d43056fa10e0c95745261194a5/"
+PLAIN_SNIPPET = Path(__file__).resolve().parent / "node" / "tjs_plain_decide.js"
+PIPELINE_MIN_AGREE = 0.9  # set before measuring: the PR snippet goes on a card only at >= 90% agreement with the head
+
+
+def _plain_section(name, mans, man, chk, tjs_v):
+    """'Without s1s2': the verified plain transformers.js snippet (node/tjs_plain_decide.js) + permalinks."""
+    pv = chk.get("plain") or {}
+    rp = chk["repo"].get("positions")
+    if not pv or not rp:
+        return []
+    lab = man.get("lab") or {}
+    opts = "m.lab.options" if lab.get("options") else "[m.lab.labels.yes, m.lab.labels.no]"
+    code = PLAIN_SNIPPET.read_text().replace("//--decide--\n", "")
+    code = code.replace("__REPO__", name).replace("__MANIFEST__", mans[0] if len(mans) == 1 else "manifest.json")
+    code = re.sub(r'^const state = .*$', f'const state = "…", instructions = "…", options = {opts}; // as in the GenAI quick start',
+                  code, count=1, flags=re.M)
+    ver = " and ".join(x["model"] for x in pv["verified"])
+    eq = all(x["decisionsEqual"] == x["items"] for x in pv["verified"])
+    dmax = max(x["probMaxAbsDiff"] for x in pv["verified"])
+    link = lambda label, path: f"[{label}]({LIB_URL}{path})"  # noqa: E731
+    return [
+        "## Without s1s2", "",
+        "The same decision in plain transformers.js: one forward pass, the final hidden state (`hidden_states`, after the "
+        "model's last norm) at the last token of ` <decide>` and of each ` </option>`, the pointer head in `heads/`, softmax.", "",
+        "```js", code.rstrip(), "```", "",
+        f"Checked against s1s2 on Node CPU (transformers.js {tjs_v}) on the {rp['items']} check prompts above: same read positions "
+        f"on {rp['equal']}/{rp['items']} for this model; run end to end on {ver}: "
+        + (f"same decisions on every prompt, probabilities within {dmax:.0e}. " if eq else "decisions differ on some prompts. ")
+        + "The same steps in the library: "
+        + ", ".join([link("prompt and read positions", "src/encoding.ts#L87-L175"),
+                     link("forward pass", "src/backends/transformersjs.ts#L30-L39"),
+                     link("head.bin", "src/readout.ts#L44-L67"), link("score", "src/readout.ts#L81-L88"),
+                     link("softmax and choice", "src/decide.ts#L122-L131")]) + ".", "",
+    ]
+
+
+def _pipeline_section(name, man, chk):
+    """transformers.js PR #1943 `pipeline("decision")`: label logits in its own prompt, measured against the head."""
+    pr = chk["repo"].get("pipeline")
+    if not pr:
+        return []
+    lab = man.get("lab") or {}
+    opts = [o.strip() for o in (lab.get("options") or [lab["labels"]["yes"], lab["labels"]["no"]])]
+    crit = ", ".join(f"{json.dumps(o, ensure_ascii=False) if not re.fullmatch(r'[A-Za-z_]\w*', o) else o}: null" for o in opts)
+    head = ["## With transformers.js `pipeline(\"decision\")` (draft PR)", "",
+            "[huggingface/transformers.js#1943](https://github.com/huggingface/transformers.js/pull/1943) (draft, not merged) "
+            "adds `pipeline(\"decision\")`. It reads the next-token logits of the option labels (A, B, …) in its own prompt, "
+            "not the trained head in `heads/`."]
+    k, n = pr["agree"], pr["items"]
+    if k / n >= PIPELINE_MIN_AGREE:
+        return head[:2] + [head[2] + f" On this model it gives the head's decision on {'all ' + str(n) if k == n else f'{k} of the {n}'} check prompts (Node CPU):", "",
+                           "```js",
+                           'import { pipeline } from "@huggingface/transformers"; // a build of the PR branch',
+                           f'const decide = await pipeline("decision", "{name}", {{ dtype: "q4" }});',
+                           "// the chat template ships as chat_template.jinja, which AutoTokenizer does not read:",
+                           f'decide.tokenizer.chat_template ??= await (await fetch("https://huggingface.co/{name}/resolve/main/chat_template.jinja")).text();',
+                           f'const {{ q }} = await decide({{ state: "…", questions: {{ q: {{ type: "choice", instructions: "…", criteria: {{ {crit} }} }} }} }});',
+                           "// q.choice, q.confidence, q.probabilities", "```", ""]
+    return head[:2] + [head[2] + f" On this model it gives the head's decision on only {k} of the {n} check prompts (Node CPU), "
+                       "so use s1s2 or the code above.", ""]
+
+
+def _wasm_line(chk):
+    w = chk["repo"].get("wasm")
+    if w and w.get("measured"):
+        return (f"- Browser CPU without WebGPU (WASM): measured with s1s2 in Chrome {w['chrome'].split('.')[0]} on an Apple M2 Pro, "
+                f"{w['equal']}/{w['items']} decisions equal to Node CPU (probabilities up to {w['probMaxAbsDiff']:.2f} apart), "
+                f"about {w['secondsPerPrompt']:.0f} s per prompt; the manifests list `wasm`.")
+    return "- Browser CPU (WASM): " + ((w or {}).get("note") or "should run; not measured.")
 
 
 def stage_card(a):
@@ -404,9 +477,11 @@ def stage_card(a):
         raise SystemExit("source card has no License / Credits section")
     mans = meta["manifests"]
     sib_url = f"https://huggingface.co/{sib}"
-    browser = a.browser or "Browser (WebGPU) not run for this layout yet; the reference GenAI build is the one measured in the browser."
+    browser = a.browser or meta.get("browser") or "Browser (WebGPU) not run for this layout yet; the reference GenAI build is the one measured in the browser."
     v = par.get("versions") or {}
     tjs_v = v.get("@huggingface/transformers") or "4.x"
+    checks = read_json(Path(a.checks)) if a.checks else {"repos": {}}
+    chk = {**checks, "repo": checks["repos"].get(name, {})}
     lines = [
         "---", yaml.safe_dump(front, sort_keys=False, allow_unicode=True).strip(), "---", "",
         f"# {title}", "",
@@ -427,21 +502,14 @@ def stage_card(a):
         "```", "",
         f"Then ask exactly as in the [GenAI card]({sib_url}#quick-start): same option words (each manifest lists them in `lab`). "
         f"Manifests: {', '.join('`' + x + '`' for x in mans)}.", "",
-        "Plain transformers.js (no s1s2) loads the graph too; `hidden_states` is the final hidden state per token, the input "
-        "of the heads in `heads/` (read by s1s2, not by transformers.js):", "",
-        "```js",
-        'import { AutoModelForCausalLM, AutoTokenizer } from "@huggingface/transformers";',
-        f'const model = await AutoModelForCausalLM.from_pretrained("{name}", {{ dtype: "q4" }});',
-        f'const tok = await AutoTokenizer.from_pretrained("{name}");',
-        'const { hidden_states, logits } = await model.forward(tok("Hello"));',
-        "```", "",
+        *_plain_section(name, mans, read_json(out / (mans[0] if len(mans) == 1 else "manifest.json")), chk, tjs_v),
+        *_pipeline_section(name, read_json(out / (mans[0] if len(mans) == 1 else "manifest.json")), chk),
         "## Limits", "",
-        "- Not an open-jev / Kev-format model and not a transformers.js `pipeline`: the decision heads are separate files read by s1s2.",
+        "- The decision heads are separate files (`heads/`): s1s2 or the code above applies them; transformers.js alone does not.",
         "- KV cache head dimension pinned in the graph (transformers.js needs it)" + (
             f" and one Gather node added that reads the token table (`onnx/{DATA}_1`)" if meta["graph"].get("embeddingGather") else "")
         + "; everything else is the GenAI graph.",
-        "- Not run on the browser CPU (WASM): the manifests list only the devices measured"
-        + (" (cpu, webgpu)." if on_gpu else "."), "",
+        _wasm_line(chk), "",
         "## License", "", lic, "",
         "## Credits", "", cred,
         "- Transformers.js layout and runtime: [transformers.js](https://github.com/huggingface/transformers.js) (Apache-2.0, Hugging Face).", "",
@@ -529,6 +597,38 @@ def stage_publish(a):
             log(STAGE, f"linked from {sib}")
 
 
+def stage_hydrate(a):
+    """Rebuild the local inputs of `card`/`update` (.pack-tjs.json, parity summary, source README) from the published
+    repo, when the pack folder is gone: manifests + README from the Hub, no weights."""
+    from huggingface_hub import HfApi, hf_hub_download
+    api = HfApi()
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    name = a.name or a.repo
+    files = [s.rfilename for s in api.model_info(name).siblings]
+    mans = sorted(f for f in files if re.fullmatch(r"manifest[^/]*\.json", f))
+    for f in mans + ["README.md"]:
+        shutil.copyfile(hf_hub_download(name, f, force_download=True), out / f)
+    m0 = read_json(out / mans[0])
+    b = m0["builds"][BUILD]
+    prov = m0["provenance"]
+    src = prov["source"]
+    src_dir = out.parent / f".{out.name}.source"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(hf_hub_download(src["repo"], "README.md", revision=src["revision"]), src_dir / "README.md")
+    card = (out / "README.md").read_text()
+    v = re.search(r"onnxruntime-node ([^,]+), transformers\.js ([^)]+)\)", card)
+    br = re.search(r"decisions \d+/\d+ equal\. (.+)$", card, re.M)
+    par = {k: prov["parity"][BUILD][k] for k in ("items", "decisionsEqual", "hiddenMaxAbsDiff", "probMaxAbsDiff", "measuredAt")}
+    par["versions"] = {"onnxruntime-node": v.group(1), "@huggingface/transformers": v.group(2)} if v else {}
+    write_json(out.parent / f".{out.name}.parity.json", par)
+    embed = "data_1" in b["files"]
+    write_json(out / ".pack-tjs.json", {"source": {"repo": src["repo"], "revision": src["revision"]}, "sourceDir": str(src_dir),
+                                        "name": name, "graph": {"embeddingGather": embed or None}, "manifests": mans,
+                                        "browser": br.group(1) if br else None, "hydratedAt": now_iso()})
+    log(STAGE, f"hydrated {name}: manifests {mans}, devices {b['devices']}, browser sentence: {bool(br)}")
+
+
 def stage_update(a):
     """Manifests + card only (e.g. after a browser run adds a device): pin to the same files commit, upload, verify."""
     from huggingface_hub import HfApi
@@ -547,9 +647,9 @@ def stage_update(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m s1s2_convert.pack_tjs", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("stage", choices=["pack", "parity", "pin", "card", "publish", "update"])
+    ap.add_argument("stage", choices=["pack", "parity", "pin", "card", "publish", "update", "hydrate"])
     ap.add_argument("--out", required=True, help="output folder (the new repo's contents)")
-    ap.add_argument("--repo", help="pack: source GenAI S1S2 repo id")
+    ap.add_argument("--repo", help="pack: source GenAI S1S2 repo id; hydrate: the published transformers.js repo id")
     ap.add_argument("--revision", help="pack: source revision (default: current main, recorded); pin: files commit sha")
     ap.add_argument("--name", help="pack: new repo id (default: <source> with -ONNX-transformersjs-S1S2)")
     ap.add_argument("--items", help="parity: JSONL rows {id, manifest, input, question}")
@@ -557,12 +657,14 @@ def main(argv=None):
     ap.add_argument("--lib", help="s1s2 checkout (default: the converter's parent directory)")
     ap.add_argument("--browser", help="card/pin/update: sentence on the browser run (card text and build fidelity notes; default: not run)")
     ap.add_argument("--message", help="update: commit message")
+    ap.add_argument("--checks", help="card/update: JSON with the plain-snippet, pipeline(\"decision\") and WASM checks (examples/tjs_card_checks.json)")
     ap.add_argument("--gated", help="publish: gating mode for the new repo (e.g. auto), same as the source")
     ap.add_argument("--collection", help="publish: Hub collection slug to add the repo to")
     ap.add_argument("--link-source", action="store_true", help="publish: add one line to the source card linking this repo")
     ap.add_argument("--force", action="store_true")
     a = ap.parse_args(argv)
-    {"pack": stage_pack, "parity": stage_parity, "pin": stage_pin, "card": stage_card, "publish": stage_publish, "update": stage_update}[a.stage](a)
+    {"pack": stage_pack, "parity": stage_parity, "pin": stage_pin, "card": stage_card, "publish": stage_publish, "update": stage_update,
+     "hydrate": stage_hydrate}[a.stage](a)
 
 
 if __name__ == "__main__":

@@ -87,6 +87,10 @@ per source manifest with a single `transformers.js` build. Builds made with `exc
 s1s2 on Node CPU (one at a time) and compares the hidden state at every read position and the head decisions; the result
 goes into the build's `fidelity`. The prompts used for the published repos come from `examples/pack_tjs_items.py`
 (hand-written texts in each manifest's own templates; no dataset rows). The published `*-ONNX-transformersjs-S1S2` repos were made with it.
+`hydrate` rebuilds the card/manifest inputs from a published repo (no weights) so `update` can rewrite cards later. The
+cards' "Without s1s2" code is `s1s2_convert/node/tjs_plain_decide.js`; `examples/tjs_checks/` holds the checks behind
+them (that code vs s1s2 on Node CPU, transformers.js#1943 `pipeline("decision")` vs the head, s1s2 on the browser CPU)
+and their results, `tjs_card_checks.json`, passed to `card`/`update` with `--checks`.
 
 ## Not tested
 

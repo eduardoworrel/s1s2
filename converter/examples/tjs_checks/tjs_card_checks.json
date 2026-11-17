@@ -1,0 +1,147 @@
+{
+ "note": "Checks behind the transformers.js cards, Node CPU unless stated; prompts from examples/pack_tjs_items.py (written for the parity check, not a test set).",
+ "plain": {
+  "verified": [
+   {
+    "model": "EuroLLM-1.7B",
+    "items": 20,
+    "positionsEqual": 20,
+    "decisionsEqual": 20,
+    "probMaxAbsDiff": 5.728039154107023e-09
+   },
+   {
+    "model": "Qwen3-0.6B",
+    "items": 20,
+    "positionsEqual": 20,
+    "decisionsEqual": 20,
+    "probMaxAbsDiff": 2.6977771794278738e-08
+   }
+  ]
+ },
+ "repos": {
+  "eduardoworrel/EuroLLM-1.7B-GDPR-LGPD-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 11,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equal": 20,
+    "probMaxAbsDiff": 0.1485522669428141,
+    "secondsPerPrompt": 2.1382000000000003
+   }
+  },
+  "eduardoworrel/Jurema-7B-LGPD-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 12,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": false,
+    "note": "not measured (7B, 4.7 GB of weights); Node CPU is."
+   }
+  },
+  "eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 13,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": false,
+    "note": "does not load through transformers.js (Chrome 157): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+   }
+  },
+  "eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 16,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": false,
+    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+   }
+  },
+  "eduardoworrel/Salamandra-2B-GDPR-LGPD-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 14,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": false,
+    "note": "tried with s1s2 in Chrome 157 (transformers.js, no WebGPU): out of memory (`std::bad_alloc`) on the first prompt, so the manifests do not list `wasm`; use WebGPU."
+   }
+  },
+  "eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 17,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": false,
+    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+   }
+  },
+  "eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 20,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": false,
+    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-genai-int4-S1S2), measured there."
+   }
+  },
+  "eduardoworrel/SmolLM3-3B-LGPD-ONNX-transformersjs-S1S2": {
+   "positions": {
+    "items": 20,
+    "equal": 20
+   },
+   "pipeline": {
+    "items": 20,
+    "agree": 20,
+    "pr": "huggingface/transformers.js#1943@2c39cfae"
+   },
+   "wasm": {
+    "measured": false,
+    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-LGPD-ONNX-genai-int4-S1S2), measured there."
+   }
+  }
+ }
+}
