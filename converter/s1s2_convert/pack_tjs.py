@@ -8,6 +8,8 @@ expects. This tool changes only what the layout needs and never touches a weight
     builds its empty cache from the graph metadata and resolves unknown symbols to 0, which GroupQueryAttention
     rejects) and (b) every initializer's external-data `location` rewritten to `model_q4.onnx_data`;
   * weights: `onnx/model_q4.onnx_data` = the GenAI `model.onnx.data`, byte for byte (hard link when possible);
+    builds made with exclude_embeds (graph input `inputs_embeds`, token table in a separate fp16 file) get the table
+    back as `onnx/model_q4.onnx_data_1` (the same file, byte for byte) and one Gather node from `input_ids`;
   * `config.json` = the base model's config at the pinned revision + `transformers.js_config`
     (`use_external_data_format`), checked against `genai_config.json` (layers, heads, KV heads, head size, vocab);
     `generation_config.json` from the base when it has one;
@@ -49,7 +51,7 @@ DATA = GRAPH + "_data"
 BUILD = "transformersjs-q4"
 PLACEHOLDER = "0" * 40
 COPY_ROOT = ["tokenizer.json", "tokenizer_config.json", "chat_template.jinja", "NOTICE"]
-SOURCE_PATTERNS = ["model.onnx", "model.onnx.data", "genai_config.json", "manifest*.json", "tokenizer.json",
+SOURCE_PATTERNS = ["model.onnx", "model.onnx.data", "embed_tokens*.bin", "genai_config.json", "manifest*.json", "tokenizer.json",
                    "tokenizer_config.json", "tokenizer/*", "chat_template.jinja", "heads/*/head.bin",
                    "heads/*/head.safetensors", "LICENSE*", "NOTICE", "README.md"]
 # Manifest `lab` keys kept (the quick start reads them); everything else in `lab` is source bookkeeping.
@@ -73,16 +75,42 @@ def link_or_copy(src, dst):
         shutil.copyfile(src, dst)
 
 
-def rewrite_graph(src_onnx, dst_onnx, head_size):
-    """Pin the KV head dim and point every external initializer at DATA. Returns a summary dict."""
+def add_embedding_gather(g, size, hidden):
+    """exclude_embeds builds: the graph takes inputs_embeds and the token table ships as a separate fp16 file
+    ([vocab, hidden], row-major). Put it back in the graph as an external initializer stored in the second data chunk
+    (the same file, byte for byte) and compute inputs_embeds = Gather(table, input_ids)."""
+    import onnx
+    from onnx import TensorProto, helper
+    emb_in = next(i for i in g.input if i.name == "inputs_embeds")
+    tt = emb_in.type.tensor_type
+    if tt.elem_type != TensorProto.FLOAT16 or tt.shape.dim[2].dim_value != hidden or size % (hidden * 2):
+        raise SystemExit(f"inputs_embeds {tt.elem_type}/{tt.shape.dim[2].dim_value} vs table {size} bytes, hidden {hidden}")
+    vocab = size // (hidden * 2)
+    t = TensorProto(name="model.embed_tokens.weight", data_type=TensorProto.FLOAT16, dims=[vocab, hidden])
+    t.data_location = TensorProto.EXTERNAL
+    for k, v in (("location", DATA + "_1"), ("offset", "0"), ("length", str(size))):
+        e = t.external_data.add(); e.key, e.value = k, v
+    g.initializer.append(t)
+    ids = helper.make_tensor_value_info("input_ids", TensorProto.INT64, [tt.shape.dim[0].dim_param or 1, tt.shape.dim[1].dim_param or None])
+    pos = list(g.input).index(emb_in)
+    g.input.remove(emb_in)
+    g.input.insert(pos, ids)
+    g.node.insert(0, helper.make_node("Gather", ["model.embed_tokens.weight", "input_ids"], ["inputs_embeds"], name="/model/embed_tokens/Gather", axis=0))
+    return vocab
+
+
+def rewrite_graph(src_onnx, dst_onnx, head_size, embeddings=None):
+    """Pin the KV head dim and point every external initializer at DATA (+ the embedding table at DATA_1 when the
+    build excluded it). Returns a summary dict."""
     import onnx
     m = onnx.load(str(src_onnx), load_external_data=False)
     g = m.graph
     in_names = [i.name for i in g.input]
     out_names = [o.name for o in g.output]
+    vocab = None
     if "input_ids" not in in_names:
-        raise SystemExit(f"{src_onnx}: graph has no input_ids input (inputs: {in_names[:4]}...); builds with "
-                         "exclude_embeds (inputs_embeds + a separate embeddings table) are not supported by this tool")
+        if "inputs_embeds" not in in_names or not embeddings:
+            raise SystemExit(f"{src_onnx}: graph has neither input_ids nor inputs_embeds + an embeddings table")
     if "logits" not in out_names or "hidden_states" not in out_names:
         raise SystemExit(f"{src_onnx}: expected outputs logits and hidden_states, got {out_names[:4]}...")
     pinned, symbols = 0, set()
@@ -101,9 +129,13 @@ def rewrite_graph(src_onnx, dst_onnx, head_size):
         d.Clear()
         d.dim_value = head_size
         pinned += 1
+    if "input_ids" not in in_names:
+        vocab = add_embedding_gather(g, *embeddings)
     locs, n_ext = set(), 0
     for t in g.initializer:
         if t.data_location != onnx.TensorProto.EXTERNAL:
+            continue
+        if t.name == "model.embed_tokens.weight" and vocab:
             continue
         n_ext += 1
         for kv in t.external_data:
@@ -118,7 +150,7 @@ def rewrite_graph(src_onnx, dst_onnx, head_size):
         raise SystemExit(f"{src_onnx}: expected one external data file, found {sorted(locs)}")
     Path(dst_onnx).parent.mkdir(parents=True, exist_ok=True)
     Path(dst_onnx).write_bytes(m.SerializeToString())
-    return {"kvDimsPinned": pinned, "kvDimSymbols": sorted(symbols), "externalInitializers": n_ext,
+    return {"kvDimsPinned": pinned, "kvDimSymbols": sorted(symbols), "externalInitializers": n_ext, "embeddingGather": vocab,
             "sourceDataLocation": locs.pop(), "inputs": len(in_names), "outputs": out_names[:2] + ["..."]}
 
 
@@ -200,13 +232,21 @@ def stage_pack(a):
     head_size = check_config(cfg, gc)
     log(STAGE, f"{a.repo}@{rev[:8]} -> {out} ({name}); base {base['repo']}@{base['revision'][:8]}, KV head size {head_size}")
 
-    g = rewrite_graph(src / "model.onnx", out / "onnx" / GRAPH, head_size)
+    ef = next(iter(m0["builds"].values()))["files"].get("embeddings")
+    emb = (ef["size"], m0["hiddenSize"]) if ef else None
+    g = rewrite_graph(src / "model.onnx", out / "onnx" / GRAPH, head_size, emb)
     if g["sourceDataLocation"] != "model.onnx.data":
         raise SystemExit(f"graph points at {g['sourceDataLocation']}, expected model.onnx.data")
     link_or_copy(src / "model.onnx.data", out / "onnx" / DATA)
-    cfg["transformers.js_config"] = {"use_external_data_format": {GRAPH: 1}}
+    if ef:
+        link_or_copy(src / ef["path"], out / "onnx" / (DATA + "_1"))
+    cfg["transformers.js_config"] = {"use_external_data_format": {GRAPH: 2 if ef else 1}}
     write_json(out / "config.json", cfg)
     files = {"model": pfile(out, f"onnx/{GRAPH}"), "data": pfile(out, f"onnx/{DATA}"), "config": pfile(out, "config.json")}
+    if ef:
+        files["data_1"] = pfile(out, f"onnx/{DATA}_1")
+        if files["data_1"]["sha256"] != ef["sha256"]:
+            raise SystemExit("embeddings table changed while copying")
     try:
         gen = Path(hf_hub_download(base["repo"], "generation_config.json", revision=base["revision"]))
         shutil.copyfile(gen, out / "generation_config.json")

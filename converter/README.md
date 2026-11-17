@@ -77,6 +77,16 @@ dev; 8 epochs, `--lr 1e-4 --head-lr 1e-3`; CPU training ~9 min). The package its
   same `model.onnx.data` (weights) bytes as the patched-pip path; `model.onnx` (graph proto, 214 KB) differs and the difference was not inspected.
 * Unit tests: `python -m unittest discover -s tests` (fill/escape/render, data loading, head.bin vs lib formula).
 
+## Transformers.js layout of a published package (`pack_tjs`)
+
+`python -m s1s2_convert.pack_tjs pack|parity|card|publish|update` turns a published ONNX Runtime GenAI S1S2 repo into a
+Transformers.js-loadable folder with the same weights (data file byte for byte): `onnx/model_q4.onnx` (KV head dim pinned,
+external-data location renamed), `config.json` of the base + `transformers.js_config`, tokenizer, heads, and one manifest
+per source manifest with a single `transformers.js` build. Builds made with `exclude_embeds` get the token table back as
+`onnx/model_q4.onnx_data_1` (same file) and one Gather node. `parity` loads the source GenAI graph and the new one with
+s1s2 on Node CPU (one at a time) and compares the hidden state at every read position and the head decisions; the result
+goes into the build's `fidelity`. The published `*-ONNX-transformersjs-S1S2` repos were made with it.
+
 ## Not tested
 
 * WebGPU (browser) execution of the produced package (only onnxruntime-node CPU); CUDA training path (`--device cuda`).
