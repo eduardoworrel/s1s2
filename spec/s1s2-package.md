@@ -335,7 +335,7 @@ because no S1S2 manifest has been published and every local head.bin was invento
 
 | Heads | Header | Read in 0.2 | Action |
 |---|---|---|---|
-| 306 heads of the model cards' training runs (unpublished) | `scale_folded_into_q: 0.0625` | scale 1 (unchanged) | none (that head writer was frozen while the measurements ran; writing `scale: 1.0` there is pending) |
+| 306 heads of the model cards' training runs (unpublished) | `scale_folded_into_q: 0.0625` | scale 1 (unchanged) | none (that head writer is frozen while its measurements run; writing `scale: 1.0` there is pending) |
 | ct0 `head.bin` (sha `1138a774…`, T 2.0, offset 16.27) and `head_score.bin` (`82640a99…`), pinned 14× in `manifests/ct0-alias3-micro-1026.json`, published in `eduardoworrel/alias3-micro-1026-*` | no scale key, folded | 1/16 without the manifest | manifest declares `scale: 1` on every head (the Hub files cannot change) |
 | other unpublished ct0 heads | no scale key, folded | — | not in any S1S2 manifest; declare `scale: 1` if ever packaged |
 | alias3-web `f586cb80…` | no scale key, not folded | 1/16 (= its own reader) | none |
