@@ -209,15 +209,37 @@ backend the kept prefill is reused (`sharedPrefill: true`, `reusedTokens` = deci
 
 | runtime | where | System 1 reads | shared prefill (`s.generate`) | multi-question prefix reuse |
 |---|---|---|---|---|
-| `genai` (ONNX Runtime GenAI graph) | browser WebGPU (onnxruntime-web), Node CUDA (onnxruntime-node) | logits, head | **yes** (GPU state kept) | yes |
+| `genai` (ONNX Runtime GenAI graph) | browser WebGPU (onnxruntime-web), browser CPU/WASM when the build lists `"wasm"`, Node CUDA (onnxruntime-node), Node CPU when the build lists `"cpu"` | logits, head | **yes** (GPU state kept) | yes |
 | `decode-only` (ONNX Runtime) | browser WebGPU/WASM, Node CPU/CUDA | logits, head | **yes** | yes |
 | `litert` (LiteRT.js 2.6.0) | browser WebGPU | logits, head | **yes** (host copy of the state) | yes |
 | `transformers.js` | browser WebGPU/WASM, Node CPU/CUDA | logits, head | no, fresh prefill (`sharedPrefill: false`) | no |
 | `webllm` (MLC) | browser WebGPU | logits; head via hidden recovered from logits | no, fresh prefill | no |
 
-`"auto"`: browser with WebGPU → genai, decode-only, transformers.js; without WebGPU → decode-only (WASM);
-Node with CUDA → genai, transformers.js; Node CPU → transformers.js, decode-only. genai does not run on
-onnxruntime-node CPU. `litert` and `webllm` are only picked when asked for (`runtime` or `build`).
+`"auto"`: browser with WebGPU → genai, decode-only, transformers.js; without WebGPU → genai (WASM, builds listing
+`"wasm"`), decode-only (WASM), transformers.js (WASM); Node with CUDA → genai, transformers.js; Node CPU →
+transformers.js, decode-only. genai runs on onnxruntime-node CPU only for builds listing `"cpu"`. `litert` and
+`webllm` are only picked when asked for (`runtime` or `build`).
+
+### Browser CPU fallback (WASM)
+
+CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists device `"wasm"` on the browser CPU (onnxruntime-web WASM; `model.device === "wasm"`, opt out with `cpuFallback: false`): 7.5–16.5× slower than WebGPU, same decisions in ≥116/120 items (lab-s12 study 011 arm C); long inputs (ContractNLI) on the 1.7B and 3B models did not fit a 2-hour budget for 120 items. S5-nano cannot run there (no WASM kernel for GatedDeltaNet).
+
+* WebGPU is "absent" when `navigator.gpu` is missing or `requestAdapter()` gives no adapter (`webgpuStatus()` returns
+  the reason). With `device: "auto"` (default) the loader then picks a genai build that lists `"wasm"`, also when
+  `build` names it. It never tries a build that does not list `"wasm"`: the error names WebGPU's state and each
+  build's devices. `device: "wasm"` (or `"cpu"` in the browser) asks for the CPU path even when WebGPU exists.
+* `cpuFallback: false`: with `device: "auto"` and no WebGPU, throw instead of moving to the CPU (any runtime).
+* After load: `model.device` is `"webgpu"` or `"wasm"`; on an automatic move `model.fallbackReason` says why.
+  Warn users about speed when it is `"wasm"`.
+* The route is the one study 011 arm C measured: the `onnxruntime-web/wasm` bundle (`ort-wasm-simd-threaded.wasm`,
+  not the WebGPU/JSEP binary), `InferenceSession.create(graph, { executionProviders: ["wasm"], externalData })` with
+  ORT's default threads and optimization level, then the same genai backend (`wrapSession`) as WebGPU. Pass
+  `modules.ort` to use another onnxruntime-web module. ORT uses several threads only on a cross-origin isolated page
+  (COOP `same-origin` + COEP `require-corp`); the study page was isolated (4 threads), so without isolation expect
+  slower than the figures above.
+* A packager adds `"wasm"` to a build's `devices` only after measuring that path for that graph (kernels and
+  decisions against WebGPU). Qwen3.5-family graphs (S5-nano, CT0) cannot: onnxruntime-web 1.31.1 has no WASM kernel
+  for `com.microsoft.GatedDeltaNet`. `s1s2-convert` does not add it.
 
 ## Manifest (`schema: "s1s2.manifest/1"`)
 
@@ -244,7 +266,7 @@ graph exposes the named hidden output.
 | `tasks?` | named label sets (see Tasks) |
 | `escalation?` | margin policy defaults (also per build: `builds.<name>.escalation`) |
 | `evidence?` | `{ instructions, sentencePrefix?, source? }`: the evidence selector question (`{requirement}`); the head is a build head with `types: ["evidence"]` |
-| `builds.<name>` | `runtime`, `repo`, `revision`, `files: { role: { path, sha256, size? } }`, `hiddenOutput`, `heads: { name: { file, types } }` (types: question types or `"evidence"`), `devices`, `dtype?`, `modelId?`, `kvHeadDim?`, `maxSafeTokens?`, `fidelity` (null until the lab fills it: `{ reference, n, decisionChanged, orderInversion, measuredAt }`) |
+| `builds.<name>` | `runtime`, `repo`, `revision`, `files: { role: { path, sha256, size? } }`, `hiddenOutput`, `heads: { name: { file, types } }` (types: question types or `"evidence"`), `devices` (`webgpu` browser GPU, `wasm` browser CPU via onnxruntime-web, `cpu` Node onnxruntime-node, `cuda`), `dtype?`, `modelId?`, `kvHeadDim?`, `maxSafeTokens?`, `fidelity` (null until the lab fills it: `{ reference, n, decisionChanged, orderInversion, measuredAt }`) |
 
 File roles: genai `model`, `data` (+ `genaiConfig`, `embeddings` for exclude_embeds builds); decode-only `model`, `data`; transformers.js `model` (+ data, config files);
 webllm `config` (+ `lib`, `recoveryRows`, `recoveryP`); litert `manifest`, `graph`, `weights`, `embed`.
@@ -327,7 +349,10 @@ revision, sha256-checked) and ct0-edge's fixtures: all 172 prompts, token ids an
 the head/logits numbers of `ask_expected.json`. Backends are tested against mocks. `npm run test:smoke` loads the real
 CT0 decode-only q4 build on the Node CPU (heavy: about 4 GB of RAM);
 `node test/smoke/parity_ct0_edge.mjs` compares `decide()` with ct0-edge 1.0.0 `askMany()` on the same session
-(measured: identical to 4e-16 on predicate/choice/score, head and logits).
+(measured: identical to 4e-16 on predicate/choice/score, head and logits). `test/wasm.test.mjs` covers the browser
+CPU fallback with a simulated browser (planning, session options, refusals, `cpuFallback`);
+`PLAYWRIGHT_DIR=… node test/smoke/browser_wasm.mjs` loads a published manifest in headless Chrome without WebGPU and
+checks `device === "wasm"` on `ort-wasm-simd-threaded.wasm` plus one decision.
 
 ## Limitations
 

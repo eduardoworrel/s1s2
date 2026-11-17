@@ -272,6 +272,11 @@ builds.<name> = { runtime, repo, revision, files, hiddenOutput, heads?, norm?, a
 
 Runtimes and roles unchanged from 0.1 (`genai`, `decode-only`, `transformers.js`, `webllm`, `litert`).
 
+* `devices`: where the build was checked to run. Vocabulary: `webgpu` (browser GPU, onnxruntime-web WebGPU EP),
+  `wasm` (browser CPU, onnxruntime-web WASM EP), `cpu` (Node, onnxruntime-node CPU), `cuda` (Node CUDA). For
+  `genai`, `wasm` and `cpu` are opt-in: a packager lists them only after measuring that path for the graph (kernels
+  present, decisions against the GPU build); a reader runs a genai build on those devices only when they are listed,
+  and MAY fall back from `webgpu` to `wasm` when WebGPU is absent. The build name does not restrict its devices.
 * `norm`: 6.5.
 * `attention`: `"causal"` (default) or `"noncausal"` — the attention the decision pass was trained with
   (pplx-decider v1.1 and d3 `attention_mode: "noncausal_full_attention"`). Described: s1s2 0.1 builds are causal and

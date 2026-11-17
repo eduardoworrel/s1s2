@@ -20,7 +20,7 @@ test("explicit build / runtime", () => {
   assert.throws(() => planBuilds(CT0, { build: "genai-webgpu-int4" }, node), /does not run on onnxruntime-node CPU/);
   assert.throws(() => planBuilds(CT0, { runtime: "webllm" }, node), /only in the browser/);
   assert.throws(() => planBuilds(CT0, { build: "decode-only-q4", runtime: "genai" }, node), /is runtime decode-only/);
-  assert.throws(() => deviceFor("genai", "wasm", web), /needs WebGPU/);
+  assert.throws(() => deviceFor("genai", "wasm", web), /lists device "wasm"/);
   assert.equal(deviceFor("transformers.js", "cpu", web), "wasm");
 });
 

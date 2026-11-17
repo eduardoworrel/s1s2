@@ -134,6 +134,8 @@ export interface BuildSpec {
   /** Attention of the decision pass the heads were trained with (spec 7): "causal" (default) or "noncausal"
    *  (pplx-decider v1.1 / d3). Described only: s1s2 0.1 refuses to load a "noncausal" build. */
   attention?: "causal" | "noncausal";
+  /** Where the build was checked to run: "webgpu" (browser GPU), "wasm" (browser CPU, onnxruntime-web), "cpu" (Node
+   *  onnxruntime-node), "cuda". For genai, "wasm" and "cpu" are opt-in: listed only after measuring that path. */
   devices: string[];
   dtype?: string;
   modelId?: string;

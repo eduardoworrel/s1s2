@@ -8,7 +8,7 @@ export { loadHead, headScale, headScaleSource, headScore, decisionOf, topGap, pr
 export { wrapTokenizer, tokenizerFromJson, tokenOffsets, type Tok } from "./tok.js";
 export { Files, IntegrityError, sha256Hex, verifyFileOnce } from "./files.js";
 export { canShareState, createGate, resolveGenerateOptions, GENERATE_DEFAULTS, type Backend, type StateHandle, type PrefillResult, type GenerateOptions } from "./backend.js";
-export { planBuilds, deviceFor, autoOrder, detectPlatform, detectWebGPU, detectCuda, type Device, type DeviceChoice, type Caps, type Plan } from "./runtime.js";
+export { planBuilds, deviceFor, autoOrder, detectPlatform, detectWebGPU, webgpuStatus, GENAI_BROWSER_CPU_NOTE, detectCuda, type Device, type DeviceChoice, type Caps, type Plan } from "./runtime.js";
 export { genaiFromSession, createGenai, wrapSession, parsePlacement, assertWebGpuPlacement } from "./backends/genai.js";
 export { createDecodeOnly } from "./backends/decodeOnly.js";
 export { embeddingTable, embeddingTableFromBytes, httpRangeTable, fileTable, f16ToF32, type EmbeddingTable } from "./backends/embeddings.js";

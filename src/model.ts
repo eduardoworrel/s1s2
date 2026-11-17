@@ -10,7 +10,7 @@ import { loadNorm, type NormWeights } from "./heads/norm.js";
 import { canShareState, type Backend } from "./backend.js";
 import { decide, generate, type Engine, type DecideOptions, type DecisionSession, type GenerateOpts, type GenerateResult } from "./decide.js";
 import type { DecisionRequest } from "./questions.js";
-import { detectPlatform, detectWebGPU, detectCuda, planBuilds, importOptional, type Caps, type Device, type DeviceChoice, type Plan } from "./runtime.js";
+import { detectPlatform, webgpuStatus, detectCuda, planBuilds, importOptional, type Caps, type Device, type DeviceChoice, type Plan } from "./runtime.js";
 import { genaiFromSession, createGenai, type GenaiOptions } from "./backends/genai.js";
 import { embeddingTableFromBytes, httpRangeTable, fileTable, type EmbeddingTable } from "./backends/embeddings.js";
 import { createDecodeOnly } from "./backends/decodeOnly.js";
@@ -25,6 +25,10 @@ export interface LoadOptions {
   build?: string;
   runtime?: RuntimeName | "auto";
   device?: DeviceChoice;
+  /** Browser, device "auto": when WebGPU is absent (navigator.gpu missing or no adapter), load a build on the CPU
+   *  (onnxruntime-web WASM) if the manifest lists device "wasm" for it (default true). false: throw instead; the app
+   *  can still ask for the CPU with device "wasm". Check `model.device` after load: "wasm" is 7.5-16.5x slower. */
+  cpuFallback?: boolean;
   /** Modules to use instead of importing them. */
   modules?: { ort?: any; transformers?: any; webllm?: any; litert?: any };
   /** Node: download cache. */
@@ -65,7 +69,7 @@ export class S1S2 {
   readonly build: string;
   readonly runtime: RuntimeName;
   readonly device: Device;
-  /** Why "auto" did not use its first candidate. */
+  /** Why "auto" did not use its first candidate, or why it runs on the browser CPU ("wasm") without being asked to. */
   fallbackReason?: string;
   private engine: Engine;
   private buildLoader?: (build: string) => Promise<S1S2>;
@@ -137,7 +141,8 @@ export class S1S2 {
     const files = new Files({ platform, cacheDir: opts.cacheDir, localDirs: opts.localDirs, baseUrls: opts.baseUrls, allowUnverified: opts.allowUnverified, fetch: opts.fetch, onStatus: status });
     const mods = opts.modules ?? {};
 
-    const webgpu = platform === "browser" ? await detectWebGPU() : false;
+    const gpu = platform === "browser" ? await webgpuStatus() : { ok: false, reason: undefined };
+    const webgpu = gpu.ok;
     let ort: any = mods.ort ?? null, cuda = false;
     const wantsOrt = (r?: string) => !r || r === "auto" || r === "genai" || r === "decode-only";
     const req = opts.build ? m.builds[opts.build]?.runtime : opts.runtime;
@@ -145,8 +150,8 @@ export class S1S2 {
       try { ort ??= await importOptional(NODE_ORT, () => dynImport(NODE_ORT), "ONNX Runtime in Node"); cuda = detectCuda(ort); }
       catch (e) { if (req === "genai" || req === "decode-only") throw e; }
     }
-    const caps: Caps = { platform, webgpu, cuda };
-    const plans = planBuilds(m, { build: opts.build, runtime: opts.runtime, device: opts.device }, caps);
+    const caps: Caps = { platform, webgpu, cuda, webgpuReason: gpu.reason };
+    const plans = planBuilds(m, { build: opts.build, runtime: opts.runtime, device: opts.device, cpuFallback: opts.cpuFallback }, caps);
 
     status("loading tokenizer…");
     const tjs: any = mods.transformers ?? await importOptional(TJS_PKG, () => import("@huggingface/transformers"), "the tokenizer");
@@ -165,7 +170,7 @@ export class S1S2 {
 
     const loaders: Record<RuntimeName, (b: BuildSpec, d: Device) => Promise<Backend>> = {
       genai: async (b, d) => {
-        const o = await loadOrt();
+        const o = platform === "browser" && d === "wasm" ? mods.ort : await loadOrt();
         let kvHeadDim = b.kvHeadDim;
         if (b.files.genaiConfig) kvHeadDim = (await files.json(b.repo, b.revision, b.files.genaiConfig))?.model?.decoder?.head_size ?? kvHeadDim;
         // exclude_embeds builds: the token embedding table is a separate pinned file (role "embeddings", fp16 [vocab, hidden]).
@@ -184,6 +189,8 @@ export class S1S2 {
           if (platform === "browser") {
             const graph = await files.bytes(b.repo, b.revision, b.files.model);
             const dataUrl = await files.large(b.repo, b.revision, b.files.data);
+            // CPU (WASM): the onnxruntime-web/wasm bundle unless modules.ort is given (study 011 arm C route).
+            if (d === "wasm") return await createGenai(graph, dataUrl, basename(b.files.data.path), { ...gopts, ort: mods.ort, providers: ["wasm"], modelKey: b.files.model.sha256 });
             return await createGenai(graph, dataUrl, basename(b.files.data.path), { ...gopts, modelKey: b.files.model.sha256 });
           }
           await files.local(b.repo, b.revision, b.files.data);
@@ -278,6 +285,7 @@ export class S1S2 {
         const norm = opts.heads === false || !b.norm ? undefined : await loadBuildNorm(m, b, files);
         await assertBackend(m, b, backend);
         const s = new S1S2(m, plan, { manifest: m, tok, backend, heads, norm, maxSafeTokens: opts.maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
+        if (plan.device === "wasm" && !webgpu && (opts.device ?? "auto") === "auto") reasons.unshift(`WebGPU is not available (${gpu.reason}): running on the browser CPU (WASM), slower than WebGPU${plan.runtime === "genai" ? " (7.5-16.5x in lab-s12 study 011)" : ""}`);
         if (reasons.length) s.fallbackReason = reasons.join("; ");
         s.withBuildLoader((build) => S1S2.load({ ...opts, manifest: m, build, runtime: undefined })); // parsed once: one manifest fetch per load
         status(`ready: ${plan.build} (${plan.runtime}, ${plan.device})`);

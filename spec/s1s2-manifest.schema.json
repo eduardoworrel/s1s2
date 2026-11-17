@@ -920,6 +920,7 @@
         },
         "devices": {
           "type": "array",
+          "description": "Where the build was checked to run: webgpu (browser GPU), wasm (browser CPU, onnxruntime-web WASM), cpu (Node onnxruntime-node), cuda. For genai, wasm and cpu are opt-in (listed only after the packager measured that path); readers may fall back from webgpu to wasm when WebGPU is absent.",
           "minItems": 1,
           "items": {
             "$ref": "#/$defs/nonEmpty"

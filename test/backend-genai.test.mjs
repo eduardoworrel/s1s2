@@ -136,7 +136,7 @@ test("EP placement checks and createGenai with graph bytes", async () => {
   assert.deepEqual(parsePlacement(["2026-11-12 [V:onnxruntime:, session_state.cc:1581 VerifyEachNodeIsAssignedToAnEp]  All nodes placed on [WebGpuExecutionProvider]. Number of nodes: 16"]), { WebGpuExecutionProvider: 16 });
   assert.throws(() => assertWebGpuPlacement({ WebGpuExecutionProvider: 300, CPUExecutionProvider: 591 }), /CPU/);
   assert.throws(() => assertWebGpuPlacement({}), /could not verify/);
-  await assert.rejects(createGenai("m", "d", "model.onnx.data", O({ providers: ["wasm"], ort: {} })), /webgpu/);
+  await assert.rejects(createGenai("m", "d", "model.onnx.data", O({ providers: ["cpu"], ort: {} })), /webgpu.*wasm/);
   const created = [];
   const mod = { Tensor, env: { versions: { web: "1.30.0" } }, InferenceSession: { async create(model, o) { created.push([model, o.externalData]); return mkSession(); } } };
   const graph = new Uint8Array([1, 2, 3]);

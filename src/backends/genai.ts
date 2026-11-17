@@ -269,11 +269,12 @@ async function probePlacement(ort: any, model: string | Uint8Array, sessionOpts:
   finally { await probe.release?.(); }
 }
 
-/** Browser: create the session on WebGPU from pinned URLs (model + external data). */
+/** Browser: create the session on WebGPU (default) or on the CPU (`providers: ["wasm"]`) from pinned URLs (model + external data). */
 export async function createGenai(model: string | Uint8Array, dataUrl: string, dataName: string, opts: GenaiOptions): Promise<GenaiBackend> {
   const modelKey = opts.modelKey ?? (typeof model === "string" ? model : `bytes:${model.byteLength}`);
   const providers = opts.providers ?? ["webgpu"];
-  if (providers[0] !== "webgpu") throw new Error("genai: the graph requires the webgpu EP as first provider");
+  if (providers.length === 1 && providers[0] === "wasm") return createGenaiWasm(model, dataUrl, dataName, opts);
+  if (providers[0] !== "webgpu") throw new Error('genai: the browser graph runs on providers ["webgpu", ...] or ["wasm"]');
   const ort: any = opts.ort ?? await import("onnxruntime-web/webgpu");
   const verify = opts.verifyEp ?? false;
   const sessionOpts = (level: number) => ({
@@ -296,6 +297,27 @@ export async function createGenai(model: string | Uint8Array, dataUrl: string, d
     }
   }
   const session = await ort.InferenceSession.create(model, sessionOpts(3));
+  return wrapSession(session, ort, opts);
+}
+
+/**
+ * Browser CPU path, as measured by lab-s12 study 011 arm C: the onnxruntime-web WASM bundle (`onnxruntime-web/wasm`,
+ * ort-wasm-simd-threaded.wasm), `executionProviders: ["wasm"]` with the external data, ORT's default threads and
+ * optimization level, outputs on the CPU, no EP-placement probe; then the same wrapSession as WebGPU.
+ */
+async function createGenaiWasm(model: string | Uint8Array, dataUrl: string, dataName: string, opts: GenaiOptions): Promise<GenaiBackend> {
+  const ort: any = opts.ort ?? await import("onnxruntime-web/wasm");
+  if (!opts.skipVersionCheck) checkOrtVersion(ort.env?.versions?.web);
+  let session: any;
+  try { session = await ort.InferenceSession.create(model, { executionProviders: ["wasm"], externalData: [{ path: dataName, data: dataUrl }] }); }
+  catch (e: any) {
+    const msg = String(e?.message ?? e);
+    if (/Failed to find kernel/i.test(msg)) {
+      const err = new Error(`genai on the browser CPU (WASM): onnxruntime-web has no WASM kernel for an op of this graph (${msg.slice(0, 300)}). This build needs WebGPU.`);
+      (err as any).cause = e; throw err;
+    }
+    throw e;
+  }
   return wrapSession(session, ort, opts);
 }
 
