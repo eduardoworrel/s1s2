@@ -87,7 +87,7 @@
     "ajv": "^8.20.0"
   },
   "bin": {
-    "s1s2": "./bin/s1s2.mjs"
+    "s1s2": "bin/s1s2.mjs"
   },
   "files": [
     "dist",
