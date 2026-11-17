@@ -15,7 +15,7 @@ const FORBIDDEN = [
   ["notice", " 0"],
   ["estudo", " 0"],
 ].map(([a, b]) => new RegExp(`${a}${b}`, "i"));
-const ARM = new RegExp(`\\b[Aa]rm [A-Z]\\b|\\b[Bb]raço [A-Z]\\b`);  // "arm K", "braço C"
+const ARM = new RegExp(`\\b[Aa]rm [A-Z]\\b|\\b[Bb]raço [A-Z]\\b`);  // an arm or braço followed by a single capital letter
 
 test("no internal study names in shipped files", () => {
   const files = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
