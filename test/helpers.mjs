@@ -27,8 +27,12 @@ export const TOY_PIECES = [...TOY_SPECIALS, "▁<", "▁</", "decide", "option",
   ...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).filter((c) => c !== " "), "\n", "▁>", "‹", "¦"];
 export const TOY_ID = new Map(TOY_PIECES.map((p, i) => [p, i]));
 
-/** Greedy longest-match pieces; '▁' prefix at the start of the text and after every special token (legacy SP). */
-export const toy = {
+/** Greedy longest-match pieces; '▁' prefix at the start of the text and after every special token (legacy SP).
+ *  `makeToy(pieces, { keepLeadingSpace: true })` decodes like a byte-level BPE (" A" stays " A"). */
+export const toy = makeToy(TOY_PIECES);
+export function makeToy(PIECES, { keepLeadingSpace = false } = {}) {
+  const TOY_ID = new Map(PIECES.map((p, i) => [p, i]));
+  return {
   encode(text) {
     const out = [];
     let i = 0, seg = "", fresh = true;
@@ -52,10 +56,11 @@ export const toy = {
     return out;
   },
   decode(ids) {
-    const s = ids.map((i) => TOY_PIECES[i]).join("").replace(/▁/g, " ");
-    return s.startsWith(" ") ? s.slice(1) : s;
+    const s = ids.map((i) => PIECES[i]).join("").replace(/▁/g, " ");
+    return s.startsWith(" ") && !keepLeadingSpace ? s.slice(1) : s;
   },
-};
+  };
+}
 
 export function toyManifest() {
   const m = clone(JSON.parse(readFileSync(new URL("../manifests/smollm2-135m-instruct.en.json", import.meta.url), "utf8")));

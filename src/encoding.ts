@@ -256,16 +256,32 @@ export function taskTokens(m: Manifest): (TokenRef & { at: string })[] {
 export function scoreLayout(tok: Tok, m: Manifest, q: NQ, context?: string): { lead: string; labels: string[] } {
   const sc = m.logits.score, none = { lead: "", labels: q.values };
   if (sc.lead !== undefined) return { lead: sc.lead, labels: q.values };
-  if (context === undefined || /\s$/.test(context) || q.labelIds || q.type !== "score") return none;
+  if (q.labelIds || q.type !== "score") return none;
+  return spaceLayout(tok, q.values, context, sc.map === "first-token");
+}
+
+/** Choice questions read by label logits under `logits.choice.map: "letters"` (no pinned tokens): the option keys
+ *  (A, B, ...) as the model writes them after the cue. After "Answer:" a Qwen-style tokenizer writes " A" as one token,
+ *  so the keys are read as " A", " B", ...; a tokenizer that writes the space as its own token gets the lead " " and
+ *  the keys are read after it; a prompt ending in whitespace reads the bare keys. Same rule as `scoreLayout`. */
+export function letterLayout(tok: Tok, q: NQ, context?: string): { lead: string; labels: string[] } {
+  return spaceLayout(tok, q.values.map((_, i) => optionKey(i)), context, true);
+}
+
+/** The text the model writes between the cue and a label: a lone space token (lead " "), a space fused with the
+ *  label (labels read as " " + label, when `spaced` and every " " + label is one token), or nothing. */
+function spaceLayout(tok: Tok, labels: string[], context: string | undefined, spaced: boolean): { lead: string; labels: string[] } {
+  const none = { lead: "", labels };
+  if (context === undefined || /\s$/.test(context)) return none;
   const base = tok.encode(context), sp = tok.encode(context + " ");
   const spaceAlone = sp.length === base.length + 1 && isPrefix(base, sp) && tok.decode([sp[base.length]]).trim() === "";
-  if (spaceAlone && q.values.every((l) => { const b = tok.encode(context + " " + l); return isPrefix(sp, b) && b.length > sp.length; }))
-    return { lead: " ", labels: q.values };
-  if (sc.map === "first-token" && q.values.every((l) => !/^\s/.test(l))) {
+  if (spaceAlone && labels.every((l) => { const b = tok.encode(context + " " + l); return isPrefix(sp, b) && b.length > sp.length; }))
+    return { lead: " ", labels };
+  if (spaced && labels.every((l) => !/^\s/.test(l))) {
     try {
-      const spaced = q.values.map((l) => " " + l);
-      const ids = firstTokens(tok, spaced, "score", context);
-      if (ids.every((id, i) => tok.decode([id]) === spaced[i])) return { lead: "", labels: spaced };
+      const sl = labels.map((l) => " " + l);
+      const ids = firstTokens(tok, sl, "score", context);
+      if (ids.every((id, i) => tok.decode([id]) === sl[i])) return { lead: "", labels: sl };
     } catch { /* fall through: the plain labels */ }
   }
   return none;

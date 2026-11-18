@@ -159,15 +159,21 @@ export async function createLiteRt(lrt: LiteRtJs, graph: Uint8Array, manifest: L
     if (paramIO) { const p = new Int32Array(paramIO.shape.reduce((a, b) => a * b, 1)); p[0] = pos[0]; p[1] = pos[0] + valid; p[2] = pos[0] + valid; feed.param_tensor = T(p, paramIO.shape); }
     const out = await model.run(sig, feed);
     del(feed.embeddings); del(feed.input_pos); del(feed.mask); del(feed.param_tensor);
-    if (inplace) return { st, logits: out.logits, hidden: hiddenOut ? out[hiddenOut] : undefined };
+    // Every output tensor is owned by the caller: the ones not handed on (a hidden output this build does not read,
+    // extra outputs) are freed here, so graphs exported with more outputs (e.g. prefill logits) do not leak per step.
+    const hidden = hiddenOut ? out[hiddenOut] : undefined;
+    const handed = new Set<any>([out.logits, hidden]);
+    if (inplace) { for (const k in out) if (!handed.has(out[k]) && !isState(k)) del(out[k]); return { st, logits: out.logits, hidden }; }
     const ns: Record<string, any> = {};
     for (const io of stateIO) {
       const t = out[io.name];
       if (!t) throw new Error(`litert: ${sig} did not return ${io.name}`);
       if (copyState && t.copyTo) { ns[io.name] = await t.copyTo("wasm"); del(t); } else ns[io.name] = t;
+      handed.add(t);
     }
+    for (const k in out) if (!handed.has(out[k])) del(out[k]);
     freeState(st);
-    return { st: ns, logits: out.logits, hidden: hiddenOut ? out[hiddenOut] : undefined };
+    return { st: ns, logits: out.logits, hidden };
   }
   async function readLogits(L: any): Promise<Float32Array> {
     const c = L.moveTo ? await L.moveTo("wasm") : L;
@@ -201,7 +207,7 @@ export async function createLiteRt(lrt: LiteRtJs, graph: Uint8Array, manifest: L
       const toks = ids.slice(from + c.start, from + c.start + c.len);
       const emb = new Float32Array(P * H); emb.set(await embed.rows(toks));
       const pos = new Int32Array(P); for (let i = 0; i < c.len; i++) pos[i] = from + c.start + i;
-      const r = await run(prefillName, emb, P, pos, st, c.len); st = r.st; await grab(r, from + c.start, c.len);
+      const r = await run(prefillName, emb, P, pos, st, c.len); st = r.st; del(r.logits); await grab(r, from + c.start, c.len);
     }
     return st;
   }
@@ -233,7 +239,7 @@ export async function createLiteRt(lrt: LiteRtJs, graph: Uint8Array, manifest: L
     let st: Record<string, any> | null = st0;
     try {
       st = await prefillTokens(ids, from, ids.length - 1, st);
-      let r = await decodeOne(ids[ids.length - 1], ids.length - 1, st); st = r.st;
+      let r = await decodeOne(ids[ids.length - 1], ids.length - 1, st); st = r.st; del(r.hidden);
       const gen: number[] = [];
       for (let s = 0, pos = ids.length; s < g.maxNewTokens; s++, pos++) {
         if (g.signal?.aborted || pos >= cache) break;
@@ -241,7 +247,7 @@ export async function createLiteRt(lrt: LiteRtJs, graph: Uint8Array, manifest: L
         if (EOS.has(tid)) break;
         gen.push(tid); yield tid;
         if (s + 1 >= g.maxNewTokens || g.signal?.aborted) break;
-        r = await decodeOne(tid, pos, st); st = r.st;
+        r = await decodeOne(tid, pos, st); st = r.st; del(r.hidden);
       }
     } finally { if (st) freeState(st); rel(); }
   }

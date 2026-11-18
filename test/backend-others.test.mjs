@@ -85,19 +85,21 @@ test("transformers.js: one forward per prefill, no kept state (falls back to fre
 });
 
 // ---- LiteRT.js ---------------------------------------------------------------------
+const LIVE = new Set(); // every mock LiteRT tensor not yet deleted
 class LTensor {
-  constructor(data, shape, dtype) { this.data = data; this.shape = shape; this.dtype = dtype; this.deleted = false; }
+  constructor(data, shape, dtype) { this.data = data; this.shape = shape; this.dtype = dtype; this.deleted = false; LIVE.add(this); }
   toTypedArray() { return this.data; } async moveTo() { return this; } async copyTo() { return new LTensor(this.data.slice(), this.shape); }
-  delete() { this.deleted = true; }
+  delete() { this.deleted = true; LIVE.delete(this); }
 }
 const LH = 2, LV = 6, CACHE = 64, P = 4;
-function liteRt() {
+function liteRt({ prefillLogits = false } = {}) {
   const log = [];
   const io = (rows) => ({ inputs: [{ name: "embeddings", shape: [1, rows, LH], dtype: "float32" }, { name: "input_pos", shape: [rows], dtype: "int32" },
     { name: "mask", shape: [1, 1, rows, CACHE], dtype: "float32" }, { name: "kv_cache_r_0", shape: [1, 1], dtype: "float32" }],
     outputs: [{ name: "kv_cache_r_0", shape: [1, 1], dtype: "float32" }, { name: "hidden", shape: [1, rows, LH], dtype: "float32" }] });
   const manifest = { format: "ct0-litert-bundle/1", vocab: LV, hidden: LH, signatures: { [`prefill_${P}`]: io(P), decode: io(1) } };
   manifest.signatures.decode.outputs.push({ name: "logits", shape: [1, 1, LV], dtype: "float32" });
+  if (prefillLogits) manifest.signatures[`prefill_${P}`].outputs.push({ name: "logits", shape: [1, P, LV], dtype: "float32" });
   const model = { async run(sig, feed) {
     const pos = feed.input_pos.data, e = feed.embeddings.data;
     log.push({ sig, pos: Array.from(pos) });
@@ -106,6 +108,7 @@ function liteRt() {
     for (let i = 0; i < pos.length; i++) { if (i === 0 || pos[i] > pos[i - 1]) r = 0.5 * r + e[i * LH]; hid[i * LH] = r; hid[i * LH + 1] = pos[i]; }
     const out = { kv_cache_r_0: new LTensor(Float32Array.of(r), [1, 1]), hidden: new LTensor(hid, [1, pos.length, LH]) };
     if (sig === "decode") out.logits = new LTensor(Float32Array.from({ length: LV }, (_, i) => -Math.abs(i - (Math.round(r) % LV))), [1, 1, LV]);
+    else if (prefillLogits) out.logits = new LTensor(new Float32Array(pos.length * LV), [1, pos.length, LV]);
     return out;
   }, delete() {} };
   const lrt = { Tensor: LTensor, async loadAndCompile() { return model; } };
@@ -133,6 +136,30 @@ test("litert: helpers, hidden output named by the manifest, kept states and gene
   const full = await be.prefill([3, 1, 4, 1, 5], { positions: [4] });
   assert.deepEqual(Array.from(a.hiddens[0]), Array.from(full.hiddens[0]));
   await assert.rejects(t.mk({ eos: undefined }), /eos/);
+});
+
+// A graph exported with prefill logits ([1, P, vocab] per prefill step) and/or a hidden output the build does not read:
+// every step's outputs must be freed, or a 2,000-token prompt leaves ~125 vocab-wide tensors on the GPU.
+test("litert: prefill-step logits and unread outputs are released; decisions unchanged by the extra output", async () => {
+  const ids = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5, 8, 9]; // 3 full prefill chunks + remainder
+  for (const accelerator of ["wasm", "webgpu"]) for (const hiddenOutput of ["hidden", null]) {
+    const res = [];
+    for (const prefillLogits of [false, true]) {
+      LIVE.clear();
+      const t = liteRt({ prefillLogits });
+      const be = await t.mk({ accelerator, hiddenOutput, remainderViaDecode: false });
+      const r = await be.prefill(ids, { positions: hiddenOutput ? [2, 12] : [] });
+      assert.ok(t.log.filter((x) => x.sig === `prefill_${P}`).length >= 3, "uses the prefill signature");
+      assert.equal(LIVE.size, 0, `${accelerator} hidden=${hiddenOutput} prefillLogits=${prefillLogits}: ${LIVE.size} tensors left alive after prefill`);
+      const g = await gen(be.generate(ids, { maxNewTokens: 3, ...G }));
+      assert.equal(LIVE.size, 0, `${accelerator} hidden=${hiddenOutput} prefillLogits=${prefillLogits}: ${LIVE.size} tensors left alive after generate`);
+      const h = await be.snapshot(ids.slice(0, 9));
+      await be.prefillFrom(h, ids, { positions: [] });
+      assert.equal(LIVE.size, 0, "snapshot + prefillFrom release everything");
+      res.push({ last: Array.from(r.lastLogits), hid: r.hiddens.map((x) => Array.from(x)), g });
+    }
+    assert.deepEqual(res[1], res[0], "same logits, hidden states and tokens with or without prefill logits in the graph");
+  }
 });
 
 // ---- WebLLM ---------------------------------------------------------------------------

@@ -130,7 +130,8 @@ picks the same sentences is not measured yet** (one descriptive check, on develo
 `manifest.tasks.<name>`: `{ type, instructions, choices? | levels?, tokens?, method?, escalation? }`. Labels are
 strings or `{ value, description?, token? }`; a pinned `token` (`{ id, text }`, all labels or none, checked by
 decoding at load) is what the logits readout reads for that label; without pinned tokens a task label is read as
-the first token it adds after the rendered prompt, whatever the manifest's global `logits.choice.map` says. A
+the first token it adds after the rendered prompt, whatever the manifest's global `logits.choice.map` says, except
+`"letters"`, where a choice task reads its option keys like a free-form question. A
 predicate task may pin its own `tokens: { yes, no }`. A question names a task by string (`"sentiment"`) or as
 `{ name?, task, instructions?, method? }` (labels always come from the task). Manifests without `tasks` behave as
 before; the SmolLM2 manifests and the CT0 manifest validate unchanged.
@@ -182,8 +183,9 @@ Answers echo `name` and carry `margin`, `rawMargin` and `path` (above). `predica
 **Readouts** (`method`, per call or per question; default per type from the manifest):
 
 - `logits`: next-token logits at the last prompt token. Predicate: sigmoid(L[yes] − L[no]). Choice: first token
-  of each value after the prompt (or letters A, B, ..., or the id pinned per label in `logits.choice.tokens`, when
-  the manifest says so; lab manifests pin the contract's label ids, since with kev markers the option text "Yes" is
+  of each value after the prompt (or the option keys A, B, ... as the model writes them after the cue: " A" when the
+  tokenizer has that token and the prompt does not end in whitespace, else after an appended lone-space token as for
+  scores; or the id pinned per label in `logits.choice.tokens`, when the manifest says so; lab manifests pin the contract's label ids, since with kev markers the option text "Yes" is
   not the cue's " Yes"); the values must start with **distinct** tokens, otherwise `decide` throws; with pinned
   tokens, a value outside the pinned labels throws. Score: the manifest's level tokens (CT0: `1`..`5`) or the first token of each label.
 - `head`: bilinear pointer head (ct0-edge `head.bin` format) on hidden states read at marker tokens:

@@ -5,7 +5,7 @@
 
 import type { Manifest, HeadRole, Method } from "./manifest.js";
 import { canShareState, type Backend, type GenerateOptions, type PrefillResult, type StateHandle } from "./backend.js";
-import { encodeQuestion, firstTokens, optionKey, fill, scoreLayout, appendLead, type Encoded } from "./encoding.js";
+import { encodeQuestion, firstTokens, fill, scoreLayout, letterLayout, appendLead, type Encoded } from "./encoding.js";
 import { normalizeQuestions, inputToText, questionEntries, splitSentences, type DecisionRequest, type DecisionsQuestion, type EvidenceRequest, type NQ } from "./questions.js";
 import { mergePolicy, manifestPolicy, shouldEscalate, type MarginPolicy } from "./margin.js";
 import { escalationProblems, type EscalationSpec } from "./manifest.js";
@@ -60,7 +60,9 @@ export function logitIds(e: Engine, q: NQ, ctx?: string, labels: string[] = q.va
     return q.labelIds;
   }
   if (q.type === "predicate") return [m.logits.predicate.no.id, m.logits.predicate.yes.id];
-  // Task labels without pinned tokens: first token of each label after the prompt (whatever the manifest's global map).
+  // Letters map: the option keys as the model writes them after the cue (`labels` from letterLayout: " A" or "A").
+  if (q.type === "choice" && m.logits.choice.map === "letters") return firstTokens(e.tok, labels === q.values ? letterLayout(e.tok, q, ctx).labels : labels, "choice", ctx);
+  // Task labels without pinned tokens: first token of each label after the prompt (whatever the manifest's global map, letters aside).
   if (q.task !== undefined && (q.type === "choice" || (q.type === "score" && m.tasks?.[q.task]?.levels))) return firstTokens(e.tok, q.type === "score" ? labels : q.values, q.type, ctx);
   if (q.type === "choice") {
     if (m.logits.choice.map === "tokens") {
@@ -71,7 +73,6 @@ export function logitIds(e: Engine, q: NQ, ctx?: string, labels: string[] = q.va
         return r.id;
       });
     }
-    if (m.logits.choice.map === "letters") return firstTokens(e.tok, q.values.map((_, i) => optionKey(i)), "choice", ctx);
     return firstTokens(e.tok, q.values, "choice", ctx);
   }
   if (m.logits.score.map === "tokens") {
@@ -87,7 +88,11 @@ export function planQuestion(e: Engine, q: NQ, state: string, method0?: Method):
   const method: Method = q.method ?? method0 ?? m.defaults.method[q.type];
   let enc = encodeQuestion(e.tok, m, q, state);
   // Score by label logits: read the levels after the lead (the space the model writes after the cue), heads unmoved.
-  const lay = q.type === "score" && method !== "head" ? scoreLayout(e.tok, m, q, enc.text) : { lead: "", labels: q.values };
+  // Choice by letters: read the keys as the model writes them after the cue (" A" with Qwen-style tokenizers).
+  const lay = method === "head" ? { lead: "", labels: q.values }
+    : q.type === "score" ? scoreLayout(e.tok, m, q, enc.text)
+    : q.type === "choice" && !q.labelIds && m.logits.choice.map === "letters" ? letterLayout(e.tok, q, enc.text)
+    : { lead: "", labels: q.values };
   enc = appendLead(e.tok, enc, lay.lead);
   if (enc.ids.length > e.maxSafeTokens) throw new Error(`question ${q.name}: prompt has ${enc.ids.length} tokens, over maxSafeTokens (${e.maxSafeTokens})`);
 
