@@ -431,6 +431,9 @@ def main(argv=None):
     if argv and argv[0].startswith("from-"):  # published head formats -> S1S2 heads (converters/heads, s1s2-heads)
         from s1s2_heads.cli import main as heads_main  # pip install -e ../converters/heads
         return heads_main(argv) or 0
+    if argv and argv[0] in ("pack-mlc", "pack-litert", "pack-tjs"):  # repackage a published GenAI repo for another runtime
+        import importlib
+        return importlib.import_module("." + argv[0].replace("-", "_"), __package__).main(argv[1:]) or 0
     a = args_parser().parse_args(argv)
     W = Path(a.work)
     W.mkdir(parents=True, exist_ok=True)

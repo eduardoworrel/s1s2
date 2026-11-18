@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "s1s2-convert"
-version = "0.1.0"
+version = "0.1.1"
 description = "Convert a Hugging Face causal LM + labelled JSONL into an S1S2 package (LoRA + pointer heads, int4 ONNX Runtime GenAI build) that s1s2 loads"
 license = "MIT"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ dependencies = [
 s1s2-convert = "s1s2_convert.cli:main"
 
 [tool.setuptools]
-packages = ["s1s2_convert"]
+packages = ["s1s2_convert", "s1s2_convert.tools"]
 
 [tool.setuptools.package-data]
-s1s2_convert = ["node/*.mjs", "patches/*.patch"]
+s1s2_convert = ["node/*.mjs", "node/*.js", "patches/*.patch", "data/*.json"]
