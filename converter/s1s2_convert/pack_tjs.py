@@ -443,38 +443,31 @@ def _quick_start(name, mans, out, chk):
 
 
 def _plain_section(name, mans, man, chk, tjs_v):
-    """'Without s1s2': the verified plain transformers.js snippet up to the head's inputs, then links to the library."""
-    pv = chk.get("plain") or {}
-    rp = chk["repo"].get("positions")
-    if not pv or not rp:
-        return []
+    """'Without s1s2': the card example through transformers.js pipeline("decision") (PR #1943, draft), then where the
+    head readout lives in s1s2. Agreement of that pipeline with the head is stated when it is not n/n."""
     lab = man.get("lab") or {}
-    opts = "m.lab.options" if lab.get("options") else "[m.lab.labels.yes, m.lab.labels.no]"
-    code = PLAIN_SNIPPET.read_text().split("//--card-end--")[0].replace("//--decide--\n", "")
-    code = "\n".join(l for l in code.split("\n") if not l.startswith(("const [head]", "const hb ")))
-    code = code.replace("__REPO__", name).replace("__MANIFEST__", _qs_manifest(mans))
-    code = re.sub(r'^const state = .*$', f'const state = "…", instructions = "…", options = {opts}; // as in the quick start',
-                  code, count=1, flags=re.M)
-    code = code.replace("// 3. One forward pass", "// 3. One forward pass")
-    link = lambda path: LIB_URL + path  # noqa: E731
-    pr = chk["repo"].get("pipeline") or {}
-    tail = [
-        "// 4. Apply heads/<task>/head.bin to (query, keys) and softmax over the options, as s1s2 does:",
-        f"//    head.bin format {link('src/readout.ts#L44-L67')}",
-        f"//    score          {link('src/readout.ts#L81-L88')}",
-        f"//    softmax        {link('src/decide.ts#L122-L131')}",
-        "// With transformers.js PR #1943 (draft): pipeline(\"decision\") gives a typed decision in one call, from the",
-        "// option-label logits instead of this head: https://github.com/huggingface/transformers.js/pull/1943",
+    it = _example_item(lab)
+    js = lambda x: json.dumps(x, ensure_ascii=False)  # noqa: E731
+    opts = [o.strip() for o in it["question"]["choices"]]
+    crit = ", ".join(f"{o if re.fullmatch(r'[A-Za-z_]\w*', o) else js(o)}: null" for o in opts)
+    code = [
+        'import { pipeline } from "@huggingface/transformers";',
+        f'const decide = await pipeline("decision", "{name}", {{ dtype: "q4" }});',
+        f'decide.tokenizer.chat_template ??= await (await fetch("https://huggingface.co/{name}/resolve/main/chat_template.jinja")).text(); // shipped as a file',
+        "const { q } = await decide({",
+        f"  state: {js(it['input'])},",
+        f"  questions: {{ q: {{ type: \"choice\", instructions: {js(it['question']['instructions'])}, criteria: {{ {crit} }} }} }},",
+        '}); // pipeline("decision"): transformers.js PR #1943 (draft) — https://github.com/huggingface/transformers.js/pull/1943',
+        "// Without the PR, this step needs the s1s2 code (prompt, read positions, head on hidden_states, softmax):",
+        f"// {LIB_URL}src/decide.ts#L85-L139",
+        "console.log(q.choice, q.probabilities[q.choice]);",
     ]
-    ver = " and ".join(x["model"] for x in pv["verified"])
-    eq = all(x["decisionsEqual"] == x["items"] for x in pv["verified"])
-    note = (f"Checked against s1s2 on Node CPU (transformers.js {tjs_v}), {rp['items']} check prompts: same read positions "
-            f"({rp['equal']}/{rp['items']}); with the head applied as linked, " + ("same decisions" if eq else "decisions differ") + f" on {ver}.")
+    pr = chk["repo"].get("pipeline") or {}
+    note = []
     if pr and pr["agree"] < pr["items"]:
-        note += f" `pipeline(\"decision\")` agrees with the head on {pr['agree']} of {pr['items']} here; use s1s2 for this model."
-    return ["## Without s1s2", "",
-            "The same decision in plain transformers.js, up to what the head reads:", "",
-            "```js", code.rstrip(), *tail, "```", "", note, ""]
+        note = [f"`pipeline(\"decision\")` reads option-label logits, not the trained head: on this model it agrees with the head "
+                f"on {pr['agree']} of {pr['items']} check prompts (Node CPU), so use s1s2 here.", ""]
+    return ["## Without s1s2", "", "```js", *code, "```", "", *note]
 
 
 def _wasm_line(chk):
