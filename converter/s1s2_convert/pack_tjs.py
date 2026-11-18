@@ -416,8 +416,8 @@ def _quick_start(name, mans, out, chk):
     ex = chk["repo"].get("examples", {}).get(_twin(out, mans, mn))
     js = lambda x: json.dumps(x, ensure_ascii=False)  # noqa: E731
     choices = "model.manifest.lab.options" if lab.get("options") else "[model.manifest.lab.labels.yes, model.manifest.lab.labels.no]"
-    res = (f" // {ex['choice'].strip()} {ex['confidence']:.2f} {ex['margin']:.2f} (Node CPU"
-           + ("; low margin, worth a second look)" if ex["margin"] < 0.2 else ")")) if ex else ""
+    res = (f" // {ex['choice'].strip()} {ex['confidence']:.2f} {ex['margin']:.2f} (measured, Node CPU"
+           + ("; below the threshold, so it goes to review)" if ex["margin"] < 0.2 else ")")) if ex else ""
     others = [x for x in mans if x not in (mn, _twin(out, mans, mn))]
     return [
         "## Quick start", "",
@@ -430,9 +430,11 @@ def _quick_start(name, mans, out, chk):
         f"    instructions: {js(it['question']['instructions'])} }}],",
         "});",
         "const { choice, confidence, margin } = s.answers[0];",
-        f"console.log(choice, confidence, margin);{res}",
-        'const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 }); // same weights',
-        "console.log(why.text);",
+        f"console.log(choice, confidence.toFixed(2), margin.toFixed(2));{res}",
+        "if (margin < 0.2) { // low margin = don't trust the one-pass decision alone (0.2 is an example; measure yours)",
+        '  const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 }); // same weights',
+        '  console.log("needs review:", why.text);',
+        "}",
         "await s.dispose(); await model.dispose();",
         "```", "",
         "Use the option words and question wording of the manifest (`lab`): the head was trained on them."
