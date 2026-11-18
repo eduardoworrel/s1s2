@@ -36,6 +36,18 @@
     "equal": 20,
     "probMaxAbsDiff": 0.1485522669428141,
     "secondsPerPrompt": 2.1382000000000003
+   },
+   "examples": {
+    "manifest.en.json": {
+     "choice": " Yes",
+     "confidence": 0.7890988954761622,
+     "margin": 0.5781977909523244
+    },
+    "manifest.pt.json": {
+     "choice": " Sim",
+     "confidence": 0.8151675350974087,
+     "margin": 0.6303350701948174
+    }
    }
   },
   "eduardoworrel/Jurema-7B-LGPD-ONNX-transformersjs-S1S2": {
@@ -51,6 +63,18 @@
    "wasm": {
     "measured": false,
     "note": "not measured (7B, 4.7 GB of weights); Node CPU is."
+   },
+   "examples": {
+    "manifest.en.json": {
+     "choice": "Yes",
+     "confidence": 0.9648665328686097,
+     "margin": 0.9297330657372194
+    },
+    "manifest.pt.json": {
+     "choice": "Sim",
+     "confidence": 0.9295310079530632,
+     "margin": 0.8590620159061264
+    }
    }
   },
   "eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
@@ -66,6 +90,28 @@
    "wasm": {
     "measured": false,
     "note": "does not load through transformers.js (Chrome 157): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+   },
+   "examples": {
+    "manifest.clinc.json": {
+     "choice": "Yes",
+     "confidence": 0.5687612122364017,
+     "margin": 0.13752242447280355
+    },
+    "manifest.cnli.json": {
+     "choice": "Not mentioned",
+     "confidence": 0.5327900286815783,
+     "margin": 0.09322565853345405
+    },
+    "manifest.sib_en.json": {
+     "choice": "health",
+     "confidence": 0.9497880587414792,
+     "margin": 0.9015137863945039
+    },
+    "manifest.sib_pt.json": {
+     "choice": "saúde",
+     "confidence": 0.9773045865233528,
+     "margin": 0.9565754854304167
+    }
    }
   },
   "eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
@@ -81,6 +127,28 @@
    "wasm": {
     "measured": false,
     "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+   },
+   "examples": {
+    "manifest.clinc.json": {
+     "choice": "No",
+     "confidence": 0.9577976055828593,
+     "margin": 0.9155952111657186
+    },
+    "manifest.cnli.json": {
+     "choice": "Entailment",
+     "confidence": 0.7768516023240741,
+     "margin": 0.5771669413677548
+    },
+    "manifest.sib_en.json": {
+     "choice": "health",
+     "confidence": 0.9978513692397329,
+     "margin": 0.9957394214152766
+    },
+    "manifest.sib_pt.json": {
+     "choice": "saúde",
+     "confidence": 0.9725269522244444,
+     "margin": 0.9453814152783862
+    }
    }
   },
   "eduardoworrel/Salamandra-2B-GDPR-LGPD-ONNX-transformersjs-S1S2": {
@@ -96,6 +164,18 @@
    "wasm": {
     "measured": false,
     "note": "tried with s1s2 in Chrome 157 (transformers.js, no WebGPU): out of memory (`std::bad_alloc`) on the first prompt, so the manifests do not list `wasm`; use WebGPU."
+   },
+   "examples": {
+    "manifest.en.json": {
+     "choice": " Yes",
+     "confidence": 0.8724752903830283,
+     "margin": 0.7449505807660567
+    },
+    "manifest.pt.json": {
+     "choice": " Sim",
+     "confidence": 0.8646549192521173,
+     "margin": 0.7293098385042347
+    }
    }
   },
   "eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
@@ -111,6 +191,28 @@
    "wasm": {
     "measured": false,
     "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+   },
+   "examples": {
+    "manifest.clinc.json": {
+     "choice": "No",
+     "confidence": 0.9847056461043568,
+     "margin": 0.9694112922087137
+    },
+    "manifest.cnli.json": {
+     "choice": "Entailment",
+     "confidence": 0.8780293048739581,
+     "margin": 0.7716038203773786
+    },
+    "manifest.sib_en.json": {
+     "choice": "health",
+     "confidence": 0.9822572155661062,
+     "margin": 0.9645416857911101
+    },
+    "manifest.sib_pt.json": {
+     "choice": "saúde",
+     "confidence": 0.9390437884379061,
+     "margin": 0.8781014342123047
+    }
    }
   },
   "eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-transformersjs-S1S2": {
@@ -126,6 +228,18 @@
    "wasm": {
     "measured": false,
     "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-genai-int4-S1S2), measured there."
+   },
+   "examples": {
+    "manifest.en.json": {
+     "choice": " Yes",
+     "confidence": 0.9723818429212046,
+     "margin": 0.9447636858424091
+    },
+    "manifest.pt.json": {
+     "choice": " Sim",
+     "confidence": 0.9251027967823049,
+     "margin": 0.8502055935646098
+    }
    }
   },
   "eduardoworrel/SmolLM3-3B-LGPD-ONNX-transformersjs-S1S2": {
@@ -141,6 +255,18 @@
    "wasm": {
     "measured": false,
     "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-LGPD-ONNX-genai-int4-S1S2), measured there."
+   },
+   "examples": {
+    "manifest.en.json": {
+     "choice": " Yes",
+     "confidence": 0.9854087747081733,
+     "margin": 0.9708175494163468
+    },
+    "manifest.pt.json": {
+     "choice": " Sim",
+     "confidence": 0.9628323147007362,
+     "margin": 0.9256646294014723
+    }
    }
   }
  }

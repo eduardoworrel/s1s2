@@ -77,12 +77,13 @@ def items_for(name, lab, n):
     return out
 
 
-src, dst = Path(sys.argv[1]), Path(sys.argv[2])
-per = int(sys.argv[3]) if len(sys.argv) > 3 else 0
-mans = sorted(p for p in src.glob("manifest*.json") if p.name != "manifest.json") or [src / "manifest.json"]
-per = per or max(5, -(-20 // len(mans)))
-rows = []
-for p in mans:
-    rows += items_for(p.name, json.loads(p.read_text())["lab"], per)
-dst.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-print(len(rows), "rows", [p.name for p in mans])
+if __name__ == "__main__":
+    src, dst = Path(sys.argv[1]), Path(sys.argv[2])
+    per = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    mans = sorted(p for p in src.glob("manifest*.json") if p.name != "manifest.json") or [src / "manifest.json"]
+    per = per or max(5, -(-20 // len(mans)))
+    rows = []
+    for p in mans:
+        rows += items_for(p.name, json.loads(p.read_text())["lab"], per)
+    dst.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+    print(len(rows), "rows", [p.name for p in mans])

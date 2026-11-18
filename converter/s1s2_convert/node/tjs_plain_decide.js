@@ -1,7 +1,7 @@
 import { AutoModelForCausalLM, AutoTokenizer } from "@huggingface/transformers";
 const repo = "__REPO__";
 const get = (f) => fetch(`https://huggingface.co/${repo}/resolve/main/${f}`);
-const m = await (await get("__MANIFEST__")).json(); // prompt template, markers, head file, option words (lab)
+const m = await (await get("__MANIFEST__")).json(); // prompt template, markers, option words (lab)
 const tok = await AutoTokenizer.from_pretrained(repo);
 const model = await AutoModelForCausalLM.from_pretrained(repo, { dtype: "q4" });
 const [head] = Object.values(Object.values(m.builds)[0].heads);
@@ -24,6 +24,8 @@ const read = [...ends(m.markers.decide.text), ...ends(m.markers.option.text)].ma
 const inputs = tok(prompt, { add_special_tokens: false });
 const { hidden_states: H } = await model.forward(inputs);
 const D = H.dims.at(-1), h = (p) => Array.from(H.data.subarray(p * D, (p + 1) * D), Number);
+const query = h(read[0]), keys = read.slice(1).map(h); // what the head reads
+//--card-end--
 
 // 4. head.bin: uint32 LE JSON length, JSON {headDim, hiddenSize, temperature, score_offset?, scale?}, then fp16 q.weight
 //    [headDim x hidden], q.bias, k.weight, k.bias. score_i = scale * (Wq h_decide + bq) . (Wk h_option_i + bk) / T + offset.
@@ -35,8 +37,8 @@ const take = (k) => { const a = new Float32Array(k); for (let i = 0; i < k; i++)
 const Dh = meta.headDim, Wq = take(Dh * D), bq = take(Dh), Wk = take(Dh * D), bk = take(Dh);
 const scale = meta.scale ?? (meta.scale_folded_into_q !== undefined ? 1 : head.scale ?? 1 / Math.sqrt(Dh));
 const proj = (W, b, x) => Array.from(b, (acc, d) => { for (let i = 0; i < D; i++) acc += W[d * D + i] * x[i]; return acc; });
-const q = proj(Wq, bq, h(read[0]));
-const scores = read.slice(1).map((p) => { const k = proj(Wk, bk, h(p)); let s = 0; for (let i = 0; i < Dh; i++) s += q[i] * k[i];
+const q = proj(Wq, bq, query);
+const scores = keys.map((x) => { const k = proj(Wk, bk, x); let s = 0; for (let i = 0; i < Dh; i++) s += q[i] * k[i];
   return (s * scale) / meta.temperature + (meta.score_offset ?? 0); });
 
 // 5. Softmax over the options -> decision and probability.

@@ -385,65 +385,94 @@ def _section(body, title):
 
 LIB_URL = "https://github.com/eduardoworrel/s1s2/blob/1ecbd80d380a78d43056fa10e0c95745261194a5/"
 PLAIN_SNIPPET = Path(__file__).resolve().parent / "node" / "tjs_plain_decide.js"
-PIPELINE_MIN_AGREE = 0.9  # set before measuring: the PR snippet goes on a card only at >= 90% agreement with the head
+
+
+def _qs_manifest(mans):
+    return mans[0] if len(mans) == 1 else "manifest.json"
+
+
+def _twin(out, mans, mn):
+    """The per-task manifest that manifest.json copies (same lab and heads), whose check rows are named after it."""
+    if len(mans) == 1:
+        return mn
+    m = read_json(out / mn)
+    key = lambda x: (json.dumps(x.get("lab", {}), sort_keys=True), json.dumps(x["builds"][BUILD]["heads"], sort_keys=True))  # noqa: E731
+    return next(o for o in mans if o != mn and key(read_json(out / o)) == key(m))
+
+
+def _example_item(lab):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("pack_tjs_items", Path(__file__).resolve().parents[1] / "examples" / "pack_tjs_items.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.items_for("x", lab, 1)[0]
+
+
+def _quick_start(name, mans, out, chk):
+    """s1s2 on a real input (the first check prompt of the quick-start manifest): decision, probability, margin, explanation."""
+    mn = _qs_manifest(mans)
+    lab = read_json(out / mn).get("lab") or {}
+    it = _example_item(lab)
+    ex = chk["repo"].get("examples", {}).get(_twin(out, mans, mn))
+    js = lambda x: json.dumps(x, ensure_ascii=False)  # noqa: E731
+    choices = "model.manifest.lab.options" if lab.get("options") else "[model.manifest.lab.labels.yes, model.manifest.lab.labels.no]"
+    res = (f" // {ex['choice'].strip()} {ex['confidence']:.2f} {ex['margin']:.2f} (Node CPU"
+           + ("; low margin, worth a second look)" if ex["margin"] < 0.2 else ")")) if ex else ""
+    others = [x for x in mans if x not in (mn, _twin(out, mans, mn))]
+    return [
+        "## Quick start", "",
+        "```js",
+        'import { S1S2 } from "@s1s2/web"; // github.com/eduardoworrel/s1s2 (needs @huggingface/transformers installed)',
+        f'const model = await S1S2.load({{ manifest: "https://huggingface.co/{name}/resolve/main/{mn}" }});',
+        "const s = await model.decide({",
+        f"  input: {js(it['input'])},",
+        f'  questions: [{{ name: "q", type: "choice", choices: {choices},',
+        f"    instructions: {js(it['question']['instructions'])} }}],",
+        "});",
+        "const { choice, confidence, margin } = s.answers[0];",
+        f"console.log(choice, confidence, margin);{res}",
+        'const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 }); // same weights',
+        "console.log(why.text);",
+        "await s.dispose(); await model.dispose();",
+        "```", "",
+        "Use the option words and question wording of the manifest (`lab`): the head was trained on them."
+        + (f" Other manifests (tasks or languages): {', '.join('`' + x + '`' for x in others)}." if others else ""), "",
+    ]
 
 
 def _plain_section(name, mans, man, chk, tjs_v):
-    """'Without s1s2': the verified plain transformers.js snippet (node/tjs_plain_decide.js) + permalinks."""
+    """'Without s1s2': the verified plain transformers.js snippet up to the head's inputs, then links to the library."""
     pv = chk.get("plain") or {}
     rp = chk["repo"].get("positions")
     if not pv or not rp:
         return []
     lab = man.get("lab") or {}
     opts = "m.lab.options" if lab.get("options") else "[m.lab.labels.yes, m.lab.labels.no]"
-    code = PLAIN_SNIPPET.read_text().replace("//--decide--\n", "")
-    code = code.replace("__REPO__", name).replace("__MANIFEST__", mans[0] if len(mans) == 1 else "manifest.json")
-    code = re.sub(r'^const state = .*$', f'const state = "…", instructions = "…", options = {opts}; // as in the GenAI quick start',
+    code = PLAIN_SNIPPET.read_text().split("//--card-end--")[0].replace("//--decide--\n", "")
+    code = "\n".join(l for l in code.split("\n") if not l.startswith(("const [head]", "const hb ")))
+    code = code.replace("__REPO__", name).replace("__MANIFEST__", _qs_manifest(mans))
+    code = re.sub(r'^const state = .*$', f'const state = "…", instructions = "…", options = {opts}; // as in the quick start',
                   code, count=1, flags=re.M)
+    code = code.replace("// 3. One forward pass", "// 3. One forward pass")
+    link = lambda path: LIB_URL + path  # noqa: E731
+    pr = chk["repo"].get("pipeline") or {}
+    tail = [
+        "// 4. Apply heads/<task>/head.bin to (query, keys) and softmax over the options, as s1s2 does:",
+        f"//    head.bin format {link('src/readout.ts#L44-L67')}",
+        f"//    score          {link('src/readout.ts#L81-L88')}",
+        f"//    softmax        {link('src/decide.ts#L122-L131')}",
+        "// With transformers.js PR #1943 (draft): pipeline(\"decision\") gives a typed decision in one call, from the",
+        "// option-label logits instead of this head: https://github.com/huggingface/transformers.js/pull/1943",
+    ]
     ver = " and ".join(x["model"] for x in pv["verified"])
     eq = all(x["decisionsEqual"] == x["items"] for x in pv["verified"])
-    dmax = max(x["probMaxAbsDiff"] for x in pv["verified"])
-    link = lambda label, path: f"[{label}]({LIB_URL}{path})"  # noqa: E731
-    return [
-        "## Without s1s2", "",
-        "The same decision in plain transformers.js: one forward pass, the final hidden state (`hidden_states`, after the "
-        "model's last norm) at the last token of ` <decide>` and of each ` </option>`, the pointer head in `heads/`, softmax.", "",
-        "```js", code.rstrip(), "```", "",
-        f"Checked against s1s2 on Node CPU (transformers.js {tjs_v}) on the {rp['items']} check prompts above: same read positions "
-        f"on {rp['equal']}/{rp['items']} for this model; run end to end on {ver}: "
-        + (f"same decisions on every prompt, probabilities within {dmax:.0e}. " if eq else "decisions differ on some prompts. ")
-        + "The same steps in the library: "
-        + ", ".join([link("prompt and read positions", "src/encoding.ts#L87-L175"),
-                     link("forward pass", "src/backends/transformersjs.ts#L30-L39"),
-                     link("head.bin", "src/readout.ts#L44-L67"), link("score", "src/readout.ts#L81-L88"),
-                     link("softmax and choice", "src/decide.ts#L122-L131")]) + ".", "",
-    ]
-
-
-def _pipeline_section(name, man, chk):
-    """transformers.js PR #1943 `pipeline("decision")`: label logits in its own prompt, measured against the head."""
-    pr = chk["repo"].get("pipeline")
-    if not pr:
-        return []
-    lab = man.get("lab") or {}
-    opts = [o.strip() for o in (lab.get("options") or [lab["labels"]["yes"], lab["labels"]["no"]])]
-    crit = ", ".join(f"{json.dumps(o, ensure_ascii=False) if not re.fullmatch(r'[A-Za-z_]\w*', o) else o}: null" for o in opts)
-    head = ["## With transformers.js `pipeline(\"decision\")` (draft PR)", "",
-            "[huggingface/transformers.js#1943](https://github.com/huggingface/transformers.js/pull/1943) (draft, not merged) "
-            "adds `pipeline(\"decision\")`. It reads the next-token logits of the option labels (A, B, …) in its own prompt, "
-            "not the trained head in `heads/`."]
-    k, n = pr["agree"], pr["items"]
-    if k / n >= PIPELINE_MIN_AGREE:
-        return head[:2] + [head[2] + f" On this model it gives the head's decision on {'all ' + str(n) if k == n else f'{k} of the {n}'} check prompts (Node CPU):", "",
-                           "```js",
-                           'import { pipeline } from "@huggingface/transformers"; // a build of the PR branch',
-                           f'const decide = await pipeline("decision", "{name}", {{ dtype: "q4" }});',
-                           "// the chat template ships as chat_template.jinja, which AutoTokenizer does not read:",
-                           f'decide.tokenizer.chat_template ??= await (await fetch("https://huggingface.co/{name}/resolve/main/chat_template.jinja")).text();',
-                           f'const {{ q }} = await decide({{ state: "…", questions: {{ q: {{ type: "choice", instructions: "…", criteria: {{ {crit} }} }} }} }});',
-                           "// q.choice, q.confidence, q.probabilities", "```", ""]
-    return head[:2] + [head[2] + f" On this model it gives the head's decision on only {k} of the {n} check prompts (Node CPU), "
-                       "so use s1s2 or the code above.", ""]
+    note = (f"Checked against s1s2 on Node CPU (transformers.js {tjs_v}), {rp['items']} check prompts: same read positions "
+            f"({rp['equal']}/{rp['items']}); with the head applied as linked, " + ("same decisions" if eq else "decisions differ") + f" on {ver}.")
+    if pr and pr["agree"] < pr["items"]:
+        note += f" `pipeline(\"decision\")` agrees with the head on {pr['agree']} of {pr['items']} here; use s1s2 for this model."
+    return ["## Without s1s2", "",
+            "The same decision in plain transformers.js, up to what the head reads:", "",
+            "```js", code.rstrip(), *tail, "```", "", note, ""]
 
 
 def _wasm_line(chk):
@@ -495,17 +524,10 @@ def stage_card(a):
         f"(onnxruntime-node {v.get('onnxruntime-node', '?')}, transformers.js {tjs_v}): hidden state at every read position "
         f"max |diff| {par['hiddenMaxAbsDiff']:g}, head probabilities max |diff| {par['probMaxAbsDiff']:g}, decisions "
         f"{par['decisionsEqual']}/{par['items']} equal. {browser}", "",
-        "## Quick start", "",
-        "```js",
-        'import { S1S2 } from "@s1s2/web"; // github.com/eduardoworrel/s1s2 (needs @huggingface/transformers installed)',
-        f'const model = await S1S2.load({{ manifest: "https://huggingface.co/{name}/resolve/main/{mans[0] if len(mans) == 1 else "manifest.json"}" }}); // runtime "transformers.js"',
-        "```", "",
-        f"Then ask exactly as in the [GenAI card]({sib_url}#quick-start): same option words (each manifest lists them in `lab`). "
-        f"Manifests: {', '.join('`' + x + '`' for x in mans)}.", "",
-        *_plain_section(name, mans, read_json(out / (mans[0] if len(mans) == 1 else "manifest.json")), chk, tjs_v),
-        *_pipeline_section(name, read_json(out / (mans[0] if len(mans) == 1 else "manifest.json")), chk),
+        *_quick_start(name, mans, out, chk),
+        *_plain_section(name, mans, read_json(out / _qs_manifest(mans)), chk, tjs_v),
         "## Limits", "",
-        "- The decision heads are separate files (`heads/`): s1s2 or the code above applies them; transformers.js alone does not.",
+        "- The decision heads are separate files (`heads/`), applied by s1s2; transformers.js alone does not read them.",
         "- KV cache head dimension pinned in the graph (transformers.js needs it)" + (
             f" and one Gather node added that reads the token table (`onnx/{DATA}_1`)" if meta["graph"].get("embeddingGather") else "")
         + "; everything else is the GenAI graph.",
