@@ -1,5 +1,5 @@
 {
- "note": "Checks behind the transformers.js cards, Node CPU unless stated; prompts from examples/pack_tjs_items.py (written for the parity check, not a test set). WASM: Chrome 157 (no WebGPU) on an Apple M2 Pro, s1s2 with transformers.js 4.3.1 (its onnxruntime-web 1.31.0-dev), model files served locally byte-identical to the Hub; memory = measureUserAgentSpecificMemory() of the page (max over loads) and peak renderer RSS (tabPeakGB); equalWebgpu = same decisions as the same graph on WebGPU (Metal).",
+ "note": "Checks behind the transformers.js cards, Node CPU unless stated; prompts from examples/pack_tjs_items.py (written for the parity check, not a test set). Browser (Chrome 157) (no WebGPU) on an Apple M2 Pro, s1s2 with transformers.js 4.3.1 (its onnxruntime-web 1.31.0-dev), model files served locally byte-identical to the Hub; memory = measureUserAgentSpecificMemory() of the page (max over loads) and peak renderer RSS (tabPeakGB); equalWebgpu = same decisions as the same graph on WebGPU (Metal). webgpu = the same graph and the same 20 prompts in Chrome WebGPU (Metal), measured with the same script (examples/tjs_checks/wasm_bench.mjs --mode webgpu); GPU buffers are not in the memory figure.",
  "plain": {
   "verified": [
    {
@@ -37,7 +37,8 @@
     "probMaxAbsDiff": 0.1485522669428141,
     "secondsPerPrompt": 2.74995,
     "memoryGB": 2.867274217,
-    "tabPeakGB": 4.09911296
+    "tabPeakGB": 4.09911296,
+    "equalWebgpu": 20
    },
    "examples": {
     "manifest.en.json": {
@@ -50,6 +51,16 @@
      "confidence": 0.8151675350974087,
      "margin": 0.6303350701948174
     }
+   },
+   "webgpu": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equalNodeCpu": 20,
+    "probMaxAbsDiff": 0.13919691549422797,
+    "secondsPerPrompt": 0.15009999999999998,
+    "memoryGB": 0.185323505,
+    "tabPeakGB": 3.365486592
    }
   },
   "eduardoworrel/Jurema-7B-LGPD-ONNX-transformersjs-S1S2": {
@@ -64,7 +75,7 @@
    },
    "wasm": {
     "measured": false,
-    "note": "no. Its weights (4.7 GB: 3.66 GB int4 + 1.09 GB fp16 token table) are more than the 4 GB a WebAssembly page can address (wasm32), so it cannot load there (not attempted); Node CPU runs it.",
+    "note": "no. Its weights (4.7 GB: 3.66 GB int4 + 1.09 GB fp16 token table) are more than the 4 GB a WebAssembly page can address (wasm32), so it does not fit; not attempted.",
     "weightsGB": 4.745
    },
    "examples": {
@@ -78,6 +89,10 @@
      "confidence": 0.9295310079530632,
      "margin": 0.8590620159061264
     }
+   },
+   "webgpu": {
+    "measured": false,
+    "note": "not in Chrome on this Mac: tried with s1s2, the page fails to fetch the 3.7 GB weight file (a single browser buffer that large), so the 7B build does not load; Node CPU runs it"
    }
   },
   "eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
@@ -123,6 +138,16 @@
      "confidence": 0.9773045865233528,
      "margin": 0.9565754854304167
     }
+   },
+   "webgpu": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equalNodeCpu": 17,
+    "probMaxAbsDiff": 0.1721715518940044,
+    "secondsPerPrompt": 0.1356,
+    "memoryGB": 0.36033583,
+    "tabPeakGB": 1.840267264
    }
   },
   "eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
@@ -168,6 +193,16 @@
      "confidence": 0.9725269522244444,
      "margin": 0.9453814152783862
     }
+   },
+   "webgpu": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equalNodeCpu": 20,
+    "probMaxAbsDiff": 0.14175455120674552,
+    "secondsPerPrompt": 0.26615,
+    "memoryGB": 0.59610648,
+    "tabPeakGB": 3.626893312
    }
   },
   "eduardoworrel/Salamandra-2B-GDPR-LGPD-ONNX-transformersjs-S1S2": {
@@ -203,6 +238,16 @@
      "confidence": 0.8646549192521173,
      "margin": 0.7293098385042347
     }
+   },
+   "webgpu": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equalNodeCpu": 20,
+    "probMaxAbsDiff": 0.06808313349561179,
+    "secondsPerPrompt": 0.50525,
+    "memoryGB": 0.606872496,
+    "tabPeakGB": 4.507189248
    }
   },
   "eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-transformersjs-S1S2": {
@@ -248,6 +293,16 @@
      "confidence": 0.9390437884379061,
      "margin": 0.8781014342123047
     }
+   },
+   "webgpu": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equalNodeCpu": 20,
+    "probMaxAbsDiff": 0.03885166374588023,
+    "secondsPerPrompt": 0.6507,
+    "memoryGB": 0.536729928,
+    "tabPeakGB": 3.003891712
    }
   },
   "eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-transformersjs-S1S2": {
@@ -283,6 +338,16 @@
      "confidence": 0.9251027967823049,
      "margin": 0.8502055935646098
     }
+   },
+   "webgpu": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equalNodeCpu": 20,
+    "probMaxAbsDiff": 0.059690694391999144,
+    "secondsPerPrompt": 0.4526,
+    "memoryGB": 0.523742253,
+    "tabPeakGB": 2.949791744
    }
   },
   "eduardoworrel/SmolLM3-3B-LGPD-ONNX-transformersjs-S1S2": {
@@ -318,6 +383,16 @@
      "confidence": 0.9628323147007362,
      "margin": 0.9256646294014723
     }
+   },
+   "webgpu": {
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equalNodeCpu": 20,
+    "probMaxAbsDiff": 0.05020257055374089,
+    "secondsPerPrompt": 0.36265000000000003,
+    "memoryGB": 0.523741418,
+    "tabPeakGB": 4.066050048
    }
   }
  }

@@ -609,16 +609,21 @@ def _plain_section(name, mans, man, chk, tjs_v):
 
 
 def _wasm_line(chk):
-    """Card line for the browser CPU (onnxruntime-web WASM, no WebGPU): yes/no first, then time and memory."""
-    w = chk["repo"].get("wasm")
+    """Card line for the browser, measured in Chrome on the same prompts: CPU (WASM, no WebGPU) yes/no first, then WebGPU
+    against CPU: decisions equal, seconds per decision and memory of each. Node CPU is only the exactness reference."""
+    w, g = chk["repo"].get("wasm"), chk["repo"].get("webgpu")
+    gm = lambda x: f"{x['secondsPerPrompt']:.{2 if x['secondsPerPrompt'] < 1 else 1}f} s per decision, memory {x['memoryGB']:.1f} GB"  # noqa: E731
+    gpu = (f"WebGPU {gm(g).replace('memory', 'page memory')} (GPU buffers not counted)" if g and g.get("measured") else
+           "WebGPU: " + (g or {}).get("note", "not measured in Chrome"))
     if w and w.get("measured"):
-        mem = (f", page memory about {w['memoryGB']:.1f} GB" if w.get("memoryGB") else "") + (
-            f" (tab peak {w['tabPeakGB']:.1f} GB while loading)" if w.get("tabPeakGB") else "")
-        return (f"- Runs on the browser CPU (no WebGPU): yes. Chrome {w['chrome'].split('.')[0]} on an Apple M2 Pro with s1s2: "
-                f"about {w['secondsPerPrompt']:.1f} s per decision{mem}, {w['equal']}/{w['items']} decisions equal to Node CPU"
-                + (f" ({w['equalWebgpu']}/{w['items']} to WebGPU: the same low-margin flips)" if w["equal"] < w["items"] and w.get("equalWebgpu") else "") + "; "
-                "the manifests list `wasm`.")
-    return "- Runs on the browser CPU (no WebGPU): " + ((w or {}).get("note") or "not measured.")
+        n = w["items"]
+        eq = w.get("equalWebgpu")
+        return (f"- Runs on the browser CPU (no WebGPU): yes; the manifests list `wasm`. Measured in Chrome {w['chrome'].split('.')[0]} on an "
+                f"Apple M2 Pro with s1s2, same {n} prompts on both: {gpu}; CPU (WASM) {gm(w).replace('memory', 'page memory')} (tab peak {w['tabPeakGB']:.1f} GB while loading)"
+                + (f"; same decision on WebGPU and CPU on {eq} of {n}" if eq is not None else "")
+                + ". Node CPU is only the exactness reference (hidden states bit-identical to the GenAI build, see above).")
+    return ("- Runs on the browser CPU (no WebGPU): " + ((w or {}).get("note") or "not measured.")
+            + (f" {gpu}." if g else ""))
 
 
 def _graph_limits(meta):
