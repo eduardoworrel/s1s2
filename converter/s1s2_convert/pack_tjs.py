@@ -6,7 +6,11 @@ expects. This tool changes only what the layout needs and never touches a weight
   * graph: `onnx/model_q4.onnx` = the GenAI `model.onnx` proto with (a) the symbolic head dimension of every
     `past_key_values.*` / `present.*` input/output pinned to the KV head size from `genai_config.json` (transformers.js
     builds its empty cache from the graph metadata and resolves unknown symbols to 0, which GroupQueryAttention
-    rejects) and (b) every initializer's external-data `location` rewritten to `model_q4.onnx_data`;
+    rejects), (b) every initializer's external-data `location` rewritten to `model_q4.onnx_data` and, so the graph also
+    runs on the browser CPU (onnxruntime-web WASM), (c) com.microsoft GatherBlockQuantized (int4 tied token table; no
+    WASM kernel) replaced by standard ops on the same initializers, and (d) lm_head split along the vocabulary into
+    parts whose initializers point at consecutive byte ranges of the same data file (`--lm-head-max-mb`; WASM unpacks
+    MatMulNBits weights to fp32 at every run, which for a large vocabulary passes wasm32's 4 GB). Both are exact;
   * weights: `onnx/model_q4.onnx_data` = the GenAI `model.onnx.data`, byte for byte (hard link when possible);
     builds made with exclude_embeds (graph input `inputs_embeds`, token table in a separate fp16 file) get the table
     back as `onnx/model_q4.onnx_data_1` (the same file, byte for byte) and one Gather node from `input_ids`;
@@ -99,7 +103,125 @@ def add_embedding_gather(g, size, hidden):
     return vocab
 
 
-def rewrite_graph(src_onnx, dst_onnx, head_size, embeddings=None):
+def unpack_gather_block_quantized(g):
+    """Browser CPU (onnxruntime-web WASM) has no kernel for com.microsoft GatherBlockQuantized, which GenAI builds with
+    tied embeddings use to read token rows from the int4 lm_head table. Replace it by standard ONNX ops on the same
+    initializers: Gather the packed uint8 rows and their fp16 scales, split each byte into its two 4-bit values (low
+    nibble first), (q - 8) * scale in fp32, cast to fp16. Products of a 4-bit integer and an fp16 scale are exact in fp32,
+    so the rows equal the kernel's. Returns the number of nodes replaced (0 or 1)."""
+    from onnx import TensorProto, helper, numpy_helper
+    import numpy as np
+    nodes = [n for n in g.node if n.op_type == "GatherBlockQuantized"]
+    if not nodes:
+        return 0
+    if len(nodes) != 1:
+        raise SystemExit(f"{len(nodes)} GatherBlockQuantized nodes; expected one (token table)")
+    n = nodes[0]
+    at = {a.name: helper.get_attribute_value(a) for a in n.attribute}
+    if len(n.input) != 3 or at.get("bits") != 4 or at.get("gather_axis", 0) != 0 or at.get("quantize_axis") != 1:
+        raise SystemExit(f"GatherBlockQuantized {n.name}: unsupported form {list(n.input)} {at}")
+    scales = next(t for t in g.initializer if t.name == n.input[2])
+    vocab, nb = scales.dims
+    bs = at["block_size"]
+    data, ids, sc = n.input
+    p = n.name.rsplit("/", 1)[0] + "/unpack"
+    consts = {"sh_bytes": [0, 0, nb, bs // 2], "sh_q": [0, 0, nb, bs], "sh_out": [0, 0, nb * bs], "ax": [-1]}
+    inits = [numpy_helper.from_array(np.array(v, dtype=np.int64), f"{p}/{k}") for k, v in consts.items()]
+    inits += [numpy_helper.from_array(np.array(v, dtype=np.float32), f"{p}/{k}") for k, v in (("c16", 16.0), ("c8", 8.0))]
+    o = lambda k: f"{p}/{k}"  # noqa: E731
+    mk = helper.make_node
+    new = [
+        mk("Gather", [data, ids], [o("rows")], name=o("Gather"), axis=0),
+        mk("Reshape", [o("rows"), o("sh_bytes")], [o("bytes")], name=o("Reshape")),
+        mk("Cast", [o("bytes")], [o("bytes_f")], name=o("Cast"), to=TensorProto.FLOAT),
+        mk("Div", [o("bytes_f"), o("c16")], [o("div")], name=o("Div")),
+        mk("Floor", [o("div")], [o("hi")], name=o("Floor")),
+        mk("Mul", [o("hi"), o("c16")], [o("hi16")], name=o("Mul_hi")),
+        mk("Sub", [o("bytes_f"), o("hi16")], [o("lo")], name=o("Sub_lo")),
+        mk("Unsqueeze", [o("lo"), o("ax")], [o("lo1")], name=o("Unsqueeze_lo")),
+        mk("Unsqueeze", [o("hi"), o("ax")], [o("hi1")], name=o("Unsqueeze_hi")),
+        mk("Concat", [o("lo1"), o("hi1")], [o("pairs")], name=o("Concat"), axis=-1),
+        mk("Reshape", [o("pairs"), o("sh_q")], [o("q")], name=o("Reshape_q")),
+        mk("Sub", [o("q"), o("c8")], [o("qc")], name=o("Sub_zp")),
+        mk("Gather", [sc, ids], [o("s16")], name=o("Gather_scales"), axis=0),
+        mk("Cast", [o("s16")], [o("s32")], name=o("Cast_scales"), to=TensorProto.FLOAT),
+        mk("Unsqueeze", [o("s32"), o("ax")], [o("s")], name=o("Unsqueeze_scales")),
+        mk("Mul", [o("qc"), o("s")], [o("deq")], name=o("Mul_scales")),
+        mk("Reshape", [o("deq"), o("sh_out")], [o("emb32")], name=o("Reshape_out")),
+        mk("Cast", [o("emb32")], [n.output[0]], name=o("Cast_out"), to=TensorProto.FLOAT16),
+    ]
+    i = list(g.node).index(n)
+    g.node.remove(n)
+    for k, m in enumerate(new):
+        g.node.insert(i + k, m)
+    g.initializer.extend(inits)
+    return 1
+
+
+def split_lm_head(g, max_bytes):
+    """Browser CPU (onnxruntime-web WASM) runs MatMulNBits by unpacking the whole int4 weight to fp32 at every run
+    (K * N * 4 bytes): for lm_head over a large vocabulary that one buffer (e.g. 2.1 GB at 256k x 2048) plus the
+    weights passes the 4 GB of wasm32 memory. Split lm_head along the vocabulary into MatMulNBits nodes of at most
+    `max_bytes` of fp32 each, whose weights and scales are external initializers pointing at consecutive byte ranges
+    of the same data file (no byte copied or changed), and Concat the logits. Each output column is computed exactly
+    as before. Returns the number of parts (1 = unchanged)."""
+    import onnx
+    from onnx import TensorProto, helper
+    n = next((x for x in g.node if x.op_type == "MatMulNBits" and "logits" in x.output), None)
+    if n is None or not max_bytes:
+        return 1
+    at = {a.name: helper.get_attribute_value(a) for a in n.attribute}
+    K, N = at["K"], at["N"]
+    rows = max(1, max_bytes // (4 * K))
+    if N <= rows:
+        return 1
+    if len(n.input) != 3:
+        raise SystemExit(f"{n.name}: lm_head with zero points / g_idx / bias not supported for splitting")
+    inits = {t.name: t for t in g.initializer}
+    w, s = inits[n.input[1]], inits[n.input[2]]
+    for t in (w, s):
+        if t.data_location != TensorProto.EXTERNAL or t.dims[0] != N:
+            raise SystemExit(f"{t.name}: expected an external initializer with {N} rows")
+    ext = lambda t: {e.key: e.value for e in t.external_data}  # noqa: E731
+    elem = {TensorProto.UINT8: 1, TensorProto.FLOAT16: 2, TensorProto.FLOAT: 4}
+
+    def part(t, r0, r1, name):
+        e = ext(t)
+        row = elem[t.data_type]
+        for d in t.dims[1:]:
+            row *= d
+        if int(e["length"]) != row * N:
+            raise SystemExit(f"{t.name}: external length {e['length']} != {row * N}")
+        c = TensorProto(name=name, data_type=t.data_type, dims=[r1 - r0, *t.dims[1:]])
+        c.data_location = TensorProto.EXTERNAL
+        for k, v in (("location", e["location"]), ("offset", str(int(e.get("offset", 0)) + r0 * row)), ("length", str((r1 - r0) * row))):
+            x = c.external_data.add(); x.key, x.value = k, v
+        return c
+
+    pre = n.name.rsplit("/", 1)[0]
+    parts, outs, new_inits = [], [], []
+    for k, r0 in enumerate(range(0, N, rows)):
+        r1 = min(N, r0 + rows)
+        wn, sn = f"{n.input[1]}.part{k}", f"{n.input[2]}.part{k}"
+        new_inits += [part(w, r0, r1, wn), part(s, r0, r1, sn)]
+        out = f"{pre}/logits_part{k}"
+        a = {**at, "N": r1 - r0}
+        parts.append(helper.make_node("MatMulNBits", [n.input[0], wn, sn], [out], name=f"{n.name}_part{k}", domain=n.domain, **a))
+        outs.append(out)
+    parts.append(helper.make_node("Concat", outs, ["logits"], name=f"{pre}/logits_Concat", axis=-1))
+    i = list(g.node).index(n)
+    g.node.remove(n)
+    for k, m in enumerate(parts):
+        g.node.insert(i + k, m)
+    g.initializer.extend(new_inits)
+    used = {x for m in g.node for x in m.input}
+    for t in (w, s):
+        if t.name not in used:  # untied lm_head: the full tensors are no longer read
+            g.initializer.remove(t)
+    return len(parts) - 1
+
+
+def rewrite_graph(src_onnx, dst_onnx, head_size, embeddings=None, lm_head_max_bytes=None):
     """Pin the KV head dim and point every external initializer at DATA (+ the embedding table at DATA_1 when the
     build excluded it). Returns a summary dict."""
     import onnx
@@ -131,6 +253,8 @@ def rewrite_graph(src_onnx, dst_onnx, head_size, embeddings=None):
         pinned += 1
     if "input_ids" not in in_names:
         vocab = add_embedding_gather(g, *embeddings)
+    unpacked = unpack_gather_block_quantized(g)
+    lm_parts = split_lm_head(g, lm_head_max_bytes)
     locs, n_ext = set(), 0
     for t in g.initializer:
         if t.data_location != onnx.TensorProto.EXTERNAL:
@@ -151,6 +275,7 @@ def rewrite_graph(src_onnx, dst_onnx, head_size, embeddings=None):
     Path(dst_onnx).parent.mkdir(parents=True, exist_ok=True)
     Path(dst_onnx).write_bytes(m.SerializeToString())
     return {"kvDimsPinned": pinned, "kvDimSymbols": sorted(symbols), "externalInitializers": n_ext, "embeddingGather": vocab,
+            "embeddingUnpacked": unpacked or None, "lmHeadParts": lm_parts if lm_parts > 1 else None,
             "sourceDataLocation": locs.pop(), "inputs": len(in_names), "outputs": out_names[:2] + ["..."]}
 
 
@@ -175,7 +300,19 @@ def check_config(cfg, gc):
     return dec["head_size"]
 
 
-def new_manifest(src, name, suffix, heads, files, sibling, note):
+def graph_changes(g):
+    """Compute changes to the GenAI graph beyond metadata, in words (manifest provenance and card)."""
+    r = []
+    if g.get("embeddingUnpacked"):
+        r.append("token rows read from the int4 table with standard ONNX ops instead of com.microsoft GatherBlockQuantized "
+                 "(no browser CPU kernel), same values")
+    if g.get("lmHeadParts"):
+        r.append(f"lm_head split into {g['lmHeadParts']} parts along the vocabulary (same weight bytes, logits concatenated) "
+                 "so the browser CPU fits in wasm32 memory")
+    return r
+
+
+def new_manifest(src, name, suffix, heads, files, sibling, note, g=None):
     m = json.loads(json.dumps(src))
     m["schema"] = "s1s2.manifest/1"
     short = name.split("/")[-1].lower()
@@ -200,8 +337,9 @@ def new_manifest(src, name, suffix, heads, files, sibling, note):
         "source": {"format": "onnxruntime-genai", "repo": sibling["repo"], "revision": sibling["revision"],
                    "files": ["model.onnx", "model.onnx.data", "genai_config.json"]},
         "builds": {BUILD: {"tool": "s1s2-convert pack_tjs", "version": __version__,
-                           "args": ["pin past_key_values/present head dim", "external data location -> " + DATA]}},
-        "notes": "Same weights as the source ONNX Runtime GenAI build; only the graph metadata and file layout changed.",
+                           "args": ["pin past_key_values/present head dim", "external data location -> " + DATA, *graph_changes(g or {})]}},
+        "notes": "Same weights as the source ONNX Runtime GenAI build; " + (
+            "the graph changes are listed in args." if graph_changes(g or {}) else "only the graph metadata and file layout changed."),
     }
     return m
 
@@ -234,7 +372,7 @@ def stage_pack(a):
 
     ef = next(iter(m0["builds"].values()))["files"].get("embeddings")
     emb = (ef["size"], m0["hiddenSize"]) if ef else None
-    g = rewrite_graph(src / "model.onnx", out / "onnx" / GRAPH, head_size, emb)
+    g = rewrite_graph(src / "model.onnx", out / "onnx" / GRAPH, head_size, emb, a.lm_head_max_mb * 2**20)
     if g["sourceDataLocation"] != "model.onnx.data":
         raise SystemExit(f"graph points at {g['sourceDataLocation']}, expected model.onnx.data")
     link_or_copy(src / "model.onnx.data", out / "onnx" / DATA)
@@ -285,7 +423,7 @@ def stage_pack(a):
     for mp in man_paths:
         sm = read_json(mp)
         suffix = mp.name[len("manifest."):-len(".json")] if mp.name != "manifest.json" else (sm.get("lab", {}).get("task") or sm.get("lab", {}).get("language") or "")
-        write_json(out / mp.name, new_manifest(sm, name, suffix, heads, files, sibling, note))
+        write_json(out / mp.name, new_manifest(sm, name, suffix, heads, files, sibling, note, g))
         written.append(mp.name)
     write_json(out / ".pack-tjs.json", {"source": sibling, "sourceDir": str(src), "name": name, "graph": g,
                                         "headSize": head_size, "manifests": written, "createdAt": now_iso()})
@@ -471,12 +609,26 @@ def _plain_section(name, mans, man, chk, tjs_v):
 
 
 def _wasm_line(chk):
+    """Card line for the browser CPU (onnxruntime-web WASM, no WebGPU): yes/no first, then time and memory."""
     w = chk["repo"].get("wasm")
     if w and w.get("measured"):
-        return (f"- Browser CPU without WebGPU (WASM): measured with s1s2 in Chrome {w['chrome'].split('.')[0]} on an Apple M2 Pro, "
-                f"{w['equal']}/{w['items']} decisions equal to Node CPU (probabilities up to {w['probMaxAbsDiff']:.2f} apart), "
-                f"about {w['secondsPerPrompt']:.0f} s per prompt; the manifests list `wasm`.")
-    return "- Browser CPU (WASM): " + ((w or {}).get("note") or "should run; not measured.")
+        mem = (f", page memory about {w['memoryGB']:.1f} GB" if w.get("memoryGB") else "") + (
+            f" (tab peak {w['tabPeakGB']:.1f} GB while loading)" if w.get("tabPeakGB") else "")
+        return (f"- Runs on the browser CPU (no WebGPU): yes. Chrome {w['chrome'].split('.')[0]} on an Apple M2 Pro with s1s2: "
+                f"about {w['secondsPerPrompt']:.1f} s per decision{mem}, {w['equal']}/{w['items']} decisions equal to Node CPU"
+                + (f" ({w['equalWebgpu']}/{w['items']} to WebGPU: the same low-margin flips)" if w["equal"] < w["items"] and w.get("equalWebgpu") else "") + "; "
+                "the manifests list `wasm`.")
+    return "- Runs on the browser CPU (no WebGPU): " + ((w or {}).get("note") or "not measured.")
+
+
+def _graph_limits(meta):
+    """Limits line on what changed in the GenAI graph."""
+    g = meta["graph"]
+    ch = ["KV cache head dimension pinned in the graph (transformers.js needs it)"]
+    if g.get("embeddingGather"):
+        ch.append(f"one Gather node added that reads the token table (`onnx/{DATA}_1`)")
+    ch += graph_changes(g)
+    return "- " + "; ".join(ch) + "; everything else is the GenAI graph."
 
 
 def stage_card(a):
@@ -514,6 +666,7 @@ def stage_card(a):
         "GenAI one in that repo: this copy carries the same int4 weights byte for byte (" + (
             f"the token table `{meta['graph'].get('embeddingFile', 'embed_tokens.fp16.bin')}` of that repo is `onnx/{DATA}_1` here, read by one added "
             "Gather node; otherwise only graph metadata and file names changed" if meta["graph"].get("embeddingGather")
+            else "graph changes listed under Limits" if graph_changes(meta["graph"])
             else "only graph metadata and file names changed") + "), the same heads and the same prompts, so accuracy is the one reported there.", "",
         f"**Parity with the GenAI build:** {par['items']} prompts written for this check (not a test set), Node CPU "
         f"(onnxruntime-node {v.get('onnxruntime-node', '?')}, transformers.js {tjs_v}): hidden state at every read position "
@@ -523,9 +676,7 @@ def stage_card(a):
         *_plain_section(name, mans, read_json(out / _qs_manifest(mans)), chk, tjs_v),
         "## Limits", "",
         "- The decision heads are separate files (`heads/`), applied by s1s2; transformers.js alone does not read them.",
-        "- KV cache head dimension pinned in the graph (transformers.js needs it)" + (
-            f" and one Gather node added that reads the token table (`onnx/{DATA}_1`)" if meta["graph"].get("embeddingGather") else "")
-        + "; everything else is the GenAI graph.",
+        _graph_limits(meta),
         _wasm_line(chk), "",
         "## License", "", lic, "",
         "## Credits", "", cred,
@@ -678,6 +829,8 @@ def main(argv=None):
     ap.add_argument("--gated", help="publish: gating mode for the new repo (e.g. auto), same as the source")
     ap.add_argument("--collection", help="publish: Hub collection slug to add the repo to")
     ap.add_argument("--link-source", action="store_true", help="publish: add one line to the source card linking this repo")
+    ap.add_argument("--lm-head-max-mb", type=int, default=256,
+                    help="pack: split lm_head so each part's fp32 unpack buffer on browser CPU (WASM) is at most this many MiB (0: no split)")
     ap.add_argument("--force", action="store_true")
     a = ap.parse_args(argv)
     {"pack": stage_pack, "parity": stage_parity, "pin": stage_pin, "card": stage_card, "publish": stage_publish, "update": stage_update,

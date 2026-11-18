@@ -1,5 +1,5 @@
 {
- "note": "Checks behind the transformers.js cards, Node CPU unless stated; prompts from examples/pack_tjs_items.py (written for the parity check, not a test set).",
+ "note": "Checks behind the transformers.js cards, Node CPU unless stated; prompts from examples/pack_tjs_items.py (written for the parity check, not a test set). WASM: Chrome 157 (no WebGPU) on an Apple M2 Pro, s1s2 with transformers.js 4.3.1 (its onnxruntime-web 1.31.0-dev), model files served locally byte-identical to the Hub; memory = measureUserAgentSpecificMemory() of the page (max over loads) and peak renderer RSS (tabPeakGB); equalWebgpu = same decisions as the same graph on WebGPU (Metal).",
  "plain": {
   "verified": [
    {
@@ -35,7 +35,9 @@
     "items": 20,
     "equal": 20,
     "probMaxAbsDiff": 0.1485522669428141,
-    "secondsPerPrompt": 2.1382000000000003
+    "secondsPerPrompt": 2.74995,
+    "memoryGB": 2.867274217,
+    "tabPeakGB": 4.09911296
    },
    "examples": {
     "manifest.en.json": {
@@ -62,7 +64,8 @@
    },
    "wasm": {
     "measured": false,
-    "note": "not measured (7B, 4.7 GB of weights); Node CPU is."
+    "note": "no. Its weights (4.7 GB: 3.66 GB int4 + 1.09 GB fp16 token table) are more than the 4 GB a WebAssembly page can address (wasm32), so it cannot load there (not attempted); Node CPU runs it.",
+    "weightsGB": 4.745
    },
    "examples": {
     "manifest.en.json": {
@@ -88,8 +91,16 @@
     "pr": "huggingface/transformers.js#1943@2c39cfae"
    },
    "wasm": {
-    "measured": false,
-    "note": "does not load through transformers.js (Chrome 157): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equal": 17,
+    "probMaxAbsDiff": 0.20367187070008264,
+    "secondsPerPrompt": 1.3041,
+    "memoryGB": 1.109464876,
+    "tabPeakGB": 2.10935808,
+    "equalWebgpu": 20,
+    "before": "no CPU kernel for com.microsoft GatherBlockQuantized (int4 token table)"
    },
    "examples": {
     "manifest.clinc.json": {
@@ -108,7 +119,7 @@
      "margin": 0.9015137863945039
     },
     "manifest.sib_pt.json": {
-     "choice": "saúde",
+     "choice": "sa\u00fade",
      "confidence": 0.9773045865233528,
      "margin": 0.9565754854304167
     }
@@ -125,8 +136,16 @@
     "pr": "huggingface/transformers.js#1943@2c39cfae"
    },
    "wasm": {
-    "measured": false,
-    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equal": 20,
+    "probMaxAbsDiff": 0.1192925450045964,
+    "secondsPerPrompt": 3.5629,
+    "memoryGB": 1.928043962,
+    "tabPeakGB": 4.243881984,
+    "equalWebgpu": 20,
+    "before": "no CPU kernel for com.microsoft GatherBlockQuantized (int4 token table)"
    },
    "examples": {
     "manifest.clinc.json": {
@@ -145,7 +164,7 @@
      "margin": 0.9957394214152766
     },
     "manifest.sib_pt.json": {
-     "choice": "saúde",
+     "choice": "sa\u00fade",
      "confidence": 0.9725269522244444,
      "margin": 0.9453814152783862
     }
@@ -162,8 +181,16 @@
     "pr": "huggingface/transformers.js#1943@2c39cfae"
    },
    "wasm": {
-    "measured": false,
-    "note": "tried with s1s2 in Chrome 157 (transformers.js, no WebGPU): out of memory (`std::bad_alloc`) on the first prompt, so the manifests do not list `wasm`; use WebGPU."
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equal": 20,
+    "probMaxAbsDiff": 0.05824406675781549,
+    "secondsPerPrompt": 6.12885,
+    "memoryGB": 3.123059944,
+    "tabPeakGB": 5.808848896,
+    "equalWebgpu": 20,
+    "before": "std::bad_alloc at the first run: MatMulNBits on WASM unpacks lm_head to fp32 at every run (2048 x 256000 x 4 B = 2.1 GB) on top of 2.0 GB of weights, past the 4 GB of wasm32 memory"
    },
    "examples": {
     "manifest.en.json": {
@@ -189,8 +216,16 @@
     "pr": "huggingface/transformers.js#1943@2c39cfae"
    },
    "wasm": {
-    "measured": false,
-    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), measured there."
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equal": 20,
+    "probMaxAbsDiff": 0.03843438030540758,
+    "secondsPerPrompt": 10.24155,
+    "memoryGB": 2.841504372,
+    "tabPeakGB": 5.412093952,
+    "equalWebgpu": 20,
+    "before": "no CPU kernel for com.microsoft GatherBlockQuantized (int4 token table)"
    },
    "examples": {
     "manifest.clinc.json": {
@@ -209,7 +244,7 @@
      "margin": 0.9645416857911101
     },
     "manifest.sib_pt.json": {
-     "choice": "saúde",
+     "choice": "sa\u00fade",
      "confidence": 0.9390437884379061,
      "margin": 0.8781014342123047
     }
@@ -226,8 +261,16 @@
     "pr": "huggingface/transformers.js#1943@2c39cfae"
    },
    "wasm": {
-    "measured": false,
-    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-genai-int4-S1S2), measured there."
+    "before": "no CPU kernel for com.microsoft GatherBlockQuantized (int4 token table)",
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equal": 20,
+    "probMaxAbsDiff": 0.04960453075940269,
+    "secondsPerPrompt": 6.772450000000001,
+    "memoryGB": 2.810205011,
+    "tabPeakGB": 3.977281536,
+    "equalWebgpu": 20
    },
    "examples": {
     "manifest.en.json": {
@@ -253,8 +296,16 @@
     "pr": "huggingface/transformers.js#1943@2c39cfae"
    },
    "wasm": {
-    "measured": false,
-    "note": "does not load through transformers.js (Chrome 157, seen on the Qwen3-0.6B build; same op here): its onnxruntime-web build has no CPU kernel for `GatherBlockQuantized`, used for this graph's int4 token table. For the browser CPU use the [GenAI build](https://huggingface.co/eduardoworrel/SmolLM3-3B-LGPD-ONNX-genai-int4-S1S2), measured there."
+    "measured": true,
+    "chrome": "157.0.8103.79",
+    "items": 20,
+    "equal": 20,
+    "probMaxAbsDiff": 0.043426449250242416,
+    "secondsPerPrompt": 5.5268,
+    "memoryGB": 2.81020163,
+    "tabPeakGB": 4.70720512,
+    "equalWebgpu": 20,
+    "before": "no CPU kernel for com.microsoft GatherBlockQuantized (int4 token table)"
    },
    "examples": {
     "manifest.en.json": {
