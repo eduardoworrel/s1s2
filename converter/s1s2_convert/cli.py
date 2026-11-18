@@ -92,11 +92,11 @@ def args_parser():
     ap.add_argument("--evidence-epochs", type=int, default=8)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
-    ap.add_argument("--precision", default="int4", choices=["int4", "int8", "fp16", "fp32"], help="weight precision of the GenAI build")
+    ap.add_argument("--precision", default="int4", help="weight precision of the GenAI build: int4, int8, fp16 or fp32; several, comma-separated, build each (e.g. int4,int8,fp32)")
     ap.add_argument("--ep", default=None, help="builder execution provider (default: webgpu; cpu for fp32)")
     ap.add_argument("--builder-src", help="run the builder from this checkout (e.g. <fork>/src/python/py/models) instead of the patched pip copy")
     ap.add_argument("--lib", help="s1s2 checkout (default: the converter's parent directory)")
-    ap.add_argument("--parity-build", help="build the parity stage runs (default: the first *-cpu build)")
+    ap.add_argument("--parity-build", help="build(s) the parity stage runs, comma-separated (default: every *-cpu build in the manifest)")
     ap.add_argument("--parity-rows", type=int, default=0, help="dev rows for the parity stage (0 = all)")
     return ap
 
@@ -262,12 +262,21 @@ def stage_evidence(a, W):
                    W / "evidence", device=a.device, epochs=a.evidence_epochs, seed=prep["seed"])
 
 
+def precisions(a):
+    out = [p.strip() for p in str(a.precision).split(",") if p.strip()]
+    bad = [p for p in out if p not in ("int4", "int8", "fp16", "fp32")]
+    if bad or not out:
+        raise SystemExit(f"--precision: {bad or a.precision!r} is not one of int4, int8, fp16, fp32")
+    return list(dict.fromkeys(out))
+
+
 def stage_build(a, W):
     from .build import build
-    ep = a.ep or ("cpu" if a.precision == "fp32" else "webgpu")
-    info = build(W / "fused", W / f"build-{a.precision}", W, precision=a.precision, ep=ep, builder_src=a.builder_src)
-    info["ep"] = ep
-    write_json(W / f"build-{a.precision}.json", info)
+    for prec in precisions(a):
+        ep = a.ep or ("cpu" if prec == "fp32" else "webgpu")
+        info = build(W / "fused", W / f"build-{prec}", W, precision=prec, ep=ep, builder_src=a.builder_src)
+        info["ep"] = ep
+        write_json(W / f"build-{prec}.json", info)
 
 
 def stage_package(a, W):
@@ -320,7 +329,8 @@ def stage_package(a, W):
 
 
 def stage_parity(a, W):
-    """PyTorch reference (fused weights, fp32) vs s1s2 (package, int4 graph, onnxruntime-node CPU) on the dev rows."""
+    """PyTorch reference (fused weights, fp32) vs s1s2 (package, each CPU build, onnxruntime-node CPU) on the dev rows.
+    The reference is computed once; every build gets its own parity record and `fidelity`."""
     import torch
     from . import head as H
     from .train import load_model, tensors
@@ -329,7 +339,10 @@ def stage_parity(a, W):
         raise SystemExit("parity: --out (the package directory) is required")
     pkg = Path(a.out)
     m = read_json(pkg / "manifest.json")
-    build = a.parity_build or next((b for b in m["builds"] if b.endswith("-cpu")), None)
+    builds = [b.strip() for b in a.parity_build.split(",")] if a.parity_build else [b for b in m["builds"] if b.endswith("-cpu")]
+    missing = [b for b in builds if b not in m["builds"]]
+    if missing or not builds:
+        raise SystemExit(f"parity: build {missing or 'with a -cpu device'} not in the manifest ({list(m['builds'])})")
     dec_rows = encoded_rows(W, "decision", "dev")
     ev_rows = {r["row"]: r for r in encoded_rows(W, "evidence", "dev")}
     if a.parity_rows:
@@ -339,8 +352,6 @@ def stage_parity(a, W):
     write_jsonl(W / "parity_in.jsonl", rows_in)
     lib = lib_dir(a.lib)
     node = Path(__file__).resolve().parent / "node" / "run_package.mjs"
-    run(["node", node, lib, pkg, build, W / "parity_in.jsonl", W / "parity_lib.jsonl"], "parity", env={"S1S2_CACHE": str(W / "s1s2-cache")})
-    got = {r["id"]: r for r in read_jsonl(W / "parity_lib.jsonl")}
     # reference
     tok = AutoTokenizer.from_pretrained(str(W / "fused"), local_files_only=True)
     pad = tok.pad_token_id if tok.pad_token_id is not None else (tok.eos_token_id or 0)
@@ -366,47 +377,53 @@ def stage_parity(a, W):
                 x["ref_evidence"] = torch.softmax(H.scores(eh, he, e["decide"], e["options"]), -1).tolist()
                 x["gold_evidence"] = e["targets"]
             res.append(x)
+    del model, dec, lm_head
     gap = lambda p: sorted(p, reverse=True)[0] - sorted(p, reverse=True)[1]  # noqa: E731
     am = lambda p: max(range(len(p)), key=lambda i: p[i])  # noqa: E731
 
-    def summary(ref_key, lib_key, gold_key=None):
-        pairs = [(x[ref_key], got[x["row"]][lib_key]["probabilities"], x.get(gold_key) if gold_key else x["gold"]) for x in res
-                 if ref_key in x and lib_key in got[x["row"]]]
-        if not pairs:
-            return None
-        agree = sum(am(a) == am(b) for a, b, _ in pairs)
-        gold_ok = lambda p, g: am(p) in g if isinstance(g, list) else am(p) == g  # noqa: E731
-        ma, mb = [gap(a) for a, _, _ in pairs], [gap(b) for _, b, _ in pairs]
-        n = len(pairs)
-        mu_a, mu_b = sum(ma) / n, sum(mb) / n
-        cov = sum((x - mu_a) * (y - mu_b) for x, y in zip(ma, mb))
-        va, vb = sum((x - mu_a) ** 2 for x in ma), sum((y - mu_b) ** 2 for y in mb)
-        return {"n": n, "decision_agreement": agree, "acc_pytorch_fp32": sum(gold_ok(a, g) for a, _, g in pairs) / n,
-                "acc_lib": sum(gold_ok(b, g) for _, b, g in pairs) / n,
-                "max_abs_prob_diff": max(max(abs(x - y) for x, y in zip(a, b)) for a, b, _ in pairs),
-                "margin_pearson": cov / (va * vb) ** 0.5 if va > 0 and vb > 0 else None,
-                "margin_mean_pytorch": mu_a, "margin_mean_lib": mu_b}
-    out = {"package": str(pkg), "build": build, "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
-           "runtime": f"s1s2 S1S2.load build {build} (onnxruntime-node CPU, {m['builds'][build].get('dtype')} graph)", "dev_rows": len(res),
-           "head": summary("ref_head", "head"), "logits": summary("ref_logits", "logits"),
-           "evidence": summary("ref_evidence", "evidence", "gold_evidence"), "labels": prep["label_texts"]}
-    write_json(W / f"PARITY-{build}.json", out)
-    m["provenance"].setdefault("parity", {})[build] = {k: out[k] for k in ("reference", "runtime", "dev_rows", "head", "logits", "evidence")}
-    # spec 7: fidelity of the measured build against the reference reader (this graph on onnxruntime-node CPU)
-    n = out["head"]["n"]
-    m["builds"][build]["fidelity"] = {
-        "reference": "pytorch-fp32 (fused checkpoint; s1s2-convert parity)", "n": n,
-        "decisionChanged": {"head": 1 - out["head"]["decision_agreement"] / n, "logits": 1 - out["logits"]["decision_agreement"] / n},
-        "measuredAt": now_iso(),
-        "notes": (f"dev split, onnxruntime-node CPU EP; evidence head agreement {out['evidence']['decision_agreement']}/{out['evidence']['n']}; "
-                  if out["evidence"] else "dev split, onnxruntime-node CPU EP; ") + "order inversion not measured; details in provenance.parity"}
-    write_json(pkg / "manifest.json", m)
-    run(["node", lib / "bin" / "s1s2.mjs", "validate", "--strict", pkg], "parity")
-    for k in ("head", "logits", "evidence"):
-        s = out[k]
-        if s:
-            log("parity", f"{build} {k}: agreement {s['decision_agreement']}/{s['n']}, acc PyTorch {s['acc_pytorch_fp32']:.3f} vs lib {s['acc_lib']:.3f}, "
-                f"max |dp| {s['max_abs_prob_diff']:.3f}, margin r {s['margin_pearson'] if s['margin_pearson'] is None else round(s['margin_pearson'], 3)}")
+    for build in builds:
+        out_file = W / f"parity_lib-{build}.jsonl"
+        run(["node", node, lib, pkg, build, W / "parity_in.jsonl", out_file], "parity", env={"S1S2_CACHE": str(W / "s1s2-cache")})
+        got = {r["id"]: r for r in read_jsonl(out_file)}
+
+        def summary(ref_key, lib_key, gold_key=None):
+            pairs = [(x[ref_key], got[x["row"]][lib_key]["probabilities"], x.get(gold_key) if gold_key else x["gold"]) for x in res
+                     if ref_key in x and lib_key in got[x["row"]]]
+            if not pairs:
+                return None
+            agree = sum(am(a) == am(b) for a, b, _ in pairs)
+            gold_ok = lambda p, g: am(p) in g if isinstance(g, list) else am(p) == g  # noqa: E731
+            ma, mb = [gap(a) for a, _, _ in pairs], [gap(b) for _, b, _ in pairs]
+            n = len(pairs)
+            mu_a, mu_b = sum(ma) / n, sum(mb) / n
+            cov = sum((x - mu_a) * (y - mu_b) for x, y in zip(ma, mb))
+            va, vb = sum((x - mu_a) ** 2 for x in ma), sum((y - mu_b) ** 2 for y in mb)
+            return {"n": n, "decision_agreement": agree, "acc_pytorch_fp32": sum(gold_ok(a, g) for a, _, g in pairs) / n,
+                    "acc_lib": sum(gold_ok(b, g) for _, b, g in pairs) / n,
+                    "max_abs_prob_diff": max(max(abs(x - y) for x, y in zip(a, b)) for a, b, _ in pairs),
+                    "margin_pearson": cov / (va * vb) ** 0.5 if va > 0 and vb > 0 else None,
+                    "margin_mean_pytorch": mu_a, "margin_mean_lib": mu_b}
+        out = {"package": str(pkg), "build": build, "reference": "PyTorch fp32 on the fused checkpoint (CPU)",
+               "runtime": f"s1s2 S1S2.load build {build} (onnxruntime-node CPU, {m['builds'][build].get('dtype')} graph)", "dev_rows": len(res),
+               "head": summary("ref_head", "head"), "logits": summary("ref_logits", "logits"),
+               "evidence": summary("ref_evidence", "evidence", "gold_evidence"), "labels": prep["label_texts"]}
+        write_json(W / f"PARITY-{build}.json", out)
+        m["provenance"].setdefault("parity", {})[build] = {k: out[k] for k in ("reference", "runtime", "dev_rows", "head", "logits", "evidence")}
+        # spec 7: fidelity of the measured build against the reference reader (this graph on onnxruntime-node CPU)
+        n = out["head"]["n"]
+        m["builds"][build]["fidelity"] = {
+            "reference": "pytorch-fp32 (fused checkpoint; s1s2-convert parity)", "n": n,
+            "decisionChanged": {"head": 1 - out["head"]["decision_agreement"] / n, "logits": 1 - out["logits"]["decision_agreement"] / n},
+            "measuredAt": now_iso(),
+            "notes": (f"dev split, onnxruntime-node CPU EP; evidence head agreement {out['evidence']['decision_agreement']}/{out['evidence']['n']}; "
+                      if out["evidence"] else "dev split, onnxruntime-node CPU EP; ") + "order inversion not measured; details in provenance.parity"}
+        write_json(pkg / "manifest.json", m)
+        run(["node", lib / "bin" / "s1s2.mjs", "validate", "--strict", pkg], "parity")
+        for k in ("head", "logits", "evidence"):
+            s = out[k]
+            if s:
+                log("parity", f"{build} {k}: agreement {s['decision_agreement']}/{s['n']}, acc PyTorch {s['acc_pytorch_fp32']:.3f} vs lib {s['acc_lib']:.3f}, "
+                    f"max |dp| {s['max_abs_prob_diff']:.3f}, margin r {s['margin_pearson'] if s['margin_pearson'] is None else round(s['margin_pearson'], 3)}")
 
 
 def main(argv=None):

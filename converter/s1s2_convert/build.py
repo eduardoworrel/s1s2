@@ -9,6 +9,7 @@ Or `--builder-src <fork>/src/python/py/models` to run a checkout directly.
 Options (the same as the builds measured in the model cards):
   -p int4 -e webgpu --extra_options include_hidden_states=true exclude_mtp=true
 """
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -23,6 +24,18 @@ FORK = {"repo": "https://github.com/microsoft/onnxruntime-genai",
 GENAI_VERSION = "0.19.0"
 
 
+def escape_help_percent(builder_py):
+    """The 0.19.0 builder has a bare '%' in the --extra_options help ("N % 64 for int4"). Python 3.14 checks help strings when the
+    parser is built and the builder then dies with "badly formed help string". Double the bare '%' in exactly that phrase
+    ("N % <digits> for int<digits>"), in the builder copy only; code such as "i % 2" is left alone. -> number of replacements."""
+    p = Path(builder_py)
+    text = p.read_text()
+    new, n = re.subn(r"\bN % (\d+) for (int\d+)", r"N %% \1 for \2", text)
+    if n:
+        p.write_text(new)
+    return n
+
+
 def patched_builder(work):
     """Copy of the installed onnxruntime_genai/models with the fork patch applied. -> (dir, provenance)."""
     import onnxruntime_genai as og
@@ -35,6 +48,7 @@ def patched_builder(work):
     r = subprocess.run(["patch", "-p5", "-d", str(dst), "-i", str(PATCH)], capture_output=True, text=True)
     if r.returncode != 0:
         raise SystemExit(f"builder patch did not apply:\n{r.stdout}\n{r.stderr}")
+    escape_help_percent(dst / "builder.py")
     return dst, {"tool": "onnxruntime-genai builder", "version": GENAI_VERSION, "source": f"pip onnxruntime-genai=={GENAI_VERSION} + s1s2_convert/patches/{PATCH.name}",
                  "patches": [{"path": "converter/s1s2_convert/patches/" + PATCH.name, "sha256": sha256_file(PATCH),
                               "description": "; ".join(FORK["commits"])}]}

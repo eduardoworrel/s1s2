@@ -184,5 +184,37 @@ class Fuse(unittest.TestCase):
             self.assertEqual(info["dtype"], "base")
 
 
+class BuilderHelp(unittest.TestCase):
+    """Python 3.14 argparse rejects a bare '%' in a help string when the parser is built; the 0.19.0 builder has one."""
+
+    def test_escape_help_percent(self):
+        from s1s2_convert.build import escape_help_percent
+        import argparse
+        src = ('import argparse\np = argparse.ArgumentParser()\n'
+               'p.add_argument("--x", help="kernel supports (N % 64 for int4, N % 32 for int8); other")\n'
+               'k = 7 % 2\nm = i % 2\n')
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "builder.py"
+            f.write_text(src)
+            self.assertEqual(escape_help_percent(f), 2)
+            out = f.read_text()
+            self.assertIn("N %% 64 for int4, N %% 32 for int8", out)
+            self.assertIn("k = 7 % 2\nm = i % 2", out)  # code untouched
+            self.assertEqual(escape_help_percent(f), 0)  # idempotent
+            p = argparse.ArgumentParser()
+            p.add_argument("--x", help="N %% 64 for int4")  # what the builder now holds builds on every Python
+            self.assertIn("N % 64", p.format_help())
+
+
+class Precisions(unittest.TestCase):
+    def test_precision_list(self):
+        import argparse
+        from s1s2_convert.cli import precisions
+        self.assertEqual(precisions(argparse.Namespace(precision="int4")), ["int4"])
+        self.assertEqual(precisions(argparse.Namespace(precision="int4, int8,fp32,int4")), ["int4", "int8", "fp32"])
+        with self.assertRaises(SystemExit):
+            precisions(argparse.Namespace(precision="int4,int3"))
+
+
 if __name__ == "__main__":
     unittest.main()

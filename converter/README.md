@@ -75,6 +75,11 @@ dev; 8 epochs, `--lr 1e-4 --head-lr 1e-3`; CPU training ~9 min). The package its
   int4 loss on this 135M model is consistent with quantization (the fused LoRA delta is ~0.15% of the weight norm); the cause was not measured further. For tiny models ship/escalate to int8; int4 fidelity for a given model must be measured, not assumed.
 * The fork-checkout path (`--builder-src <fork>/src/python/py/models` at `38cbf9c3`) produced the
   same `model.onnx.data` (weights) bytes as the patched-pip path; `model.onnx` (graph proto, 214 KB) differs and the difference was not inspected.
+* **Default recipe, one command** (2026-11-18, Mac, CPU; same model, same toy file, `--dev-fraction 0.1`, `--precision int4,int8,fp32`, no other option; 3 min):
+  2 epochs at lr 1e-4 (90 steps) did not teach this 135M model the toy decision (dev accuracy 0.65 at step 0, 0.525 at the end); the evidence head
+  reached 1.00 on its 19 dev rows. The pipeline itself held on the five builds (`genai-{int4,int8}-{webgpu,cpu}`, `genai-fp32-cpu`), each CPU build with a
+  `fidelity` record: fp32 40/40 head decisions, max |Δp| 0.000; int8 40/40 (0.026); int4 40/40 (0.073), logits 34/40, evidence 17/19. These are agreements of a near-chance model.
+  `--precision` takes a list and `parity` runs on every `-cpu` build by default. Python 3.14 refuses the 0.19.0 builder's help text ("N % 64"); the converter now escapes it in its copy.
 * Unit tests: `python -m unittest discover -s tests` (fill/escape/render, data loading, head.bin vs lib formula).
 
 ## Transformers.js layout of a published package (`pack_tjs`)
