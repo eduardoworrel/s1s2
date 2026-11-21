@@ -25,12 +25,11 @@ await s.dispose(); await model.dispose();
 ## O que é
 
 - Uma biblioteca JavaScript que responde perguntas `predicate`, `choice` e `score` numa só passada, sem gerar texto. Cada resposta traz `probability`, `confidence`, `margin` e `rawMargin`.
-- `s.generate()` continua do mesmo prefill que produziu a decisão, nos backends que guardam estado. No WebGPU esse reuso (e o prefixo comum a várias perguntas) é idêntico bit a bit a um prefill completo desde a 0.1.3: nenhum bloco de prefill tem menos de 32 tokens, porque o onnxruntime-web calcula blocos menores por outro caminho numérico.
+- `s.generate()` continua do mesmo prefill que produziu a decisão, nos backends que guardam estado. No WebGPU esse reuso (e o prefixo comum a várias perguntas) é idêntico bit a bit a um prefill completo: nenhum bloco de prefill tem menos de 32 tokens, porque o onnxruntime-web calcula blocos menores por outro caminho numérico.
 - Uma política de margem opcional manda as respostas de margem baixa para outro build do mesmo modelo (por exemplo, de int4 para int8) ou para a geração. Não há limiar padrão: você mede o seu no seu build.
 - Runtimes: ONNX Runtime Web (grafos GenAI e decoders comuns), transformers.js, WebLLM e LiteRT.js. No Node, onnxruntime-node.
 - Lê **pacotes S1S2**: um manifesto que fixa cada arquivo por sha256 e descreve o layout do prompt, os marcadores, as leituras e os heads. A biblioteca e o formato têm o mesmo nome; o formato está especificado em [`spec/`](spec/s1s2-package.md).
 - Formatos de head que lê: Kev `head.pt`, heads de decisão em GGUF, alias3-web `head.bin`, leituras lineares d3/pplx, JEV, `DecisionConfig` do transformers e heads conjuntos Clef. [`converters/heads/`](converters/heads) converte cada um deles e grava um registro de fidelidade contra o código de referência do próprio formato.
-- Antes se chamava s12: o export `S12` e manifests com `schema: "s12.manifest/1"` continuam funcionando, como aliases obsoletos de `S1S2` e `"s1s2.manifest/1"`.
 
 ## Modelos
 

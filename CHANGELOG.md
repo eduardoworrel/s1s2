@@ -1,26 +1,17 @@
 # Changelog
 
-## Converter 0.1.1 (npm package unchanged, 0.1.3)
-
-- `s1s2-convert pack-mlc` and `pack-litert` (also `python -m s1s2_convert.pack_mlc|pack_litert`): repackage a published GenAI S1S2 repo as a WebLLM (MLC q4f16_1) or LiteRT.js (int4) repo. The LoRA is merged into the base in bf16 (`fuse_lora.py`), quantized by the runtime's own tool, and one manifest per source manifest is written. WebLLM builds ship a hidden-state recovery matrix (`recovery.rows.i32`, `recovery.P.f16`, from the quantized output projection) so the trained heads work on logits-only WebLLM; `--readout logits` drops the heads. LiteRT builds read the label logits. `pin` writes the upload commit into the manifests and runs `s1s2 validate --strict`.
-- `s1s2_convert/node/browser_decide.mjs`: loads a packed folder in Chrome (WebGPU) with s1s2 and decides prompts (head and logits readouts).
-- `converter/README.md`: "Other runtimes (WebLLM, LiteRT)" with the exact steps, pinned tool versions, known problems of the pinned MLC wheels on macOS, and which architectures each converter handles (read from the tools' sources). Smoke run: Qwen3-0.6B through both converters, loaded in Chrome, 4 prompts per build.
-- Unit tests: `tests/test_pack_mlc_litert.py` (q4f16_1 dequantization, recovery matrix against the indexing in `webllm.ts`, adapter fusing, manifests, CLI dispatch).
-
 ## 0.1.3
 
-- Exact reuse on WebGPU. onnxruntime-web 1.31.1 (int4 genai graphs) computes every token fed in a prefill block shorter than 32 tokens on a different numeric path, so continuing from a kept state (`s.generate()` after `decide()`) and the prefix shared by several questions differed from a full prefill by up to ~0.5 logit. The genai backend now never feeds a block shorter than 32 tokens (`minBlock`, default 32; `genai: { minBlock: 0 }` restores the old chunking): a short final chunk is merged into the previous one, a kept state stops 32 tokens before the end of its prefill, and `decide()` places the shared prefix at least 32 tokens before each question's end (64 when the state is kept). Reuse is now bit-identical to a full prefill, checked in Chrome on an Apple M2 Pro with the published Qwen3-0.6B package: 32 of 32 decisions with a shared prefix equal to each question alone, 6 of 6 System-2 continuations with the same tokens, 18 of 18 cuts of a kept state with equal logits and hidden states (with the 0.1.2 chunking: 18 of 32, 5 of 6 and 4 of 18). Cost: up to 64 tokens prefilled again per question. A plain prefill whose last chunk was shorter than 32 tokens now gives slightly different numbers than 0.1.2 (the same as reuse). Prompts shorter than 64 tokens keep no state (`sharedPrefill: false`). `reusedTokens` counts the tokens actually served from the kept state.
-- LiteRT: every output tensor of a step is now freed unless it is handed on. A graph exported with prefill logits (`prefill_logits=True`) left one `[1, P, vocab]` tensor per prefill step alive (about 10 MB per 16-token step with a Qwen3 vocabulary, about 1.2 GB for a 2,000-token prompt), and a hidden output was left alive per generated token and per step of a logits-only build; such exports now run with the same numbers as logits-only ones (mock backend test; not re-measured on a real export here).
-- Choice by label logits with `logits.choice.map: "letters"` reads the option keys as the model writes them after the cue: " A", " B", ... (one token each in Qwen2/Qwen3) when the prompt does not end in whitespace, or the bare key after an appended space when the tokenizer writes that space as its own token (same rule as the score layout). It used to read the bare "A" after "Answer:", where the model writes " A". Choice tasks without pinned tokens on a letters manifest now read the keys too (they read the first token of the label text before), so pinning " A", " B", ... per task is no longer needed.
+- `S1S2.load` picks a runtime for the device: ONNX Runtime Web (GenAI graphs and plain decoders), transformers.js, WebLLM or LiteRT.js in the browser, onnxruntime-node in Node. Builds that list device `"wasm"` run on the browser CPU when WebGPU is absent (`cpuFallback: false` opts out; `model.device` and `model.fallbackReason` say what was used); builds without it are refused with the reason.
+- `decide()` answers `predicate`, `choice` and `score` questions in one forward pass and reports `probability`, `confidence`, `margin` and `rawMargin`. `s.generate()` continues from the same prefill. On WebGPU, reuse of a kept state and of the prefix shared by several questions is bit-identical to a full prefill: the genai backend never feeds a prefill block shorter than 32 tokens (`minBlock`).
+- Choice by label logits with `logits.choice.map: "letters"` reads the option keys as the model writes them after the cue (" A", " B", ...).
+- LiteRT frees every output tensor of a step that is not handed on.
+- Packages: manifest `schema: "s1s2.manifest/1"` pins every file by sha256; `s1s2 validate` checks it and rejects any other schema id. The cache directory is `$S1S2_CACHE`.
+- Docs, comments and messages describe what was measured in plain words; `test/plain-names.test.mjs` keeps internal names out of shipped files. `PROVISIONAL_NOTE` is `"provisional - no measured threshold"`.
 
-## 0.1.2
+## Converter 0.1.1
 
-- Docs, comments and messages describe what was measured and how, in plain words, instead of internal study names; a test (`test/plain-names.test.mjs`) keeps those names out of shipped files. `PROVISIONAL_NOTE` now reads `"provisional - no measured threshold"`. Converter: `--recipe kev` (default) and `--recipe short` replace `joint-k` and `preregistered`, which keep working as deprecated aliases; the builder patch is now `onnxruntime-genai-0.19.0-builder-fixes.patch` (same bytes).
-
-## 0.1.1
-
-- `S1S2.load` runs genai builds on the browser CPU (onnxruntime-web WASM) when the manifest lists device `"wasm"`, and falls back to it automatically when WebGPU is absent (`navigator.gpu` missing or no adapter); `cpuFallback: false` opts out, `model.device` / `model.fallbackReason` say what was used. Builds without `"wasm"` (S5-nano: no WASM kernel for GatedDeltaNet) are refused with the reason. Same route as the browser-CPU measurement (120 development items per task, Chrome on an Apple M2 Pro): 7.5–16.5× slower than WebGPU, same decisions in ≥116/120 items; long inputs on ≥1.7B models are slow.
-
-## 0.1.0
-
-- First release.
+- `s1s2-convert` trains (`--recipe kev` by default, or `short`), fuses, exports and packs a specialist; the builder patch is `onnxruntime-genai-0.19.0-builder-fixes.patch`.
+- `pack-mlc` and `pack-litert` (also `python -m s1s2_convert.pack_mlc|pack_litert`) repackage a published GenAI S1S2 repo as a WebLLM (MLC q4f16_1) or LiteRT.js (int4) repo. The LoRA is merged into the base in bf16 (`fuse_lora.py`), quantized by the runtime's own tool, and one manifest per source manifest is written. WebLLM builds ship a hidden-state recovery matrix (`recovery.rows.i32`, `recovery.P.f16`) so the trained heads work on logits-only WebLLM; `--readout logits` drops the heads. LiteRT builds read the label logits. `pin` writes the upload commit into the manifests and runs `s1s2 validate --strict`.
+- `s1s2_convert/node/browser_decide.mjs` loads a packed folder in Chrome (WebGPU) with s1s2 and decides prompts.
+- `converter/README.md` has the steps for other runtimes, the pinned tool versions and the architectures each converter handles.

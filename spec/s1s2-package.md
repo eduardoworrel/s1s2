@@ -49,7 +49,7 @@ manifest's, `norm.bin` parses, and `genai_config.json` agrees with `hiddenSize` 
 
 | Key | Req. | Meaning |
 |---|---|---|
-| `schema` | yes | `"s1s2.manifest/1"`; the deprecated `"s12.manifest/1"` is still accepted (section 10). |
+| `schema` | yes | `"s1s2.manifest/1"`; any other id is rejected. |
 | `id`, `base`, `hiddenSize` | yes | Package id; `{repo, revision}` of the checkpoint; width of the hidden state heads read. |
 | `layer` | yes | `{read: "final", norm: "in-graph"}`: the default read for heads (per-head `layer` in 6.6; out-of-graph norm per build in 6.5). |
 | `tokenizer`, `eos`, `warmup` | yes (warmup no) | Section 4. |
@@ -310,7 +310,7 @@ format from its user (`s1s2-heads from-<format>`), never infer it from file name
 ### 9.2 Conversion fidelity record (0.2)
 
 Every conversion writes one record (`fidelity.json` next to the converted head; schema id
-`s1s2.conversion-fidelity/1`; records written before the rename carry `s12.conversion-fidelity/1`, same layout):
+`s1s2.conversion-fidelity/1`):
 
 ```
 { sourceFormat, reference: {impl, repo, commit, file}, ours: {impl: "s1s2", commit, reader},
@@ -324,25 +324,9 @@ A conversion is "lossless" only when `pass` is true with decisions equal; tolera
 arithmetic and its declaration on the real weights; "real-hidden" also tests the prompt and read positions on the real
 backbone.
 
-## 10. Versioning and migration from 0.1
+## 10. Versioning
 
-**Schema id rename.** `s12.manifest/1` became `s1s2.manifest/1` with the rename of the library; the content is the same, readers accept both and report the old id as deprecated, writers write the new one.
-
-Additive changes keep `schema: "s1s2.manifest/1"`. **One meaning changed in 0.2**: a `head.bin` with neither `scale` nor
-`scale_folded_into_q` in its header, and no `scale` in the manifest, was read with scale 1 in 0.1 and is read with
-1/sqrt(headDim) in 0.2 (alias3-web compatibility). By section 10 of 0.1 this would bump the schema id; it does not,
-because no S1S2 manifest has been published and every local head.bin was inventoried (2026-11-15):
-
-| Heads | Header | Read in 0.2 | Action |
-|---|---|---|---|
-| 306 heads of the model cards' training runs (unpublished) | `scale_folded_into_q: 0.0625` | scale 1 (unchanged) | none (that head writer is frozen while its measurements run; writing `scale: 1.0` there is pending) |
-| ct0 `head.bin` (sha `1138a774…`, T 2.0, offset 16.27) and `head_score.bin` (`82640a99…`), pinned 14× in `manifests/ct0-alias3-micro-1026.json`, published in `eduardoworrel/alias3-micro-1026-*` | no scale key, folded | 1/16 without the manifest | manifest declares `scale: 1` on every head (the Hub files cannot change) |
-| other unpublished ct0 heads | no scale key, folded | — | not in any S1S2 manifest; declare `scale: 1` if ever packaged |
-| alias3-web `f586cb80…` | no scale key, not folded | 1/16 (= its own reader) | none |
-| s1s2 test fixtures | built in memory | scale given | none |
-| converter (`converter/`) heads | `scale: 1.0` + `scale_folded_into_q` | 1 | none |
-
-A change that makes an existing valid manifest invalid, or changes another key's meaning, bumps the schema id.
+Additive changes keep `schema: "s1s2.manifest/1"`. A change that makes an existing valid manifest invalid, or changes another key's meaning, bumps the schema id.
 
 ## 11. Coverage (formats × conversion × fidelity)
 

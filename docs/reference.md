@@ -198,7 +198,7 @@ Questions about the same input share the prefill of the common prefix (system tu
 snapshots, then each question runs only its own tokens.
 
 Exact reuse on WebGPU: onnxruntime-web (1.31.1, int4 genai graphs) computes any token fed in a prefill block shorter
-than 32 tokens on a different numeric path (up to ~0.5 logit apart), so from 0.1.3 the genai backend never feeds a
+than 32 tokens on a different numeric path (up to ~0.5 logit apart), so the genai backend never feeds a
 block shorter than 32 (`minBlock`, `genai: { minBlock: 0 }` turns it off): the shared prefix stops at least 32 tokens
 before each question's end (64 when its state is kept), and a kept state stops 32 tokens before the end of its
 prefill. Shared prefill and prefix reuse are then bit-identical to a full prefill (Chrome on an Apple M2 Pro, published
@@ -252,8 +252,6 @@ CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists devic
   for `com.microsoft.GatedDeltaNet`. `s1s2-convert` does not add it.
 
 ## Manifest (`schema: "s1s2.manifest/1"`)
-
-The deprecated id `"s12.manifest/1"` (before the rename to s1s2) is still accepted; `s1s2 validate` reports it as a warning. `S12` is a deprecated alias of `S1S2`, and `$S12_CACHE` of `$S1S2_CACHE`.
 
 Validated at load (`validateManifest`, every problem listed). Then the loader asserts: the tokenizer's encoding of
 every manifest token (EOS, yes/no, level tokens, kev delimiters) equals the manifest id; tagged-encoding markers are
