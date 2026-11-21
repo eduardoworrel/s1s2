@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dist = process.env.S1S2_DIST ?? process.env.LIB_S12_DIST ?? path.resolve(here, "../../../../dist/index.js");
+const dist = process.env.S1S2_DIST ?? path.resolve(here, "../../../../dist/index.js");
 const lib = await import(dist);
 const [jobPath, binPath, outPath] = process.argv.slice(2);
 const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));

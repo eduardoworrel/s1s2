@@ -357,7 +357,3 @@ export async function assertBackend(m: Manifest, b: BuildSpec, be: Backend): Pro
   if (r.lastLogits.length <= mx) throw new Error(`build ${b.repo}@${b.revision}: vocabulary ${r.lastLogits.length} does not cover manifest token ${mx}`);
 }
 
-/** @deprecated Renamed to `S1S2`; `S12` stays as an alias for compatibility and will be removed in a later release. */
-export const S12 = S1S2;
-/** @deprecated Renamed to `S1S2`. */
-export type S12 = S1S2;

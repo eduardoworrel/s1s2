@@ -107,7 +107,7 @@ class Recovery(unittest.TestCase):
         np.testing.assert_allclose(got, s32, rtol=1e-2)
 
 
-SIB = {"schema": "s12.manifest/1", "id": "x.cnli", "base": {"repo": "o/base", "revision": "a" * 40}, "hiddenSize": 64,
+SIB = {"schema": "s1s2.manifest/1", "id": "x.cnli", "base": {"repo": "o/base", "revision": "a" * 40}, "hiddenSize": 64,
        "tokenizer": {"repo": "o/src", "revision": "b" * 40, "files": {}},
        "defaults": {"method": {"predicate": "logits", "choice": "head", "score": "logits"}},
        "lab": {"note": "internal bookkeeping", "task": "cnli", "cue": "Answer:", "model": "internal"},

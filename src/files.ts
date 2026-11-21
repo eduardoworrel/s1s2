@@ -31,7 +31,7 @@ export class IntegrityError extends Error {
 
 export interface FilesOptions {
   platform: "node" | "browser";
-  /** Node: download cache (default ~/.cache/s1s2, or $S1S2_CACHE; the deprecated $S12_CACHE is still read). */
+  /** Node: download cache (default ~/.cache/s1s2, or $S1S2_CACHE). */
   cacheDir?: string;
   /** Node: repo id -> local directory mirroring the repo layout (read-only; hashed once; missing files are downloaded to the cache). */
   localDirs?: Record<string, string>;
@@ -108,7 +108,6 @@ export class Files {
     if (this.o.cacheDir) return this.o.cacheDir;
     const env = (globalThis as any).process?.env ?? {};
     if (env.S1S2_CACHE) return env.S1S2_CACHE;
-    if (env.S12_CACHE) return env.S12_CACHE; // deprecated name
     const os = await nodeImport("node:os"), path = await nodeImport("node:path");
     return path.join(env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache"), "s1s2");
   }

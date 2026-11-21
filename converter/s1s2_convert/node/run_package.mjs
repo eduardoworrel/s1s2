@@ -11,7 +11,7 @@ const manifestPath = path.join(pkg, "manifest.json");
 const man = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const t0 = Date.now();
 const model = await S1S2.load({ manifest: manifestPath, build, localDirs: { [man.tokenizer.repo]: pkg, [man.builds[build].repo]: pkg },
-  cacheDir: process.env.S1S2_CACHE ?? process.env.S12_CACHE, onStatus: (m) => console.error("[s1s2]", m) });
+  cacheDir: process.env.S1S2_CACHE, onStatus: (m) => console.error("[s1s2]", m) });
 console.error(`[s1s2] loaded ${model.build} (${model.runtime}, ${model.device}) heads=${model.heads.join(",")} in ${Date.now() - t0} ms`);
 const rows = fs.readFileSync(rowsPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
 const out = [];
