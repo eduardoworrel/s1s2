@@ -4,7 +4,7 @@
   "prompts_sha256": "9b139028f779c27b1f9029390fea8ba8367d2f16d7d4dd7f46bb4e27d520b041",
   "requirements_v3_sha256": "88277ae09c9408075e88473074a108d68e30ced1c34012bbe7dde33cb2861a6c",
   "requirements_v4_sha256": "9297292e92f2fdaf42f4bab6f45f878608b0364ca47226971fa9a7b75e7ebc8a",
-  "note": "Placeholder names translated from the lab file's {nome_de}, {definicao}, {estado}; keys nome_de/definicao renamed name_of/definition; the sha256 values are of the original files, and the rendered text is unchanged."
+  "note": "Placeholders: name_of, definition, state. The sha256 values are those of the original files; the rendered text is unchanged."
  },
  "laws": {
   "GDPR": {
