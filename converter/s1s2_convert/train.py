@@ -11,10 +11,10 @@ reimplemented here, same numbers):
   on the dev split (evaluated every --eval-every steps and at the end of each epoch). Option order is re-drawn every
   epoch (seeded).
   Epochs, lr and fusion dtype come from the recipe (RECIPES):
-    kev (default; old name joint-k): the Kev-faithful recipe: 2 epochs; lr by Kev's rule, 1e-4 if the checkpoint has
+    kev (default): the Kev-faithful recipe: 2 epochs; lr by Kev's rule, 1e-4 if the checkpoint has
       <= 1B parameters, 5e-5 above (LoRA and head); LoRA fused in fp32. On the three-law privacy benchmark (held-out
       test, scored once) it was more accurate than `short`; these are the variants called joint_k in the model cards.
-    short (old name preregistered): the shorter recipe fixed before any result: 1 epoch, lr 5e-5, fusion in the base
+    short: the shorter recipe fixed before any result: 1 epoch, lr 5e-5, fusion in the base
       dtype.
   Not reproduced (declared): kev data augmentation (none-of-the-above / distractor options), later kev stages,
   temperature calibration, resumable checkpoints.
@@ -44,13 +44,11 @@ RECIPES = {
             "epochs": 2, "lr": "kev-rule", "fuse_fp32": True},
     "short": {"name": "short recipe: 1 epoch, lr 5e-5, base-dtype fusion", "epochs": 1, "lr": 5e-5, "fuse_fp32": False},
 }
-RECIPE_ALIASES = {"joint-k": "kev", "preregistered": "short"}  # deprecated names (s1s2-convert 0.1.0)
 DEFAULT_RECIPE = "kev"
 
 
 def recipe_id(name):
-    """Canonical recipe name; the deprecated aliases map to their new names."""
-    name = RECIPE_ALIASES.get(name, name)
+    """Recipe name, checked against RECIPES."""
     if name not in RECIPES:
         raise SystemExit(f"unknown recipe {name!r} (known: {', '.join(sorted(RECIPES))})")
     return name

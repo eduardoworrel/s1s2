@@ -27,7 +27,7 @@ from pathlib import Path
 from . import __version__
 from . import data as D
 from . import layout as LY
-from .train import RECIPES, RECIPE_ALIASES, DEFAULT_RECIPE, recipe_id
+from .train import RECIPES, DEFAULT_RECIPE, recipe_id
 from .util import log, write_json, read_json, read_jsonl, write_jsonl, run, done, mark_done, lib_dir, now_iso, sha256_file
 
 STAGES = ["prepare", "train", "fuse", "evidence", "build", "package", "parity"]
@@ -80,7 +80,7 @@ def args_parser():
     ap.add_argument("--recipe", type=recipe_id, choices=sorted(RECIPES), default=None,
                     help=f"training recipe (default: {DEFAULT_RECIPE}, or the one prepare recorded): kev = 2 epochs, lr 1e-4 "
                          "if the checkpoint has <= 1B parameters else 5e-5 (Kev's rule), fp32 fusion; short = 1 epoch, lr 5e-5, "
-                         f"base-dtype fusion. Deprecated aliases: {', '.join(f'{k} = {v}' for k, v in sorted(RECIPE_ALIASES.items()))}")
+                         f"base-dtype fusion")
     ap.add_argument("--epochs", type=int, default=None, help="training epochs (default: the recipe's)")
     ap.add_argument("--lr", type=float, default=None, help="peak lr of LoRA and head (default: the recipe's)")
     ap.add_argument("--head-lr", type=float, default=None, help="peak lr of the head (kev head_lr; default: --lr)")
@@ -223,9 +223,9 @@ def encoded_rows(W, kind, split):
 
 
 def prepared_recipe(a, prep):
-    """The recipe prepare recorded (work dirs from before --recipe: short; old names map to the new ones); a different
+    """The recipe prepare recorded a different
     --recipe is refused."""
-    recipe = recipe_id(prep.get("recipe", "short"))
+    recipe = recipe_id(prep["recipe"])
     if a.recipe and a.recipe != recipe:
         raise SystemExit(f"--recipe {a.recipe}: this work dir was prepared with --recipe {recipe} (run prepare again in a new --work)")
     return recipe

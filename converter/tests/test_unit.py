@@ -123,23 +123,19 @@ class Recipe(unittest.TestCase):
                          {"kev": (2, "kev-rule", True), "short": (1, 5e-5, False)})
         with self.assertRaises(SystemExit):  # a later stage cannot switch the recipe prepare used
             cli.prepared_recipe(cli.args_parser().parse_args(["train", "--work", "w", "--recipe", "short"]), {"recipe": "kev"})
-        self.assertEqual(cli.prepared_recipe(a, {}), "short")  # work dirs from before --recipe
+        self.assertEqual(cli.prepared_recipe(a, {"recipe": "short"}), "short")
 
-    def test_deprecated_recipe_aliases(self):
+    def test_recipe_names(self):
         from s1s2_convert import cli, train as T
         parse = lambda *x: cli.args_parser().parse_args(["train", "--work", "w", *x])
-        self.assertEqual(parse("--recipe", "joint-k").recipe, "kev")
-        self.assertEqual(parse("--recipe", "preregistered").recipe, "short")
+        self.assertEqual(parse("--recipe", "kev").recipe, "kev")
         self.assertEqual(parse("--recipe", "short").recipe, "short")
-        # work dirs prepared under the old names keep working with either name
-        self.assertEqual(cli.prepared_recipe(parse("--recipe", "kev"), {"recipe": "joint-k"}), "kev")
-        self.assertEqual(cli.prepared_recipe(parse(), {"recipe": "preregistered"}), "short")
-        with self.assertRaises(SystemExit):
-            cli.prepared_recipe(parse("--recipe", "joint-k"), {"recipe": "preregistered"})
-        with tempfile.TemporaryDirectory() as d:
-            self._ckpt(d, 1000)
-            self.assertEqual(T.recipe_lr("joint-k", d), T.recipe_lr("kev", d))
-            self.assertEqual(T.recipe_lr("preregistered", d), T.recipe_lr("short", d))
+        self.assertEqual(sorted(T.RECIPES), ["kev", "short"])
+        for name in ("joint-k", "preregistered"):
+            with self.assertRaises(SystemExit):
+                parse("--recipe", name)
+            with self.assertRaises(SystemExit):
+                T.recipe_id(name)
         with self.assertRaises(SystemExit):
             parse("--recipe", "bogus")
 

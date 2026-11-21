@@ -20,8 +20,7 @@ specialist trained with the Kev-faithful recipe (`--recipe kev`: 2 epochs, Kev's
 1 epoch, lr 5e-5, bf16 fusion) on every law for all five models that had both (e.g. GDPR: Jurema-7B 85.5 → 88.4%, S5-nano 87.1 → 89.4%), and it made
 EuroLLM-1.7B (GDPR 53.2 → 83.0%) and Salamandra-2B (59.5 → 81.9%) learn the task, where one epoch left them near chance.
 One seed, chosen on the development split; a descriptive comparison, not a hypothesis test fixed in advance; SmolLM2-135M stays near chance with
-either recipe. `--recipe` is set at `prepare` (it fixes the epochs in the plan) and later stages refuse a different one. The old
-names `joint-k` (= `kev`) and `preregistered` (= `short`) still work as deprecated aliases.
+either recipe. `--recipe` is set at `prepare` (it fixes the epochs in the plan) and later stages refuse a different one.
 
 ## Input
 
