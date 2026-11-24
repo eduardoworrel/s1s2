@@ -150,6 +150,26 @@ Question: can onnxruntime-genai expose the hidden state of an intermediate layer
   `transformers.js` get the same fetch-by-name. `webllm` and `litert` have no such output and throw
   `forecast unsupported`.
 
+## Smoke test (2026-11-24, Mac CPU; a mechanism check, not a result)
+
+`converter/examples/forecast_smoke.py` + `test/smoke/forecast_parity.mjs`, on SmolLM2-135M-Instruct (no LoRA), layer 14 (of 30),
+300 prompts built from 25 topics x 12 templates, greedy answers of 48 tokens, two labels defined by the person running it
+(`numbered_list`: the answer has a line starting `1.`-style; `long_answer`: more than 40 words), a logistic head with
+temperature and Platt fitted on a held-out quarter of those same rows. What was checked:
+
+- The graph exports the layer: fp32 CPU, int8 and int4 (WebGPU graph run on Node CPU) builds each carry `aux_hidden_states`.
+- The library, on Node CPU, reads it in the decide prefill (0 extra prefill tokens) and the head output of the fp32 build
+  equals the PyTorch reference on 100 prompts: max |dp| 2e-5, 0 flips of 200 prompt x behavior pairs. This confirms the layer
+  index mapping, the pooling and the head formula end to end.
+- Across precisions, against the fp32 build and the default tolerance of `forecastParity` (max |dp| 0.05, flips <= 5%, written
+  before the run): int8 max |dp| 0.35, mean 0.033, 3 of 200 flips (fails the max |dp| bound); int4 max |dp| 1.0, mean 0.23, 49 of
+  200 flips (fails both). The int4 layer row differs from fp32 by about 27% relative L2 (cosine >= 0.96). So on this model a
+  head trained on fp32 activations does not carry over to the quantised builds; whether a head trained on the quantised
+  activations does was not tried.
+
+It says nothing about whether the forecasts are accurate: the labels are trivial text rules, the same rows trained and
+calibrated the head, and no held-out accuracy is claimed.
+
 ## Limits and open questions
 
 - No measured accuracy; the smoke test shows the mechanism runs and the head output survives int4 vs fp32, nothing else.

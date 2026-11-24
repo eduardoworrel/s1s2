@@ -3,6 +3,8 @@
 ## Unreleased
 
 - The Marimba audio package is on the Hub (`eduardoworrel/Marimba-ONNX-S1S2`); `manifests/marimba-audio.json` pins it (repo, revision and the hashes of the re-exported decoder), so `loadMedia` with no `baseUrls` downloads from there. Local weights through `baseUrls` / `localDirs` work as before, keyed by the new repo id.
+- Forecast reader (experimental, `spec/FORECAST.md`): optional manifest `forecast` block (layer, pooling `last` | `mean` | `bins32`, linear or MLP head file, behaviors, temperature and Platt, `trainedOn`), build keys `forecastOutput` / `forecastLayer`, and `layer.read` accepting a layer index (S1 still reads the final state and refuses an index at load). `decide(req, { forecast: true })` reads the extra graph output in the same prefill; `session.forecast()` and `model.forecast(req)` return `{ behaviors: { name: { p, logit } }, layer, cost }` with no second prefill. The `genai`, `decode-only` and `transformers.js` backends fetch the extra output; WebLLM and LiteRT throw `forecast unsupported`. `forecastParity` in `fidelity.ts` compares the head output between precisions. Manifests without `forecast` behave as before.
+- Converter: `build --forecast-layer N` (GenAI builder `aux_hidden_state_layers=N+1`), `package --forecast-dir`, `train-forecast-head collect|train` (offline, your labels, no judge), optional `truncate_graph`.
 
 ## 0.2.1 (2026-11-26)
 
