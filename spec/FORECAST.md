@@ -130,6 +130,10 @@ Question: can onnxruntime-genai expose the hidden state of an intermediate layer
   an extra `aux_hidden_states` output ... Entry `i` is the residual stream entering layer i, so indices must lie in
   [1, num_hidden_layers)". `models/builders/base.py` lines 663-706 (option parsing, output shape `hidden_size * count`),
   3702-3736 (the tap is the skip-layernorm sum of layer `i`) and 7454-7474 (`Concat` into the output).
+- **Sources.** Canonical locations of the files above at that commit:
+  `https://github.com/microsoft/onnxruntime-genai/blob/331d6ebb9fab31e4a3bc04c2b873457181813408/src/python/py/models/builder.py` and
+  `.../src/python/py/models/builders/base.py`. They were not reachable from the machine used (see below); the pip wheel
+  files were read instead, so the line numbers are those of the wheel.
 - **Mapping.** Block `L`'s output (manifest `forecast.layer = L`, 0-indexed) is the input of block `L+1`, so the builder gets
   `aux_hidden_state_layers=L+1` and the reference is Hugging Face `hidden_states[L+1]`; valid for `0 <= L <= numLayers-2`
   (the last block's output is only reachable after the final norm, as `hidden_states`). Pass one index: several are
@@ -137,7 +141,7 @@ Question: can onnxruntime-genai expose the hidden state of an intermediate layer
 - **Checked on this machine:** SmolLM2-135M-Instruct, fp32 CPU build with `aux_hidden_state_layers=15`: output
   `aux_hidden_states` `[1, n, 576]`; against `transformers` `hidden_states[15]` max |diff| 0.041 where values reach 2.7e4
   (fp32 reorder noise). The state is the raw residual stream before any norm, in the graph's io dtype: on fp16 (WebGPU)
-  builds large residual values can overflow, so the backend rejects non-finite output with a clear error.
+  builds large residual values can overflow, so the backend rejects non-finite output with a clear error. (On SmolLM2-135M at layer 14 the rows reached |x| of about 71, so this did not happen in the smoke test below.)
 - **Runtime API: not verified.** `Generator::GetOutput` and the JavaScript API could not be read: every request to
   `api.github.com` and `raw.githubusercontent.com` for `microsoft/onnxruntime-genai` (and `microsoft/onnxruntime`) returned
   HTTP 404 from this machine, and the npm registry has no `onnxruntime-genai` package. What is visible in the installed

@@ -272,7 +272,7 @@ export class DecisionSession {
     if (i < 0) throw new Error(`session.forecast: no question named ${JSON.stringify(opts.question)}`);
     const rows = this.rows[i];
     if (!rows) throw new Error("session.forecast: this session did not read the forecast layer; call decide(req, { forecast: true })");
-    return fx.read(rows, this.plans[i].q.name, this.plans[i].enc.last + 1);
+    return fx.read(rows, this.plans[i].q.name, this.plans[i].enc.ids.length);
   }
 
   answer(name: string): Answer | undefined { return this.answers.find((a) => a.name === name); }

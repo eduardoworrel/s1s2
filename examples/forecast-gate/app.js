@@ -15,8 +15,7 @@ async function load(url) {
   const base = new URL(".", new URL(url, location.href)).href;
   const baseUrls = Object.fromEntries([manifest.tokenizer.repo, ...Object.values(manifest.builds).map((b) => b.repo)].map((r) => [r, base]));
   ort.env.wasm.wasmPaths = new URL("./vendor/ort/", location.href).href;
-  const build = Object.keys(manifest.builds).find((n) => manifest.builds[n].forecastOutput) ?? Object.keys(manifest.builds)[0];
-  model = await S1S2.load({ manifest, build, modules: { ort, transformers: tjs }, baseUrls, onStatus: status });
+  model = await S1S2.load({ manifest, modules: { ort, transformers: tjs }, baseUrls, onStatus: status });
   loaded = url;
   if (model.forecastUnavailable) throw new Error(model.forecastUnavailable);
   $("beh").innerHTML = model.forecastBehaviors.map((b) => `<option>${b}</option>`).join("");

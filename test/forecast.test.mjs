@@ -220,7 +220,7 @@ test("fp16 overflow: a non-finite forecast row is refused with a clear error", a
   await assert.rejects(be.prefill([3], { positions: [], extra: { positions: [0] } }), /not finite/);
 });
 
-test("mean pooling reads every prompt position (and so disables prefix sharing)", async () => {
+test("mean pooling reads every prompt position", async () => {
   const { s, model } = boot({ spec: { pooling: "mean" } });
   const session = await model.decide(req, { forecast: true });
   const f = session.forecast();
@@ -246,4 +246,16 @@ test("the JSON Schema accepts the forecast block and rejects a bad one", async (
   const badm = clone(good); badm.forecast.pooling = "max";
   assert.ok((await schemaProblems(badm)).some((x) => /forecast/.test(x)));
   const c = clone(good); c.layer.read = 4; assert.deepEqual((await schemaProblems(c)).filter((x) => /layer/.test(x)), []);
+});
+
+test("mean pooling disables the shared prefix of several questions; last pooling keeps it", async () => {
+  const two = { input: "some text", questions: [{ name: "q1", type: "predicate", instructions: "Is it?" }, { name: "q2", type: "predicate", instructions: "Is it big?" }] };
+  const snaps = async (pooling) => {
+    const { be, model } = boot({ spec: { pooling } });
+    let n = 0; const snap = be.snapshot; be.snapshot = async (...a) => { n++; return snap(...a); };
+    const s = await model.decide(two, { forecast: true }); s.forecast({ question: "q2" }); await s.dispose();
+    return n;
+  };
+  assert.equal(await snaps("last"), 1, "the common prefix is prefilled once for both questions");
+  assert.equal(await snaps("mean"), 0, "position 0 is read, so nothing is shared");
 });

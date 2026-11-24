@@ -99,17 +99,21 @@ def main(argv=None):
         m = draft_manifest(a.model, W)
         repo, rev = "local/smollm2-forecast-smoke", "0" * 39 + "1"
         pin = lambda p, rel: {"path": rel, "sha256": sha256_file(p), "size": Path(p).stat().st_size}  # noqa: E731
-        for prec, ep, devs in (("fp32", "cpu", ["cpu"]), ("int8", "webgpu", ["webgpu", "cpu"]), ("int4", "webgpu", ["webgpu", "cpu"])):
+        for f in ("tokenizer.json", "tokenizer_config.json"):
+            shutil.copyfile(Path(a.model) / f, pkg / f)
+        m["tokenizer"] = {"repo": repo, "revision": rev, "files": {"tokenizer": pin(pkg / "tokenizer.json", "tokenizer.json"), "config": pin(pkg / "tokenizer_config.json", "tokenizer_config.json")}}
+        for prec, devs in (("fp32", ["cpu"]), ("int8", ["webgpu", "cpu"]), ("int4", ["webgpu", "cpu"])):
             src = W / f"build-{prec}"
             (pkg / prec).mkdir()
             for f in ("model.onnx", "model.onnx.data", "genai_config.json"):
                 shutil.copyfile(src / f, pkg / prec / f)
             g = read_json(src / "genai_config.json")["model"]["decoder"]
-            m["builds"][f"genai-{prec}-cpu"] = {
-                "runtime": "genai", "repo": repo, "revision": rev, "hiddenOutput": "hidden_states", **F.build_patch(LAYER),
-                "files": {"model": pin(pkg / prec / "model.onnx", f"{prec}/model.onnx"), "data": pin(pkg / prec / "model.onnx.data", f"{prec}/model.onnx.data"),
-                          "genaiConfig": pin(pkg / prec / "genai_config.json", f"{prec}/genai_config.json")},
-                "devices": ["cpu"], "dtype": prec, "kvHeadDim": g["head_size"], "fidelity": None}
+            for dev in devs:  # the repo's convention: one entry per device, same files (a WebGPU graph also runs on Node CPU)
+                m["builds"][f"genai-{prec}-{dev}"] = {
+                    "runtime": "genai", "repo": repo, "revision": rev, "hiddenOutput": "hidden_states", **F.build_patch(LAYER),
+                    "files": {"model": pin(pkg / prec / "model.onnx", f"{prec}/model.onnx"), "data": pin(pkg / prec / "model.onnx.data", f"{prec}/model.onnx.data"),
+                              "genaiConfig": pin(pkg / prec / "genai_config.json", f"{prec}/genai_config.json")},
+                    "devices": [dev], "dtype": prec, "kvHeadDim": g["head_size"], "fidelity": None}
         blk = read_json(W / "head" / "forecast.manifest.json")["forecast"]
         shutil.copyfile(W / "head" / "forecast.safetensors", pkg / "forecast.safetensors")
         blk["head"]["file"] = pin(pkg / "forecast.safetensors", "forecast.safetensors")
