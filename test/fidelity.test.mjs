@@ -76,3 +76,22 @@ test("runCases + jsonl round trip", async () => {
   assert.throws(() => parseJsonl("{bad"), /jsonl line 1/);
   assert.equal(recordOf("s", { type: "score", level: "4", method: "head" }).decision, "4");
 });
+
+import { forecastParity } from "../dist/fidelity.js";
+const F = (id, ...ps) => ({ id, behaviors: Object.fromEntries(ps.map((p, i) => [`b${i}`, { p }])) });
+
+test("forecastParity: tolerance max |dp| 0.05 and 5% flips, written before any measurement", () => {
+  const ref = [F("a", 0.9, 0.1), F("b", 0.4, 0.6), F("c", 0.2, 0.8)];
+  const same = forecastParity(ref, ref);
+  assert.equal(same.n, 3); assert.equal(same.maxAbsDp, 0); assert.equal(same.flips, 0); assert.equal(same.pass, true);
+  assert.deepEqual(same.tolerance, { maxAbsDp: 0.05, maxFlipPct: 5, threshold: 0.5 });
+  const close = forecastParity(ref, [F("a", 0.92, 0.09), F("b", 0.41, 0.58), F("c", 0.2, 0.8)]);
+  assert.ok(Math.abs(close.maxAbsDp - 0.02) < 1e-12); assert.equal(close.pass, true);
+  const far = forecastParity(ref, [F("a", 0.7, 0.1), F("b", 0.4, 0.6), F("c", 0.2, 0.8)]);
+  assert.ok(Math.abs(far.maxAbsDp - 0.2) < 1e-12); assert.equal(far.pass, false, "|dp| 0.2 > 0.05");
+  const flip = forecastParity(ref, [F("a", 0.9, 0.1), F("b", 0.51, 0.6), F("c", 0.2, 0.8)]);
+  assert.equal(flip.flips, 1); assert.ok(Math.abs(flip.flipPct - 100 / 6) < 1e-9); assert.equal(flip.pass, false, "one flip of 6 pairs = 16.7% > 5%");
+  assert.equal(forecastParity(ref, [F("a", 0.9, 0.1)]).missing.length, 2);
+  assert.equal(forecastParity(ref, []).pass, false, "no overlap is not a pass");
+  assert.throws(() => forecastParity(ref, [{ id: "a", behaviors: { b0: { p: 0.9 } } }]), /no behavior "b1"/);
+});
