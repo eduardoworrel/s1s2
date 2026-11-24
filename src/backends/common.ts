@@ -70,6 +70,11 @@ export function resolveHidden(name: string, outNames: string[], hiddenOutput: st
   return hiddenOutput;
 }
 
+/** The forecast layer is a raw residual stream in the graph dtype: refuse NaN / Infinity (fp16 overflow) with a clear message. */
+export function assertFiniteRow(name: string, output: string, row: Float32Array): void {
+  for (let i = 0; i < row.length; i++) if (!Number.isFinite(row[i])) throw new Error(`${name}: forecast output ${output} is not finite at index ${i} (fp16 overflow of the raw residual stream, or a broken graph); use a build in fp32 or another layer`);
+}
+
 export function checkOrtVersion(v: string | undefined, min: number[] = [1, 30]): void {
   const m = /^(\d+)\.(\d+)/.exec(v ?? "");
   if (!m) return;

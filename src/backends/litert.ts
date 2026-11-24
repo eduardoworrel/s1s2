@@ -264,6 +264,7 @@ export async function createLiteRt(lrt: LiteRtJs, graph: Uint8Array, manifest: L
     hiddenName: hiddenOut,
     dispose() { return gate.dispose(() => model.delete?.()); },
     async prefill(ids, want, o = {}) {
+      if (want.extra?.positions.length) throw new Error("forecast unsupported: litert builds return logits only and have no intermediate-layer output");
       gate.assertLive(); checkHidden(want);
       if (!ids.length) throw new Error("prefill: empty ids");
       const rel = await gate.acquire();
@@ -281,6 +282,7 @@ export async function createLiteRt(lrt: LiteRtJs, graph: Uint8Array, manifest: L
       } finally { rel(); }
     },
     async prefillFrom(h, ids, want, o = {}) {
+      if (want.extra?.positions.length) throw new Error("forecast unsupported: litert builds return logits only and have no intermediate-layer output");
       gate.assertLive(); checkHidden(want);
       const arrs = snaps.get(h);
       if (!arrs) throw new Error("litert: unknown or released snapshot handle");

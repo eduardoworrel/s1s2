@@ -6,6 +6,7 @@
 // the manifest's, genai_config.json hidden/head sizes are compared with the manifest. A pinned file that is not present
 // is reported as "not present" (warning), or as an error with `strict`.
 
+import { ForecastReader } from "./forecast.js";
 import { validateManifest, ManifestError, type Manifest, type PinnedFile } from "./manifest.js";
 import { validateMediaManifest, mediaProblems } from "./media/manifest.js";
 import type { MediaManifest } from "./media/types.js";
@@ -195,6 +196,15 @@ async function checkFiles(m: Manifest, dir: string, o: ValidateOptions, r: Manif
         const nw = loadNorm(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), b.norm);
         if (nw.hiddenSize !== m.hiddenSize) r.errors.push(`builds.${bn}.norm: hiddenSize ${nw.hiddenSize} != manifest ${m.hiddenSize}`);
       } catch (e: any) { r.errors.push(`builds.${bn}.norm: norm.bin does not parse: ${e?.message ?? e}`); }
+    }
+    if (m.forecast && b.forecastOutput !== undefined) {
+      const fh = m.forecast.head;
+      const f = await check(fh.repo ?? b.repo, fh.file, `builds.${bn}.forecast.head`);
+      if (f) try {
+        const buf = fs.readFileSync(f);
+        ForecastReader.load(m.forecast, new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), m.hiddenSize);
+      } catch (e: any) { r.errors.push(`builds.${bn}.forecast.head: ${e?.message ?? e}`); }
+      if (m.forecast.trainedOn.baseId !== m.id) r.errors.push(`forecast.trainedOn.baseId ${m.forecast.trainedOn.baseId} != manifest id ${m.id}`);
     }
     if (b.heads && b.hiddenOutput === null) r.errors.push(`builds.${bn}: has heads but hiddenOutput is null (heads read the hidden state)`);
   }

@@ -7,6 +7,7 @@ import { tokenizerFromJson, type Tok } from "./tok.js";
 import { assertManifestTokens, taskTokens } from "./encoding.js";
 import { loadAnyHead, type AnyHead } from "./heads/index.js";
 import { loadNorm, type NormWeights } from "./heads/norm.js";
+import { ForecastReader, type ForecastResult } from "./forecast.js";
 import { canShareState, type Backend } from "./backend.js";
 import { decide, generate, type Engine, type DecideOptions, type DecisionSession, type GenerateOpts, type GenerateResult } from "./decide.js";
 import type { DecisionRequest } from "./questions.js";
@@ -40,6 +41,8 @@ export interface LoadOptions {
   allowUnverified?: boolean;
   /** Load the heads listed by the build (default true). */
   heads?: boolean;
+  /** Load the forecast reader when the manifest has one and the build exposes its layer (default true). */
+  forecast?: boolean;
   maxSafeTokens?: number;
   skipVersionCheck?: boolean;
   genai?: Pick<GenaiOptions, "chunk" | "minBlock" | "verifyEp" | "epCache" | "maxCpuNodes">;
@@ -113,6 +116,20 @@ export class S1S2 {
   /** System 1: typed decisions in one forward pass per question. Returns answers + a session for System 2. */
   decide(req: DecisionRequest, opts?: DecideOptions): Promise<DecisionSession> { return decide(this.engine, req, opts); }
 
+  /** Forecast reader (experimental, spec/FORECAST.md): decide() with the forecast layer read in the same prefill, then the
+   *  forecast of the first question (or `opts.question`). Returns the session too, so generate() continues from the same
+   *  prefill; dispose it when done. */
+  async forecast(req: DecisionRequest, opts: DecideOptions & { question?: string } = {}): Promise<{ forecast: ForecastResult; session: DecisionSession }> {
+    const session = await decide(this.engine, req, { ...opts, forecast: true });
+    try { return { forecast: session.forecast({ question: opts.question }), session }; }
+    catch (e) { await session.dispose(); throw e; }
+  }
+
+  /** Behaviors the forecast reader returns, or null when this model/build has none (see forecastUnavailable). */
+  get forecastBehaviors(): string[] | null { return this.engine.forecast?.spec.behaviors.map((b) => b.name) ?? null; }
+  /** Why the forecast reader is not available ("forecast unsupported: ..."), or null when it is. */
+  get forecastUnavailable(): string | null { return this.engine.forecast ? null : this.engine.forecastWhy ?? null; }
+
   /** System 2: generation for one user turn. */
   generate(prompt: string, opts?: GenerateOpts): Promise<GenerateResult> { return generate(this.engine, prompt, opts); }
 
@@ -124,13 +141,14 @@ export class S1S2 {
   }
 
   /** Build an instance around an existing backend + tokenizer (tests, custom runtimes). */
-  static fromBackend(manifest: Manifest | Record<string, unknown>, build: string, backend: Backend, tok: Tok, heads: Partial<Record<HeadRole, AnyHead>> = {}, device: Device = "cpu", maxSafeTokens?: number, norm?: NormWeights): S1S2 {
+  static fromBackend(manifest: Manifest | Record<string, unknown>, build: string, backend: Backend, tok: Tok, heads: Partial<Record<HeadRole, AnyHead>> = {}, device: Device = "cpu", maxSafeTokens?: number, norm?: NormWeights, forecast?: ForecastReader): S1S2 {
     const m = validateManifest(manifest);
+    assertS1Layer(m);
     const b = m.builds[build];
     if (!b) throw new Error(`unknown build "${build}"`);
     assertManifestTokens(tok, m);
     for (const [t, h] of Object.entries(heads)) { const hs = h && ("cfg" in h ? h.cfg.hidden_size : h.hiddenSize); if (h && hs !== m.hiddenSize) throw new Error(`head for ${t}: hiddenSize ${hs} != manifest ${m.hiddenSize}`); }
-    return new S1S2(m, { build, runtime: b.runtime, device }, { manifest: m, tok, backend, heads, norm, maxSafeTokens: maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
+    return new S1S2(m, { build, runtime: b.runtime, device }, { manifest: m, tok, backend, heads, norm, maxSafeTokens: maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048, ...forecastState(m, b, backend, forecast) });
   }
 
   static async load(opts: LoadOptions): Promise<S1S2> {
@@ -138,6 +156,7 @@ export class S1S2 {
     const platform = detectPlatform();
     const f = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
     const m = await readManifest(opts.manifest, platform, f);
+    assertS1Layer(m);
     const files = new Files({ platform, cacheDir: opts.cacheDir, localDirs: opts.localDirs, baseUrls: opts.baseUrls, allowUnverified: opts.allowUnverified, fetch: opts.fetch, onStatus: status });
     const mods = opts.modules ?? {};
 
@@ -183,7 +202,7 @@ export class S1S2 {
           else if (ef.size <= SMALL_FILE_LIMIT) embeddings = embeddingTableFromBytes(await files.bytes(b.repo, b.revision, ef), m.hiddenSize);
           else embeddings = httpRangeTable(await files.large(b.repo, b.revision, ef), ef.size, m.hiddenSize, f);
         }
-        const gopts: GenaiOptions = { ...opts.genai, eos, hiddenOutput: b.hiddenOutput, kvHeadDim, ort: o, skipVersionCheck: opts.skipVersionCheck, embeddings };
+        const gopts: GenaiOptions = { ...opts.genai, eos, hiddenOutput: b.hiddenOutput, forecastOutput: b.forecastOutput ?? null, kvHeadDim, ort: o, skipVersionCheck: opts.skipVersionCheck, embeddings };
         status(`loading genai graph (${d})…`);
         try {
           if (platform === "browser") {
@@ -211,7 +230,7 @@ export class S1S2 {
           const graph = await files.bytes(b.repo, b.revision, b.files.model);
           S = await o.InferenceSession.create(graph, { executionProviders: providers, externalData: [{ path: basename(b.files.data.path), data: await files.large(b.repo, b.revision, b.files.data) }] });
         }
-        try { return await createDecodeOnly(S, { ort: o, eos, hiddenOutput: b.hiddenOutput, pastLen: opts.decodeOnly?.pastLen, skipVersionCheck: platform === "node" || opts.skipVersionCheck }); }
+        try { return await createDecodeOnly(S, { ort: o, eos, hiddenOutput: b.hiddenOutput, forecastOutput: b.forecastOutput ?? null, pastLen: opts.decodeOnly?.pastLen, skipVersionCheck: platform === "node" || opts.skipVersionCheck }); }
         catch (e) { try { await S.release?.(); } catch { /* ignore */ } throw e; }
       },
       "transformers.js": async (b, d) => {
@@ -230,7 +249,7 @@ export class S1S2 {
           env.allowRemoteModels = true;
         }
         const model = await tjs.AutoModelForCausalLM.from_pretrained(modelId, { dtype: b.dtype, device: d, revision: platform === "node" ? undefined : b.revision });
-        return transformersJsFromModel(model, tjs.Tensor, { eos, hiddenOutput: b.hiddenOutput });
+        return transformersJsFromModel(model, tjs.Tensor, { eos, hiddenOutput: b.hiddenOutput, forecastOutput: b.forecastOutput ?? null });
       },
       webllm: async (b) => {
         const webllm = mods.webllm ?? await importOptional(WEBLLM_PKG, () => dynImport(WEBLLM_PKG), 'runtime "webllm"');
@@ -283,8 +302,9 @@ export class S1S2 {
         backend = await loaders[plan.runtime](b, plan.device);
         const heads = opts.heads === false ? {} : await loadHeads(m, b, files, status);
         const norm = opts.heads === false || !b.norm ? undefined : await loadBuildNorm(m, b, files);
-        await assertBackend(m, b, backend);
-        const s = new S1S2(m, plan, { manifest: m, tok, backend, heads, norm, maxSafeTokens: opts.maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048 });
+        const fr = opts.forecast === false ? undefined : await loadForecast(m, b, files, status);
+        await assertBackend(m, b, backend, fr);
+        const s = new S1S2(m, plan, { manifest: m, tok, backend, heads, norm, maxSafeTokens: opts.maxSafeTokens ?? b.maxSafeTokens ?? m.defaults.maxSafeTokens ?? 2048, ...forecastState(m, b, backend, fr, opts.forecast === false) });
         if (plan.device === "wasm" && !webgpu && (opts.device ?? "auto") === "auto") reasons.unshift(`WebGPU is not available (${gpu.reason}): running on the browser CPU (WASM), slower than WebGPU${plan.runtime === "genai" ? " (7.5-16.5x when measured)" : ""}`);
         if (reasons.length) s.fallbackReason = reasons.join("; ");
         s.withBuildLoader((build) => S1S2.load({ ...opts, manifest: m, build, runtime: undefined })); // parsed once: one manifest fetch per load
@@ -344,10 +364,40 @@ async function loadBuildNorm(m: Manifest, b: BuildSpec, files: Files): Promise<N
   return nw;
 }
 
+/** This runtime reads S1 on the final hidden state only (spec/FORECAST.md: `layer.read` may state a layer for description). */
+function assertS1Layer(m: Manifest): void {
+  if (m.layer.read !== "final") throw new Error(`manifest ${m.id}: layer.read is ${m.layer.read}; this runtime reads the S1 heads on the final hidden state only (the forecast layer is forecast.layer)`);
+}
+
+/** The forecast reader of a build: head file hash-checked by Files, dimensions and layer checked against the manifest. */
+export async function loadForecast(m: Manifest, b: BuildSpec, files: Files, status: (s: string) => void): Promise<ForecastReader | undefined> {
+  const f = m.forecast;
+  if (!f || b.forecastOutput === undefined) return undefined;
+  if (b.forecastLayer !== f.layer) throw new Error(`forecast ${f.id}: the build exposes layer ${b.forecastLayer}, the manifest forecast reads layer ${f.layer}`);
+  if (f.trainedOn.baseId !== m.id) throw new Error(`forecast ${f.id}: head trained on "${f.trainedOn.baseId}", this manifest is "${m.id}"`);
+  status(`loading forecast head ${f.id}…`);
+  const bytes = await files.bytes(f.head.repo ?? b.repo, f.head.revision ?? b.revision, f.head.file);
+  return ForecastReader.load(f, bytes, m.hiddenSize);
+}
+
+function forecastState(m: Manifest, b: BuildSpec, backend: Backend, fr?: ForecastReader, off = false): { forecast?: ForecastReader; forecastWhy?: string } {
+  if (fr) {
+    if (!backend.extraName) return { forecastWhy: `forecast unsupported: build declares forecastOutput but the ${backend.kind} backend does not expose it` };
+    return { forecast: fr };
+  }
+  if (off) return { forecastWhy: "forecast unsupported: the reader was not loaded (load option forecast: false)" };
+  if (!m.forecast) return { forecastWhy: "forecast unsupported: the manifest has no forecast section" };
+  return { forecastWhy: `forecast unsupported: build ${JSON.stringify(b.repo)} (runtime ${b.runtime}) exposes no forecast layer (no forecastOutput${b.runtime === "webllm" || b.runtime === "litert" ? "; this runtime returns logits only" : ""})` };
+}
+
 /** One warmup forward: hidden width == manifest hiddenSize, vocabulary covers every manifest token. */
-export async function assertBackend(m: Manifest, b: BuildSpec, be: Backend): Promise<void> {
+export async function assertBackend(m: Manifest, b: BuildSpec, be: Backend, forecast?: ForecastReader): Promise<void> {
   const tok = m.warmup?.id ?? m.eos[0].id;
-  const r = await be.prefill([tok], { positions: be.hiddenName ? [0] : [] });
+  const r = await be.prefill([tok], { positions: be.hiddenName ? [0] : [], ...(forecast && be.extraName ? { extra: { positions: [0] } } : {}) });
+  if (forecast && be.extraName) {
+    const x = r.extra?.[0];
+    if (!x || x.length !== m.hiddenSize) throw new Error(`build ${b.repo}@${b.revision}: forecast output ${be.extraName} has width ${x?.length}, manifest hiddenSize is ${m.hiddenSize}`);
+  }
   if (be.hiddenName) {
     const h = r.hiddens[0];
     if (!h || h.length !== m.hiddenSize) throw new Error(`build ${b.repo}@${b.revision}: hidden output ${be.hiddenName} has width ${h?.length}, manifest hiddenSize is ${m.hiddenSize}`);

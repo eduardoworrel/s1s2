@@ -2,11 +2,13 @@
 // prefill; no state is kept, so a session's System-2 continuation re-prefills (sharedPrefill: false).
 
 import { createGate, resolveGenerateOptions, checkPositions, type Backend, type GenerateOptions } from "../backend.js";
-import { tensorToF32, resolveHidden } from "./common.js";
+import { tensorToF32, resolveHidden, assertFiniteRow } from "./common.js";
 
 export interface TransformersJsOptions {
   eos: Set<number>;
   hiddenOutput: string | null;
+  /** Graph output with the forecast layer (build.forecastOutput), or null/absent. */
+  forecastOutput?: string | null;
 }
 
 export function transformersJsFromModel(model: any, Tensor: any, opts: TransformersJsOptions): Backend {
@@ -14,6 +16,7 @@ export function transformersJsFromModel(model: any, Tensor: any, opts: Transform
   const eos = opts.eos;
   const sess = model.sessions?.model ?? Object.values(model.sessions ?? {})[0] as any;
   const hiddenName = resolveHidden("transformers.js", sess?.outputNames ?? [], opts.hiddenOutput);
+  const extraName = resolveHidden("transformers.js", sess?.outputNames ?? [], opts.forecastOutput);
   const toTensors = (ids: number[]) => ({
     input_ids: new Tensor("int64", BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
     attention_mask: new Tensor("int64", new BigInt64Array(ids.length).fill(1n), [1, ids.length]),
@@ -22,8 +25,10 @@ export function transformersJsFromModel(model: any, Tensor: any, opts: Transform
   return {
     kind: "transformers.js",
     hiddenName,
+    extraName,
     async prefill(ids, want) {
-      gate.assertLive(); checkPositions("transformers.js", ids, want.positions);
+      gate.assertLive(); checkPositions("transformers.js", ids, [...want.positions, ...(want.extra?.positions ?? [])]);
+      if (want.extra?.positions.length && !extraName) throw new Error("forecast unsupported: this transformers.js build exposes no forecast layer (set build.forecastOutput)");
       if (want.positions.length && !hiddenName) throw new Error("transformers.js: this build has no hidden output; use method 'logits'");
       const rel = await gate.acquire();
       try {
@@ -36,7 +41,13 @@ export function transformersJsFromModel(model: any, Tensor: any, opts: Transform
           if (H.dims.at(-2) !== ids.length) throw new Error(`transformers.js: hidden seq ${H.dims.at(-2)} != ${ids.length}`);
           for (const p of want.positions) hiddens.push(tensorToF32(H.data, H.type, p * D, D));
         }
-        return { hiddens, lastLogits };
+        const res: { hiddens: Float32Array[]; lastLogits: Float32Array; extra?: Float32Array[] } = { hiddens, lastLogits };
+        if (want.extra?.positions.length) {
+          const X = out[extraName!], D = X.dims.at(-1);
+          if (X.dims.at(-2) !== ids.length) throw new Error(`transformers.js: forecast seq ${X.dims.at(-2)} != ${ids.length}`);
+          res.extra = want.extra.positions.map((p) => { const row = tensorToF32(X.data, X.type, p * D, D); assertFiniteRow("transformers.js", extraName!, row); return row; });
+        }
+        return res;
       } finally { rel(); }
     },
     dispose() { return gate.dispose(() => model.dispose?.()); },

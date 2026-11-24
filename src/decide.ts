@@ -14,6 +14,7 @@ import {
   type Answer, type HeadWeights, type EscalationRecord, type EvidenceAnswer,
 } from "./readout.js";
 import type { Tok } from "./tok.js";
+import { forecastPositions, type ForecastReader, type ForecastResult } from "./forecast.js";
 import { applyNorm, type NormWeights } from "./heads/norm.js";
 import { isLinear, isJoint, type AnyHead } from "./heads/index.js";
 import { linearScores } from "./heads/linear.js";
@@ -28,6 +29,10 @@ export interface Engine {
   norm?: NormWeights;
   /** Build this engine runs (its manifest `escalation` level applies). */
   build?: string;
+  /** Forecast reader of this build (manifest `forecast` + the build's `forecastOutput`), when it can run. */
+  forecast?: ForecastReader;
+  /** Why `forecast` is absent ("forecast unsupported: ..."), for the error decide({ forecast: true }) throws. */
+  forecastWhy?: string;
   /** Resolves another build of the manifest for `to: { build }` escalation. */
   resolveBuild?: (build: string) => Promise<EscalationTarget>;
 }
@@ -38,6 +43,9 @@ export interface EscalationTarget {
 }
 
 export interface DecideOptions {
+  /** Also read the forecast layer of each question's prompt, in the same prefill, so session.forecast() can run (default
+   *  false: S1 is unchanged). Needs the manifest's `forecast` and a build with `forecastOutput`. */
+  forecast?: boolean;
   /** Readout for every question that does not set its own (default: manifest defaults.method per type). */
   method?: Method;
   /** Keep each question's prefill so session.generate() continues from it (default true). */
@@ -246,9 +254,25 @@ export class DecisionSession {
   evidence: EvidenceAnswer | null = null;
   private states: (StateHandle | undefined)[];
   private disposed = false;
+  /** Forecast-layer rows of each question's prompt (set by decide when forecast was requested). */
+  rows: (Float32Array[] | undefined)[] = [];
   constructor(private e: Engine, private plans: Plan[], answers: Answer[], states: (StateHandle | undefined)[]) {
     this.answers = answers; this.states = states;
     this.sharedPrefill = states.length > 0 && states.every(Boolean);
+  }
+
+  /** The forecast of a question's prompt (default: the first), read from the rows captured by the decide prefill:
+   *  no backend call, no second prefill. Needs decide(req, { forecast: true }). */
+  forecast(opts: { question?: string } = {}): ForecastResult {
+    if (this.disposed) throw new Error("session disposed");
+    const fx = this.e.forecast;
+    if (!fx) throw new Error(this.e.forecastWhy ?? "forecast unsupported: this model has no forecast reader");
+    if (!this.plans.length) throw new Error("session.forecast: this session has no questions (evidence only)");
+    const i = opts.question === undefined ? 0 : this.plans.findIndex((p) => p.q.name === opts.question);
+    if (i < 0) throw new Error(`session.forecast: no question named ${JSON.stringify(opts.question)}`);
+    const rows = this.rows[i];
+    if (!rows) throw new Error("session.forecast: this session did not read the forecast layer; call decide(req, { forecast: true })");
+    return fx.read(rows, this.plans[i].q.name, this.plans[i].enc.last + 1);
   }
 
   answer(name: string): Answer | undefined { return this.answers.find((a) => a.name === name); }
@@ -304,22 +328,27 @@ export async function decide(e: Engine, req: DecisionRequest, opts: DecideOption
   const evPlan = req.evidence !== undefined ? planEvidence(e, req.evidence, state) : null;
   const all: { enc: Encoded; positions: number[] }[] = evPlan ? [...plans, evPlan] : plans;
   const be = e.backend;
+  if (opts.forecast && !e.forecast) throw new Error(e.forecastWhy ?? "forecast unsupported: this model has no forecast reader");
+  const fx = opts.forecast ? e.forecast : undefined;
+  const extras: (number[] | undefined)[] = all.map((p, i) => (fx && i < plans.length ? forecastPositions(fx.spec.pooling, plans[i].enc.last + 1) : undefined));
+  const rows: (Float32Array[] | undefined)[] = [];
   const keep = (opts.keepState ?? true) && canShareState(be);
   const answers: Answer[] = [], states: (StateHandle | undefined)[] = [];
   let evidence: EvidenceAnswer | null = null;
-  const k = all.length > 1 && be.snapshot && be.prefillFrom ? backOff(sharedPrefix(all), all.map((p, i) => p.enc.ids.length - (keep && i < plans.length ? 2 : 1) * (be.minBlock ?? 0)), be.minBlock ?? 0) : 0;
+  const k = all.length > 1 && be.snapshot && be.prefillFrom ? backOff(sharedPrefix(all.map((p, i) => ({ ...p, positions: [...p.positions, ...(extras[i] ?? [])] }))), all.map((p, i) => p.enc.ids.length - (keep && i < plans.length ? 2 : 1) * (be.minBlock ?? 0)), be.minBlock ?? 0) : 0;
   // The evidence pass keeps no state: System 2 continues from a question's prefill, never from the evidence prompt.
   const take = (i: number, r0: PrefillResult) => {
     const r = e.norm && r0.hiddens.length ? { ...r0, hiddens: r0.hiddens.map((h) => applyNorm(e.norm!, h)) } : r0;
-    if (i < plans.length) { states.push(r.state); answers.push(plans[i].read(r)); } else evidence = evPlan!.read(r);
+    if (i < plans.length) { states.push(r.state); rows[i] = r.extra; answers.push(plans[i].read(r)); } else evidence = evPlan!.read(r);
   };
+  const wantOf = (i: number) => (extras[i] ? { positions: all[i].positions, extra: { positions: extras[i]! } } : { positions: all[i].positions });
   try {
     if (k < 1) {
-      for (let i = 0; i < all.length; i++) take(i, await be.prefill(all[i].enc.ids, { positions: all[i].positions }, { keep: keep && i < plans.length }));
+      for (let i = 0; i < all.length; i++) take(i, await be.prefill(all[i].enc.ids, wantOf(i), { keep: keep && i < plans.length }));
     } else {
       const h = await be.snapshot!(all[0].enc.ids.slice(0, k));
       try {
-        for (let i = 0; i < all.length; i++) take(i, await be.prefillFrom!(h, all[i].enc.ids, { positions: all[i].positions }, { keep: keep && i < plans.length }));
+        for (let i = 0; i < all.length; i++) take(i, await be.prefillFrom!(h, all[i].enc.ids, wantOf(i), { keep: keep && i < plans.length }));
       } finally { await h.dispose(); }
     }
   } catch (err) {
@@ -328,6 +357,7 @@ export async function decide(e: Engine, req: DecisionRequest, opts: DecideOption
   }
   const session = new DecisionSession(e, plans, answers, keep ? states : []);
   session.evidence = evidence;
+  session.rows = rows;
   if (opts.escalate && qs.length) {
     try { await escalate(e, req, qs, session, opts.escalate); }
     catch (err) { await session.dispose(); throw err; }

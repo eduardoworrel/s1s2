@@ -43,7 +43,16 @@
       ],
       "properties": {
         "read": {
-          "const": "final"
+          "oneOf": [
+            {
+              "const": "final"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ],
+          "description": "\"final\" or the 0-indexed decoder block whose output the S1 heads read; this runtime reads S1 on the final state only and refuses an integer at load."
         },
         "norm": {
           "const": "in-graph"
@@ -507,6 +516,185 @@
     },
     "audio": {
       "$ref": "#/$defs/audioSpec"
+    },
+    "forecast": {
+      "type": "object",
+      "required": [
+        "id",
+        "layer",
+        "pooling",
+        "head",
+        "behaviors",
+        "calibration",
+        "trainedOn"
+      ],
+      "additionalProperties": false,
+      "description": "Forecast reader (spec/FORECAST.md): a head on a mid-layer activation of the context that returns P(behavior of the answer).",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "layer": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pooling": {
+          "enum": [
+            "last",
+            "mean",
+            "bins32"
+          ]
+        },
+        "head": {
+          "type": "object",
+          "required": [
+            "type",
+            "file",
+            "dims"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "linear",
+                "mlp"
+              ]
+            },
+            "file": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "repo": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "revision": {
+              "$ref": "#/$defs/revision"
+            },
+            "dims": {
+              "type": "object",
+              "required": [
+                "in",
+                "out"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "out": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "hidden": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "behaviors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/nonEmpty"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "calibration": {
+          "type": "object",
+          "required": [
+            "temperature"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "temperature": {
+              "oneOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              ]
+            },
+            "platt": {
+              "type": "object",
+              "required": [
+                "a",
+                "b"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  ]
+                },
+                "b": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "trainedOn": {
+          "type": "object",
+          "required": [
+            "baseId",
+            "weightsSha256"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "baseId": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "weightsSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "loraSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
     }
   },
   "patternProperties": {
@@ -997,6 +1185,14 @@
             "noncausal"
           ],
           "description": "Attention of the decision pass (spec 7); s1s2 0.1 refuses noncausal builds."
+        },
+        "forecastOutput": {
+          "$ref": "#/$defs/nonEmpty",
+          "description": "Graph output carrying the residual stream after block forecastLayer (width hiddenSize); see spec/FORECAST.md."
+        },
+        "forecastLayer": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "allOf": [

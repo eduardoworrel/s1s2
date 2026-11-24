@@ -3,7 +3,7 @@
 // reference: prefill(keep) / prefillFrom(keep) / generateFrom share the decision prefill.
 
 import { createGate, resolveGenerateOptions, checkContinuation, checkPositions, type Backend, type GenerateOptions, type StateHandle, type PrefillResult } from "../backend.js";
-import { tensorToF32, lastRow, mulberry32, sample, pastNameFor, cacheDims, inputMeta, resolveHidden, checkOrtVersion } from "./common.js";
+import { tensorToF32, lastRow, mulberry32, sample, pastNameFor, cacheDims, inputMeta, resolveHidden, checkOrtVersion, assertFiniteRow } from "./common.js";
 
 const F16: any = (globalThis as any).Float16Array;
 
@@ -11,6 +11,8 @@ export interface DecodeOnlyOptions {
   ort: { Tensor: new (type: any, data: any, dims: number[]) => any; env?: { versions?: { web?: string } } };
   eos: Set<number>;
   hiddenOutput: string | null;
+  /** Graph output with the forecast layer (build.forecastOutput), or null/absent. */
+  forecastOutput?: string | null;
   skipVersionCheck?: boolean;
   pastLen?: number;
 }
@@ -37,6 +39,7 @@ export async function createDecodeOnly(session: any, opts: DecodeOnlyOptions): P
   const missing = specs.filter((s) => ![...pastOf.values()].includes(s.name));
   if (missing.length) throw new Error("decode-only: cache inputs without a matching present output: " + missing.slice(0, 3).map((s) => s.name).join(", "));
   const hiddenName = resolveHidden("decode-only", outNames, opts.hiddenOutput);
+  const extraName = resolveHidden("decode-only", outNames, opts.forecastOutput);
   const hasCachePos = inNames.includes("cache_position");
 
   const zeros = (s: CacheSpec) => {
@@ -48,15 +51,17 @@ export async function createDecodeOnly(session: any, opts: DecodeOnlyOptions): P
   const initState = () => { const st: Record<string, any> = {}; for (const s of specs) st[s.name] = zeros(s); return st; };
 
   const fetchBase = ["logits", ...pastOf.keys()];
-  async function step(tid: number, pos: number, st: Record<string, any>, wantHidden: boolean) {
+  async function step(tid: number, pos: number, st: Record<string, any>, wantHidden: boolean, wantExtra = false) {
     const feed: Record<string, any> = { input_ids: new T("int64", BigInt64Array.from([BigInt(tid)]), [1, 1]), ...st };
     if (hasCachePos) feed.cache_position = new T("int64", BigInt64Array.from([BigInt(pos)]), [1]);
-    const names = wantHidden && hiddenName ? [...fetchBase, hiddenName] : fetchBase;
+    const names = [...fetchBase, ...(wantHidden && hiddenName ? [hiddenName] : []), ...(wantExtra && extraName ? [extraName] : [])];
     const r = await session.run(feed, names);
     const ns: Record<string, any> = {};
     for (const [o, p] of pastOf) ns[p] = r[o];
     const hidden = wantHidden && hiddenName ? tensorToF32(r[hiddenName].data, r[hiddenName].type) : undefined;
-    return { logits: r.logits, st: ns, hidden };
+    const extra = wantExtra && extraName ? tensorToF32(r[extraName].data, r[extraName].type) : undefined;
+    if (extra) assertFiniteRow("decode-only", extraName!, extra);
+    return { logits: r.logits, st: ns, hidden, extra };
   }
 
   const snaps = new WeakMap<StateHandle, Record<string, any>>();
@@ -65,21 +70,24 @@ export async function createDecodeOnly(session: any, opts: DecodeOnlyOptions): P
     snaps.set(h, st);
     return h;
   };
-  async function feed(ids: number[], from: number, st: Record<string, any>, positions: number[], keep?: boolean): Promise<PrefillResult> {
-    const wanted = new Set(positions), at = new Map<number, Float32Array>();
+  async function feed(ids: number[], from: number, st: Record<string, any>, positions: number[], keep?: boolean, extraPos: number[] = []): Promise<PrefillResult> {
+    const wanted = new Set(positions), at = new Map<number, Float32Array>(), wantedX = new Set(extraPos), atX = new Map<number, Float32Array>();
     let last: any = null;
     for (let i = from; i < ids.length; i++) {
-      const r = await step(ids[i], i, st, wanted.has(i));
+      const r = await step(ids[i], i, st, wanted.has(i), wantedX.has(i));
       st = r.st; last = r.logits;
       if (r.hidden) at.set(i, r.hidden);
+      if (r.extra) atX.set(i, r.extra);
     }
     const res: PrefillResult = { hiddens: positions.map((p) => at.get(p)!), lastLogits: lastRow(last) };
+    if (extraPos.length) res.extra = extraPos.map((p) => atX.get(p)!);
     if (keep) res.state = handle(ids, st);
     return res;
   }
   const checkHidden = (positions: number[]) => {
     if (positions.length && !hiddenName) throw new Error("decode-only: this build has no hidden output; use method 'logits'");
   };
+  const checkExtra = (want: { extra?: { positions: number[] } }) => { if (want.extra?.positions.length && !extraName) throw new Error("forecast unsupported: this decode-only build exposes no forecast layer (set build.forecastOutput)"); };
   const stateOf = (h: StateHandle) => { const st = snaps.get(h); if (!st) throw new Error("decode-only: unknown or released state handle"); return st; };
 
   async function* decodeLoop(ids: number[], from: number, st0: Record<string, any>, o: GenerateOptions) {
@@ -106,11 +114,12 @@ export async function createDecodeOnly(session: any, opts: DecodeOnlyOptions): P
   return {
     kind: "decode-only",
     hiddenName,
+    extraName,
     dispose() { return gate.dispose(() => session.release?.()); },
     async prefill(ids, want, o = {}) {
-      gate.assertLive(); checkHidden(want.positions); checkPositions("decode-only", ids, want.positions);
+      gate.assertLive(); checkHidden(want.positions); checkPositions("decode-only", ids, [...want.positions, ...(want.extra?.positions ?? [])]); checkExtra(want);
       const rel = await gate.acquire();
-      try { return await feed(ids, 0, initState(), want.positions, o.keep); } finally { rel(); }
+      try { return await feed(ids, 0, initState(), want.positions, o.keep, want.extra?.positions); } finally { rel(); }
     },
     async snapshot(ids) {
       gate.assertLive();
@@ -125,10 +134,10 @@ export async function createDecodeOnly(session: any, opts: DecodeOnlyOptions): P
     async prefillFrom(h, ids, want, o = {}) {
       gate.assertLive();
       const st = stateOf(h);
-      const k = checkContinuation("decode-only", h, ids, want.positions);
-      checkHidden(want.positions);
+      const k = checkContinuation("decode-only", h, ids, [...want.positions, ...(want.extra?.positions ?? [])]);
+      checkHidden(want.positions); checkExtra(want);
       const rel = await gate.acquire();
-      try { return await feed(ids, k, st, want.positions, o.keep); } finally { rel(); }
+      try { return await feed(ids, k, st, want.positions, o.keep, want.extra?.positions); } finally { rel(); }
     },
     async *generate(ids, o) {
       gate.assertLive();

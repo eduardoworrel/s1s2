@@ -7,7 +7,7 @@
 // reuse is then bit-identical to a full prefill. Decode steps (one token) are the same in both paths.
 
 import { createGate, resolveGenerateOptions, checkContinuation, checkPositions, type Backend, type GenerateOptions, type StateHandle, type PrefillResult } from "../backend.js";
-import { tensorToF32, mulberry32, sample, pastNameFor, cacheDims, inputMeta, resolveHidden, checkOrtVersion } from "./common.js";
+import { tensorToF32, mulberry32, sample, pastNameFor, cacheDims, inputMeta, resolveHidden, checkOrtVersion, assertFiniteRow } from "./common.js";
 import { f16ToF32, type EmbeddingTable } from "./embeddings.js";
 
 export interface GenaiOptions {
@@ -15,6 +15,8 @@ export interface GenaiOptions {
   eos: Set<number>;
   /** Graph output with the post-final-norm hidden state (from the manifest), or null. */
   hiddenOutput: string | null;
+  /** Graph output with the forecast layer (build.forecastOutput), or null/absent. */
+  forecastOutput?: string | null;
   providers?: string[];
   ort?: any;
   chunk?: number;
@@ -103,6 +105,7 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
   const missing = specs.filter((s) => !covered.has(s.name));
   if (missing.length) throw new Error("genai: cache inputs without a present output: " + missing.slice(0, 3).map((s) => s.name).join(", "));
   const hiddenName = resolveHidden("genai", outNames, opts.hiddenOutput);
+  const extraName = resolveHidden("genai", outNames, opts.forecastOutput);
   const posRows = (() => { const sh = metaBy.get("position_ids")?.shape; return typeof sh?.[0] === "number" ? sh[0] : 3; })();
 
   const zeros = (s: { type: string; dims: number[] }) => {
@@ -118,7 +121,7 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
   const mb = Math.floor(opts.minBlock ?? 32);
   const minBlock = Number.isFinite(mb) && mb > 0 ? mb : 0;
 
-  async function run(chunk: number[], past: number, st: Record<string, any>, wantLogits: boolean, wantHidden: boolean, keepInput: boolean) {
+  async function run(chunk: number[], past: number, st: Record<string, any>, wantLogits: boolean, wantHidden: boolean, keepInput: boolean, wantExtra = false) {
     const S = chunk.length;
     const feed: Record<string, any> = { ...st };
     if (byEmbeds) {
@@ -134,33 +137,39 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
     const fetches = [...pastOf.keys()];
     if (wantLogits) fetches.unshift("logits");
     if (wantHidden && hiddenName) fetches.push(hiddenName);
+    if (wantExtra && extraName) fetches.push(extraName);
     const r = await session.run(feed, fetches, { logSeverityLevel: 3 });
     const ns: Record<string, any> = {};
     for (const [o, p] of pastOf) ns[p] = r[o];
     if (!keepInput) free(st);
-    return { st: ns, out: { logits: wantLogits ? r.logits : undefined, hidden: wantHidden && hiddenName ? r[hiddenName] : undefined } };
+    return { st: ns, out: { logits: wantLogits ? r.logits : undefined, hidden: wantHidden && hiddenName ? r[hiddenName] : undefined, extra: wantExtra && extraName ? r[extraName] : undefined } };
   }
   const read = async (t: any) => (typeof t.getData === "function" ? await t.getData(true) : t.data);
 
   /** Feed ids[from.past..] on top of `from.st` (never freed: it belongs to a kept handle). With `keepAt`, a block
    *  boundary falls there and the state at that position is returned (alive) as `mid`. */
-  async function feedAll(ids: number[], wanted: Set<number>, wantLast: boolean, signal?: AbortSignal, from?: { st: Record<string, any>; past: number }, keepAt?: number) {
+  async function feedAll(ids: number[], wanted: Set<number>, wantLast: boolean, signal?: AbortSignal, from?: { st: Record<string, any>; past: number }, keepAt?: number, extraWanted: Set<number> = new Set()) {
     let st = from?.st ?? initState(), past = from?.past ?? 0;
     const kept = from?.st;
     let mid: Record<string, any> | undefined;
     const start = past, cut = keepAt !== undefined && keepAt > start && keepAt < ids.length ? keepAt : undefined;
     const plan = cut === undefined ? blockPlan(ids.length - start, self.chunk, self.minBlock)
       : [...blockPlan(cut - start, self.chunk, self.minBlock), ...blockPlan(ids.length - cut, self.chunk, self.minBlock)];
-    const hid = new Map<number, Float32Array>();
+    const hid = new Map<number, Float32Array>(), ext = new Map<number, Float32Array>();
     let lastLogits: Float32Array | undefined;
     const alive = (s: Record<string, any>) => s === kept || s === mid;
     try {
       for (const len of plan) {
-        if (signal?.aborted) { if (mid && mid !== st) free(mid); return { st, past, hid, lastLogits, aborted: true, owned: st !== kept, mid: undefined }; }
+        if (signal?.aborted) { if (mid && mid !== st) free(mid); return { st, past, hid, ext, lastLogits, aborted: true, owned: st !== kept, mid: undefined }; }
         const chunk = ids.slice(past, past + len), last = past + chunk.length >= ids.length;
         const need = [...wanted].filter((p) => p >= past && p < past + chunk.length);
-        const r = await run(chunk, past, st, last && wantLast, need.length > 0, alive(st));
+        const needX = [...extraWanted].filter((p) => p >= past && p < past + chunk.length);
+        const r = await run(chunk, past, st, last && wantLast, need.length > 0, alive(st), needX.length > 0);
         st = r.st;
+        if (r.out.extra) {
+          const X = r.out.extra, D = X.dims.at(-1), d = await read(X);
+          for (const p of needX) { const row = tensorToF32(d, X.type, (p - past) * D, D); assertFiniteRow("genai", extraName!, row); ext.set(p, row); }
+        }
         if (r.out.hidden) {
           const H = r.out.hidden, D = H.dims.at(-1), d = await read(H);
           for (const p of need) hid.set(p, tensorToF32(d, H.type, (p - past) * D, D));
@@ -173,7 +182,7 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
         if (past === cut) mid = st;
       }
     } catch (e) { if (st !== kept) free(st); if (mid && mid !== st) free(mid); throw e; }
-    return { st, past, hid, lastLogits, aborted: false, owned: st !== kept, mid };
+    return { st, past, hid, ext, lastLogits, aborted: false, owned: st !== kept, mid };
   }
 
   /** Where a kept state of a prefill over [start, n) stops: n - minBlock (so every continuation is >= minBlock tokens),
@@ -201,19 +210,21 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
     snaps.set(h, st);
     return h;
   };
-  const finish = (ids: number[], f: Awaited<ReturnType<typeof feedAll>>, positions: number[], keep: boolean | undefined, kp: number | null): PrefillResult => {
+  const finish = (ids: number[], f: Awaited<ReturnType<typeof feedAll>>, positions: number[], keep: boolean | undefined, kp: number | null, extra: number[] = []): PrefillResult => {
     const res: PrefillResult = { hiddens: positions.map((p) => f.hid.get(p)!), lastLogits: f.lastLogits! };
+    if (extra.length) res.extra = extra.map((p) => f.ext.get(p)!);
     if (keep && kp === ids.length) { res.state = handle(ids, f.st); return res; }
     if (keep && kp !== null && f.mid) res.state = handle(ids.slice(0, kp), f.mid);
     if (f.owned) free(f.st);
     return res;
   };
-  const prefillTo = async (ids: number[], positions: number[], keep: boolean | undefined, from?: { st: Record<string, any>; past: number }) => {
+  const prefillTo = async (ids: number[], positions: number[], keep: boolean | undefined, from?: { st: Record<string, any>; past: number }, extra: number[] = []) => {
     const kp = keep ? keepPoint(from?.past ?? 0, ids.length) : null;
-    const f = await feedAll(ids, new Set(positions), true, undefined, from, kp ?? undefined);
-    return finish(ids, f, positions, keep, kp);
+    const f = await feedAll(ids, new Set(positions), true, undefined, from, kp ?? undefined, new Set(extra));
+    return finish(ids, f, positions, keep, kp, extra);
   };
   const stateOf = (h: StateHandle) => { const st = snaps.get(h); if (!st) throw new Error("genai: unknown or released state handle"); return st; };
+  const needExtra = (extra?: { positions: number[] }) => { if (extra?.positions.length && !extraName) throw new Error("forecast unsupported: this genai build exposes no forecast layer (export it with the forecast layer option and set build.forecastOutput)"); };
   const needHidden = (positions: number[]) => { if (positions.length && !hiddenName) throw new Error("genai: this build has no hidden output; use method 'logits'"); };
 
   async function* decodeLoop(ids: number[], o: GenerateOptions, from?: { st: Record<string, any>; past: number }) {
@@ -247,11 +258,12 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
     minBlock,
     chunk: Math.max(1, Math.floor(opts.chunk ?? 128) || 1, minBlock),
     hiddenName,
+    extraName,
     dispose() { return gate.dispose(async () => { try { await session.release?.(); } finally { await emb?.close?.(); } }); },
     async prefill(ids, want, o = {}) {
-      gate.assertLive(); checkPositions("genai", ids, want.positions); needHidden(want.positions);
+      gate.assertLive(); checkPositions("genai", ids, [...want.positions, ...(want.extra?.positions ?? [])]); needHidden(want.positions); needExtra(want.extra);
       const rel = await gate.acquire();
-      try { return await prefillTo(ids, want.positions, o.keep); } finally { rel(); }
+      try { return await prefillTo(ids, want.positions, o.keep, undefined, want.extra?.positions); } finally { rel(); }
     },
     async snapshot(ids) {
       gate.assertLive();
@@ -263,10 +275,10 @@ export function genaiFromSession(session: any, ort: { Tensor: new (type: any, da
     async prefillFrom(h, ids, want, o = {}) {
       gate.assertLive();
       const st = stateOf(h);
-      const k = checkContinuation("genai", h, ids, want.positions); needHidden(want.positions);
+      const k = checkContinuation("genai", h, ids, [...want.positions, ...(want.extra?.positions ?? [])]); needHidden(want.positions); needExtra(want.extra);
       checkTail(k, ids.length);
       const rel = await gate.acquire();
-      try { return await prefillTo(ids, want.positions, o.keep, { st, past: k }); } finally { rel(); }
+      try { return await prefillTo(ids, want.positions, o.keep, { st, past: k }, want.extra?.positions); } finally { rel(); }
     },
     async *generate(ids, o) {
       gate.assertLive();

@@ -29,6 +29,8 @@ export function resolveGenerateOptions(o: GenerateOptions = {}): ResolvedGenerat
 
 export interface PrefillResult {
   hiddens: Float32Array[];
+  /** Rows of the build's extra graph output (`Backend.extraName`, the forecast layer) at `want.extra.positions`, same order. */
+  extra?: Float32Array[];
   lastLogits: Float32Array;
   /** Present when called with keep: true on a backend that can keep state. */
   state?: StateHandle;
@@ -40,21 +42,26 @@ export interface StateHandle {
   dispose(): void | Promise<void>;
 }
 
+/** Rows asked of a prefill: hidden states at `positions`; `extra`: rows of the extra graph output (forecast layer). */
+export interface Want { positions: number[]; extra?: { positions: number[] } }
+
 export interface Backend {
   kind: "genai" | "decode-only" | "transformers.js" | "webllm" | "litert" | (string & {});
   /** Graph output carrying the hidden state; null = logits only. */
   hiddenName: string | null;
+  /** Graph output carrying the forecast layer (spec/FORECAST.md); null/absent = this build exposes none. */
+  extraName?: string | null;
   /**
    * Shortest block this backend feeds (genai: 32). A kept state then stops this many tokens before the end it was fed
    * to, and a continuation from a state must feed at least this many tokens; decide() places its shared prefix so.
    * Absent or 0: no constraint.
    */
   minBlock?: number;
-  prefill(ids: number[], want: { positions: number[] }, opts?: { keep?: boolean }): Promise<PrefillResult>;
+  prefill(ids: number[], want: Want, opts?: { keep?: boolean }): Promise<PrefillResult>;
   generate(ids: number[], opts: GenerateOptions): AsyncGenerator<number>;
   dispose(): Promise<void>;
   snapshot?(ids: number[]): Promise<StateHandle>;
-  prefillFrom?(h: StateHandle, ids: number[], want: { positions: number[] }, opts?: { keep?: boolean }): Promise<PrefillResult>;
+  prefillFrom?(h: StateHandle, ids: number[], want: Want, opts?: { keep?: boolean }): Promise<PrefillResult>;
   generateFrom?(h: StateHandle, ids: number[], opts: GenerateOptions): AsyncGenerator<number>;
 }
 
