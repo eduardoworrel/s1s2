@@ -93,6 +93,8 @@ def args_parser():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
     ap.add_argument("--precision", default="int4", help="weight precision of the GenAI build: int4, int8, fp16 or fp32; several, comma-separated, build each (e.g. int4,int8,fp32)")
+    ap.add_argument("--forecast-layer", type=int, default=None, help="build stage: also expose the output of decoder block L as `aux_hidden_states` (GenAI builder aux_hidden_state_layers=L+1) for the forecast reader (spec/FORECAST.md)")
+    ap.add_argument("--forecast-dir", help="package stage: output directory of `train-forecast-head train` (head file + forecast block) to include")
     ap.add_argument("--ep", default=None, help="builder execution provider (default: webgpu; cpu for fp32)")
     ap.add_argument("--builder-src", help="run the builder from this checkout (e.g. <fork>/src/python/py/models) instead of the patched pip copy")
     ap.add_argument("--lib", help="s1s2 checkout (default: the converter's parent directory)")
@@ -274,7 +276,11 @@ def stage_build(a, W):
     from .build import build
     for prec in precisions(a):
         ep = a.ep or ("cpu" if prec == "fp32" else "webgpu")
-        info = build(W / "fused", W / f"build-{prec}", W, precision=prec, ep=ep, builder_src=a.builder_src)
+        if a.forecast_layer is not None:
+            from .forecast import build_with_layer
+            info = build_with_layer(W / "fused", W / f"build-{prec}", W, a.forecast_layer, precision=prec, ep=ep, builder_src=a.builder_src)
+        else:
+            info = build(W / "fused", W / f"build-{prec}", W, precision=prec, ep=ep, builder_src=a.builder_src)
         info["ep"] = ep
         write_json(W / f"build-{prec}.json", info)
 
@@ -299,7 +305,7 @@ def stage_package(a, W):
             bp = read_json(W / f"build-{prec}.json")
             # a WebGPU graph also runs on onnxruntime-node CPU for plain decoders (s1s2 runtime.ts: opt-in by "cpu")
             devs = [["webgpu", ["webgpu"]], ["cpu", ["cpu"]]] if bp.get("ep", "webgpu") == "webgpu" else [["cpu", ["cpu"]]]
-            builds.append({"dir": W / f"build-{prec}", "subdir": prec, "dtype": prec, "devices": devs})
+            builds.append({"dir": W / f"build-{prec}", "subdir": prec, "dtype": prec, "devices": devs, "forecastLayer": (bp.get("forecast") or {}).get("layer")})
             for suffix, _ in devs:
                 bprov[f"genai-{prec}-{suffix}"] = bp
     if not builds:
@@ -322,7 +328,8 @@ def stage_package(a, W):
             "builds": bprov,
             "notes": "Metrics in training.metrics are on the dev split, read by PyTorch on the training weights (decision: LoRA model; evidence: fused model). Int4 behaviour is in provenance.parity when the parity stage ran."}
     draft.pop("evidence", None)
-    m = assemble(draft, a.out, tokenizer_dir=W / "fused", builds=builds, heads=heads, provenance=prov, license_id=base["license"], evidence=evidence)
+    m = assemble(draft, a.out, tokenizer_dir=W / "fused", builds=builds, heads=heads, provenance=prov, license_id=base["license"], evidence=evidence,
+                 forecast=({"block": read_json(Path(a.forecast_dir) / "forecast.manifest.json")["forecast"], "file": Path(a.forecast_dir) / "forecast.safetensors"} if a.forecast_dir else None))
     lib = lib_dir(a.lib)
     run(["node", lib / "bin" / "s1s2.mjs", "validate", "--strict", a.out], "package")
     log("package", f"{m['id']}: builds {list(m['builds'])}, heads {list(heads)} -> {a.out}")
@@ -434,6 +441,9 @@ def main(argv=None):
     if argv and argv[0] == "asr-decoder":  # Qwen3-ASR text decoder -> GenAI build that reads embeddings (audio decoder questions)
         from .asr_decoder import main as asr_main
         return asr_main(argv[1:]) or 0
+    if argv and argv[0] == "train-forecast-head":  # forecast reader: collect answers, train the head offline (spec/FORECAST.md)
+        from .forecast import main as forecast_main
+        return forecast_main(argv[1:]) or 0
     if argv and argv[0] in ("pack-mlc", "pack-litert", "pack-tjs"):  # repackage a published GenAI repo for another runtime
         import importlib
         return importlib.import_module("." + argv[0].replace("-", "_"), __package__).main(argv[1:]) or 0

@@ -10,8 +10,9 @@ def pinned(path, rel):
     return {"path": rel, "sha256": sha256_file(path), "size": Path(path).stat().st_size}
 
 
-def assemble(draft, pkg, *, tokenizer_dir, builds, heads, provenance, license_id, evidence=None):
+def assemble(draft, pkg, *, tokenizer_dir, builds, heads, provenance, license_id, evidence=None, forecast=None):
     """builds: [{name_prefix, dir, dtype, devices: [[name_suffix, [devices]]...]}]; heads: {name: (dir, types)}.
+    forecast: {"block": <forecast manifest block>, "file": <head file>} (spec/FORECAST.md); a build dict with `forecastLayer` exposes it.
     Copies everything into `pkg` and returns the manifest (also written to pkg/manifest.json)."""
     pkg = Path(pkg)
     pkg.mkdir(parents=True, exist_ok=True)
@@ -50,7 +51,13 @@ def assemble(draft, pkg, *, tokenizer_dir, builds, heads, provenance, license_id
             m["builds"][f"genai-{b['dtype']}-{suffix}"] = {
                 "runtime": "genai", "repo": repo, "revision": rev, "files": files, "hiddenOutput": "hidden_states",
                 **({"heads": head_specs} if head_specs else {}), "devices": devices, "dtype": b["dtype"],
+                **({"forecastOutput": "aux_hidden_states", "forecastLayer": b["forecastLayer"]} if b.get("forecastLayer") is not None else {}),
                 "kvHeadDim": gd["head_size"], "maxSafeTokens": m["defaults"].get("maxSafeTokens", 2048), "fidelity": None}
+    if forecast:
+        fb = json.loads(json.dumps(forecast["block"]))
+        shutil.copyfile(forecast["file"], pkg / fb["head"]["file"]["path"])
+        fb["head"]["file"] = pinned(pkg / fb["head"]["file"]["path"], fb["head"]["file"]["path"])
+        m["forecast"] = fb
     if evidence:
         m["evidence"] = evidence
     m["license"] = license_id
