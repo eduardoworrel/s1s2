@@ -176,7 +176,9 @@ calibrated the head, and no held-out accuracy is claimed.
 
 ## Limits and open questions
 
-- No measured accuracy; the smoke test shows the mechanism runs and the head output survives int4 vs fp32, nothing else.
+- No measured accuracy; the smoke test shows the mechanism runs end to end. It also shows that on SmolLM2-135M a head
+  trained on fp32 activations does not carry over to the int8 and int4 builds within the default tolerance (see above);
+  nothing else is claimed.
 - Quantised builds shift the mid-layer state; the parity check (`forecastParity` in `fidelity.ts`) is for you to run on
   your build and data.
 - Labels depend on the labeller; heads are specific to a base (or fused) checkpoint, a layer, a prompt layout and a label
