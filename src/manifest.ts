@@ -313,7 +313,7 @@ export function validateManifest(m: any): Manifest {
   if (!isObj(m)) throw new ManifestError(["manifest: expected an object"]);
   // Media packages (spec/MULTIMODAL.md): a manifest without "text" in `modalities` has no text sections and goes to
   // validateMediaManifest / loadMedia. With "text" it is a text manifest and its media blocks are checked below.
-  if (m.modalities !== undefined && Array.isArray(m.modalities) && !m.modalities.includes("text"))
+  if (Array.isArray(m.modalities) && m.modalities.length > 0 && !m.modalities.includes("text"))
     throw new ManifestError(["modalities: this manifest has no \"text\"; it is a media package: use loadMedia() / validateMediaManifest() from \"@s1s2/web/media\" (spec/MULTIMODAL.md)"]);
   need(m.schema === MANIFEST_SCHEMA, `schema: unsupported schema id ${JSON.stringify(m.schema)}; expected "${MANIFEST_SCHEMA}"`);
   need(str(m.id), "id: non-empty string");

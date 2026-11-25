@@ -14,7 +14,8 @@ const int = (x: any) => Number.isInteger(x) && x > 0;
 
 export function pinnedProblems(x: any, at: string, p: string[]): void {
   if (!isObj(x)) { p.push(`${at}: expected {path, sha256}`); return; }
-  if (!(str(x.path) && (/^https:\/\//.test(x.path) || (!x.path.startsWith("/") && !/^[a-z]+:/i.test(x.path))) && !x.path.split("/").includes(".."))) p.push(`${at}.path: repo-relative path or absolute https URL required`);
+  const segs = str(x.path) ? x.path.replace(/\\/g, "/").split("/") : [];   // "\" separates paths on Windows
+  if (!(str(x.path) && (/^https:\/\//.test(x.path) || (!x.path.startsWith("/") && !x.path.startsWith("\\") && !/^[a-z]+:/i.test(x.path))) && !segs.includes(".."))) p.push(`${at}.path: repo-relative path or absolute https URL required`);
   if (!(typeof x.sha256 === "string" && HEX64.test(x.sha256))) p.push(`${at}.sha256: 64 lowercase hex chars required`);
   if (x.size !== undefined && !(Number.isInteger(x.size) && x.size >= 0)) p.push(`${at}.size: non-negative integer`);
 }
@@ -29,7 +30,7 @@ export function mediaProblems(m: any, mediaOnly: boolean): string[] {
   const has = (k: string) => Array.isArray(mod) && mod.includes(k);
   if (mediaOnly) {
     if (!Array.isArray(mod) || !has("audio")) p.push('modalities: a media manifest (no text sections) lists "audio"');
-    if (has("text")) p.push('modalities: "text" needs the text sections (tokenizer, encoding, markers, ...); this manifest has none');
+    if (has("text")) p.push('modalities: lists "text": this is a text manifest (use load()); loadMedia reads media-only packages');
     if (!str(m.repo)) p.push("repo: string (where the pinned files live)");
     if (!(typeof m.revision === "string" && (SHA1.test(m.revision) || m.revision === "local"))) p.push('revision: a 40-hex commit sha, or "local" for an unpublished package');
   }
@@ -49,12 +50,15 @@ function audioProblems(a: any, p: string[]): void {
   if (!isObj(pre) || pre.kind !== "log-mel") p.push('audio.preprocess.kind: "log-mel"');
   else {
     if (pre.sampleRate !== 16000) p.push("audio.preprocess.sampleRate: 16000 (the only rate measured)");
-    for (const k of ["windowSeconds", "nFft", "hop", "nMels", "frames"]) if (!pos(pre[k])) p.push(`audio.preprocess.${k}: positive number`);
+    for (const k of ["nFft", "hop", "nMels", "frames"]) if (!int(pre[k])) p.push(`audio.preprocess.${k}: positive integer`);
+    if (!pos(pre.windowSeconds)) p.push("audio.preprocess.windowSeconds: positive number");
+    else if (Math.abs(pre.windowSeconds * pre.sampleRate - Math.round(pre.windowSeconds * pre.sampleRate)) > 1e-6) p.push("audio.preprocess.windowSeconds: a whole number of samples at sampleRate");
+    if (int(pre.nFft) && pre.nFft % 2) p.push("audio.preprocess.nFft: even (reflect padding of nFft/2)");
     if (pre.window !== "hann-periodic" || pre.padding !== "reflect" || pre.filters !== "slaney") p.push('audio.preprocess: window "hann-periodic", padding "reflect", filters "slaney"');
     const L = pre.log;
     if (!isObj(L) || !pos(L.floor) || !pos(L.dynamicRange) || !num(L.shift) || !pos(L.divide)) p.push("audio.preprocess.log: {floor, dynamicRange, shift, divide}");
-    if (pos(pre.windowSeconds) && pos(pre.hop) && pos(pre.frames) && Math.round(pre.windowSeconds * pre.sampleRate / pre.hop) !== pre.frames)
-      p.push(`audio.preprocess.frames: ${pre.frames} != windowSeconds * sampleRate / hop = ${pre.windowSeconds * pre.sampleRate / pre.hop}`);
+    if (pos(pre.windowSeconds) && int(pre.hop) && int(pre.frames) && Math.floor(Math.round(pre.windowSeconds * pre.sampleRate) / pre.hop) !== pre.frames)
+      p.push(`audio.preprocess.frames: ${pre.frames} != floor(windowSeconds * sampleRate / hop) = ${Math.floor(Math.round(pre.windowSeconds * pre.sampleRate) / pre.hop)}`);
     win = pre.windowSeconds;
   }
   const t = a.tower;

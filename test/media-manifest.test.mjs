@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { validateManifest, validateMediaManifest, mediaProblems, ManifestError } from "./media-helpers.mjs";
+import { ManifestError as MediaManifestError, pinnedProblems, loadMedia } from "../dist/media.js";
 import { clone, CT0 } from "./helpers.mjs";
 import { schemaProblems } from "../dist/package.js";
 
@@ -73,4 +74,35 @@ test("the schema rejects what the rules reject (typos, unknown readers)", async 
   assert.ok((await schemaProblems(m)).length > 0);
   const m3 = clone(AUDIO); delete m3.repo;
   assert.ok((await schemaProblems(m3)).some((x) => /repo/.test(x)));
+});
+
+test("modalities: [] is invalid, not 'a media package'; text + audio is refused by loadMedia with the right reason", async () => {
+  assert.throws(() => validateManifest({ ...clone(CT0), modalities: [] }), (e) => e instanceof ManifestError && e.problems.some((x) => /non-empty list/.test(x)) && !/media package/.test(e.message));
+  const both = { ...clone(CT0), modalities: ["text", "audio"], audio: clone(AUDIO.audio), repo: "r", revision: "local" };
+  await assert.rejects(() => loadMedia({ manifest: both }), (e) => /lists "text"/.test(e.message) && !/has none/.test(e.message));
+});
+
+test("@s1s2/web/media exports the ManifestError that validateMediaManifest throws", () => {
+  assert.equal(typeof MediaManifestError, "function");
+  assert.throws(() => validateMediaManifest({}), (e) => e instanceof MediaManifestError);
+});
+
+test("audio.preprocess numbers: integers where the code uses integers, whole samples in the window, frames as mel.ts counts them", () => {
+  const bad = (f, re) => { const m = clone(AUDIO); f(m.audio.preprocess); assert.ok(problems(m).some((x) => re.test(x)), JSON.stringify(problems(m))); };
+  bad((p) => { p.nFft = 400.5; }, /nFft: positive integer/);
+  bad((p) => { p.nFft = 399; }, /nFft: even/);
+  bad((p) => { p.hop = 160.5; }, /hop: positive integer/);
+  bad((p) => { p.nMels = 128.5; }, /nMels: positive integer/);
+  bad((p) => { p.frames = 800.5; }, /frames: positive integer/);
+  bad((p) => { p.windowSeconds = 8.0004; }, /windowSeconds: a whole number of samples/);
+  bad((p) => { p.windowSeconds = 8.01; }, /frames: 800 != floor/);   // 801 frames of 10 ms, but the tower is declared for 800
+  assert.deepEqual(problems(AUDIO), []);
+});
+
+test("pinned paths: backslash separators cannot smuggle '..' or an absolute path", () => {
+  const at = (path) => { const p = []; pinnedProblems({ path, sha256: "0".repeat(64) }, "f", p); return p; };
+  for (const bad of ["a\\..\\..\\x", "..\\x", "\\abs\\x", "../../x", "a/../x", "/abs", "C:\\x", "file:x"]) assert.equal(at(bad).length, 1, bad);
+  for (const ok of ["marimba-audio/a.onnx", "https://example.org/a.onnx", "a..b/c"]) assert.deepEqual(at(ok), [], ok);
+  const m = clone(AUDIO); m.audio.tower.file.path = "a\\..\\..\\x";
+  assert.ok(problems(m).some((x) => /tower.file.path/.test(x)));
 });
