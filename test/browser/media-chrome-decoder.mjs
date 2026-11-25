@@ -22,7 +22,7 @@ const device = opt("--device", "webgpu"), limit = Number(opt("--limit", 1e9)), O
 fs.mkdirSync(OUT, { recursive: true });
 const rss = (re = "Google Chrome") => { try { return Number(execSync(`ps -axo rss,command | grep -i '${re}' | grep -v grep | awk '{s+=$1} END{print s/1024}'`).toString().trim().replace(",", ".")); } catch { return NaN; } };
 
-const srv = createMediaServer({ weights: path.resolve(weights), extra: { "/lab/dec/": path.resolve(refDir), "/lab/metrics/": path.join(ROOT, "recipes/marimba-audio") } });
+const srv = createMediaServer({ weights: path.resolve(weights), extra: { "/ref/": path.resolve(refDir), "/metrics/": path.join(ROOT, "recipes/marimba-audio") } });
 await new Promise((r) => srv.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${srv.address().port}`;
 const browser = await chromium.launch({ executablePath: CHROME, headless: !process.env.HEADFUL, args: ["--enable-unsafe-webgpu", "--ignore-gpu-blocklist", "--enable-features=Vulkan,WebGPU,SharedArrayBuffer", "--no-first-run"] });
@@ -35,7 +35,7 @@ try {
   page.on("console", (m) => { if (m.type() === "error") result.errors.push("console: " + m.text().slice(0, 300)); });
   page.on("pageerror", (e) => result.errors.push("pageerror: " + String(e.message ?? e).slice(0, 300)));
   page.on("request", (r) => { const u = r.url(); if (!u.startsWith(base) && !/^(blob|data):/.test(u)) result.errors.push("external request: " + u); });
-  await page.goto(`${base}/audio-turno/index.html?lang=en&device=${device}`);
+  await page.goto(`${base}/audio-turn/index.html?lang=en&device=${device}`);
   await page.waitForFunction(() => window.s1s2demo, null, { timeout: 30000 });
   result.rss.beforeLoadMB = rss();
   const t0 = Date.now();
@@ -47,14 +47,14 @@ try {
   result.tasks = await page.evaluate(() => window.s1s2demo.model.tasks);
   // decoder parity through the library in the page, from torch's audio_features (windows in dec_ref.jsonl)
   const rows = await page.evaluate(async (ref) => {
-    const { rowFromAnswers } = await import("/lab/metrics/decoder-metrics.mjs");
+    const { rowFromAnswers } = await import("/metrics/decoder-metrics.mjs");
     const m = window.s1s2demo.model, out = [];
     const f32 = async (u) => new Float32Array(await (await fetch(u)).arrayBuffer());
     {  // warm-up (shader compilation, first runs)
-      const r = ref[0]; await m.decodeFeatures(await f32(`/lab/dec/af/${r.id}.f32`), [{ task: "language" }, { task: "term", term: Object.keys(r.terms)[0] }]);
+      const r = ref[0]; await m.decodeFeatures(await f32(`/ref/af/${r.id}.f32`), [{ task: "language" }, { task: "term", term: Object.keys(r.terms)[0] }]);
     }
     for (const r of ref) {
-      const af = await f32(`/lab/dec/af/${r.id}.f32`), terms = Object.keys(r.terms), timing = {}, t0 = performance.now();
+      const af = await f32(`/ref/af/${r.id}.f32`), terms = Object.keys(r.terms), timing = {}, t0 = performance.now();
       const ans = await m.decodeFeatures(af, [{ task: "language" }, ...terms.map((t) => ({ task: "term", term: t }))], timing);
       out.push(rowFromAnswers(r.id, ans, terms, timing, performance.now() - t0));
     }
@@ -78,7 +78,7 @@ try {
     for (const [name, rows] of [["full8s", pick(/^j/)], ["short", pick(/^c/)]]) {
       const T = { mel: [], tower: [], leftTower: [], open: [], language: [], greedy: [], beam: [], term: [], greedyTokens: [], total: [] };
       for (const r of rows) {
-        const win = await f32(`/lab/dec/af/${r.id}.win.f32`), t0 = performance.now();
+        const win = await f32(`/ref/af/${r.id}.win.f32`), t0 = performance.now();
         const enc = await m.encode({ samples: win.subarray(0, r.n).slice(), sampleRate: 16000 });
         const tl = {}; await m.read(enc, ["language"], tl);
         const tt = {}; await m.read(enc, [{ task: "term", term: "palavra" }], tt);
