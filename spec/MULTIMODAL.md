@@ -105,7 +105,7 @@ The readout files are Marimba's own safetensors, pinned unchanged; the tower and
 ```js
 import { loadMedia } from "@s1s2/web";
 
-const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": "/weights/marimba-audio/" }, modules: { ort }, allowUnverified: true });
+const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
 const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
 // d.answers[i]: { task, probability, margin, rawMargin, decision, threshold, available } ; d.cost: { ms, parts: { mel, tower, readers }, passes: 1 }
 const enc = await audio.encode({ samples, sampleRate: 16000 });          // one tower pass ...

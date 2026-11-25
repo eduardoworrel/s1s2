@@ -105,12 +105,12 @@ Besides text, the library reads an **audio package** (a frozen Qwen3-ASR-0.6B en
 ```js
 import { loadMedia } from "@s1s2/web";
 
-const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": "/weights/marimba-audio/" }, modules: { ort }, allowUnverified: true });
+const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
 const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
 // d.answers[i].decision / .probability / .margin ; d.cost: { ms, parts: { mel, tower, readers } }
 ```
 
-- Audio, Chrome WebGPU, 56 FLEURS pt-BR windows: probabilities within 3.4e-5 of the torch Marimba package and the same decision on 56 of 56; about 0.2 s per window (log-mel in JavaScript 116 ms, encoder 71 ms, five readers 10 ms).
+- Audio, Chrome WebGPU, 56 FLEURS pt-BR windows: probabilities within 3.82e-5 of the torch Marimba package and the same decision on 56 of 56; about 0.2 s per window (log-mel in JavaScript 116 ms, encoder 71 ms, five readers 10 ms).
 - Not included: audio language and spoken-word questions (they need the ASR decoder), free-text audio questions, margin policies for media. [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) has the design, tolerances and every limit; the same file lists the open points and the licences read on the sources.
 - The weights are **not published**: the manifest is `revision: "local"` and the demo points at a local directory. Demo: [`examples/audio-turno`](examples/audio-turno) (`node examples/serve-media.mjs --weights <dir>`); how the package is made: [`recipes/`](recipes).
 
