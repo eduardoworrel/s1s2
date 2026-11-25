@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- New entry point `@s1s2/web/media` (`loadMedia`, `AudioModel`, `validateMediaManifest`, ...): audio in, same answers (`predicate`, `choice`) with probability and margin. The text bundle carries none of it.
+- Manifest keys `modalities` (default `["text"]`) and `audio` (log-mel preprocess, ONNX tower, readers); `s1s2 validate` checks them. Text manifests are unchanged.
+- The safetensors reader accepts `F64` tensors (the audio readers store float64 coefficients).
+
 ## 0.1.3
 
 - `S1S2.load` picks a runtime for the device: ONNX Runtime Web (GenAI graphs and plain decoders), transformers.js, WebLLM or LiteRT.js in the browser, onnxruntime-node in Node. Builds that list device `"wasm"` run on the browser CPU when WebGPU is absent (`cpuFallback: false` opts out; `model.device` and `model.fallbackReason` say what was used); builds without it are refused with the reason.

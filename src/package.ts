@@ -7,6 +7,8 @@
 // is reported as "not present" (warning), or as an error with `strict`.
 
 import { validateManifest, ManifestError, type Manifest, type PinnedFile } from "./manifest.js";
+import { validateMediaManifest, mediaProblems } from "./media/manifest.js";
+import type { MediaManifest } from "./media/types.js";
 import { headScaleSource } from "./readout.js";
 import { loadAnyHead } from "./heads/index.js";
 import { loadNorm } from "./heads/norm.js";
@@ -87,12 +89,41 @@ export async function validateManifestFile(file: string, o: ValidateOptions = {}
   try { m = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e: any) { r.errors.push(`json: ${e?.message ?? e}`); return r; }
   r.id = typeof m?.id === "string" ? m.id : undefined;
   r.errors.push(...(await schemaProblems(m, o.schema)));
-  let man: Manifest | null = null;
-  try { man = validateManifest(m); }
+  let man: Manifest | null = null, media: MediaManifest | null = null;
+  const isMedia = Array.isArray(m?.modalities) && !m.modalities.includes("text");
+  try { if (isMedia) media = validateMediaManifest(m); else man = validateManifest(m); }
   catch (e) { if (e instanceof ManifestError) r.errors.push(...e.problems.map((x) => `manifest: ${x}`)); else throw e; }
+  if (man && (m.modalities !== undefined || m.audio !== undefined)) r.errors.push(...mediaProblems(m, false).map((x) => `manifest: ${x}`));   // the media blocks of a text + audio manifest
   if (man && !o.manifestOnly) await checkFiles(man, path.dirname(path.resolve(file)), o, r);
+  if (media && !o.manifestOnly) await checkMediaFiles(media, path.dirname(path.resolve(file)), o, r);
   r.ok = r.errors.length === 0;
   return r;
+}
+
+/** Media packages: every pinned file present under the root is size- and sha256-checked (missing ones are warnings, errors with strict). */
+async function checkMediaFiles(m: MediaManifest, dir: string, o: ValidateOptions, r: ManifestReport): Promise<void> {
+  const fs = await nodeImport("node:fs"), path = await nodeImport("node:path");
+  const pins: [string, PinnedFile][] = [];
+  const a = m.audio;
+  if (a) {
+    pins.push(["audio.tower.file", a.tower.file]);
+    for (const [n, rd] of Object.entries(a.readers)) {
+      if (rd.kind === "speech-head") { pins.push([`audio.readers.${n}.graph`, rd.graph], [`audio.readers.${n}.question`, rd.question]); }
+      else pins.push([`audio.readers.${n}.weights`, rd.weights]);
+    }
+  }
+  const root = o.roots?.[m.repo] ?? dir, seen = new Set<string>();
+  for (const [what, p] of pins) {
+    if (/^https:\/\//.test(p.path)) { r.warnings.push(`${what}: ${p.path} is a URL (not checked locally)`); continue; }
+    const f = path.resolve(root, p.path), key = `${f}\0${p.sha256}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!fs.existsSync(f)) { (o.strict ? r.errors : r.warnings).push(`${what}: ${m.repo}/${p.path} not present${o.strict ? "" : " (not checked)"}`); continue; }
+    const st = fs.statSync(f);
+    if (p.size !== undefined && st.size !== p.size) { r.errors.push(`${what}: ${p.path} size ${st.size} != manifest ${p.size}`); continue; }
+    const sha = await sha256File(f);
+    if (sha !== p.sha256) r.errors.push(`${what}: ${p.path} sha256 ${sha} != manifest ${p.sha256}`); else r.checked.push(path.relative(dir, f) || p.path);
+  }
 }
 
 async function checkFiles(m: Manifest, dir: string, o: ValidateOptions, r: ManifestReport): Promise<void> {

@@ -1,0 +1,49 @@
+// loadMedia: read a media manifest (modalities ["audio"]), check its pinned files and return the model.
+
+import { Files, type FilesOptions } from "../files.js";
+import { validateMediaManifest } from "./manifest.js";
+import type { MediaManifest } from "./types.js";
+import { detectPlatform } from "../runtime.js";
+import { loadAudio, AudioModel } from "./audio.js";
+
+export interface MediaLoadOptions {
+  /** Manifest object, or a URL / Node path to its JSON. */
+  manifest: MediaManifest | Record<string, unknown> | string;
+  /** Which media of a manifest that lists several. Default: its first. */
+  modality?: "audio";
+  device?: "auto" | "webgpu" | "wasm" | "cpu";
+  /** Modules to use instead of importing them: onnxruntime. */
+  modules?: { ort?: any };
+  cacheDir?: string;
+  /** Node: repo id -> local directory mirroring that repo (sha256-checked once). */
+  localDirs?: Record<string, string>;
+  /** Browser: repo id -> base URL serving that repo's files. */
+  baseUrls?: Record<string, string>;
+  /** Accept files over 300 MB from non-Hub hosts without a browser-side hash (the demo server hashes them at start-up). */
+  allowUnverified?: boolean;
+  fetch?: typeof fetch;
+  onStatus?: (msg: string) => void;
+}
+
+async function readMediaManifest(src: MediaLoadOptions["manifest"], platform: string, f: typeof fetch): Promise<MediaManifest> {
+  if (typeof src !== "string") return validateMediaManifest(src);
+  if (platform === "node" && !/^https?:/.test(src)) {
+    const fs: any = await import(/* @vite-ignore */ "node:fs"), url: any = await import(/* @vite-ignore */ "node:url");
+    return validateMediaManifest(JSON.parse(fs.readFileSync(src.startsWith("file:") ? url.fileURLToPath(src) : src, "utf8")));
+  }
+  const r = await f(src);
+  if (!r.ok) throw new Error(`manifest ${src}: HTTP ${r.status}`);
+  return validateMediaManifest(await r.json());
+}
+
+export async function loadMedia(o: MediaLoadOptions): Promise<AudioModel> {
+  const platform = detectPlatform();
+  const f = o.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
+  const m = await readMediaManifest(o.manifest, platform, f);
+  const which = o.modality ?? m.modalities.find((x) => x === "audio");
+  if (which !== "audio") throw new Error("loadMedia: the manifest lists no audio modality");
+  if (!m.modalities.includes(which)) throw new Error(`loadMedia: this manifest takes ${m.modalities.join(", ")}, not ${which}`);
+  const fo: FilesOptions = { platform, cacheDir: o.cacheDir, localDirs: o.localDirs, baseUrls: o.baseUrls, allowUnverified: o.allowUnverified, fetch: o.fetch, onStatus: o.onStatus };
+  const files = new Files(fo);
+  return loadAudio(m.audio!, { device: o.device, modules: o.modules, files, repo: m.repo, revision: m.revision, onStatus: o.onStatus });
+}

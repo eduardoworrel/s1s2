@@ -1,0 +1,21 @@
+# sha256 of every file in marimba-audio/ except its README.md, as committed in this repository (taken from the reference runs, then renamed and their comments and messages translated). The test in test/recipes-sources.test.mjs checks them
+ede2ed2cd0137e7683cdc814d6cdb1a10ec1328370ea3793b726123aef69360f  marimba-audio/browser-index.html
+8012fdd8703f8bd79a139c96eb588339581cd1e453a511bfed135477b447c80b  marimba-audio/browser-mel.js
+ac4056e647698969deb77d90bafedebc4054f517b0d8424dddc07c7001e1ca2f  marimba-audio/browser-readers.js
+8440bd45213bb39d1438d3de695fbb63255ff948a57f802ceadda2c0f014be12  marimba-audio/browser-run.mjs
+b88d361876dff2e6cf6e51714379145b89e67bf46640efcc2a814b66169bddb5  marimba-audio/e2e_py.py
+aeb1644ec5e7ff7d1167ec58d14fbf2b3d6fab38a080b8e09ea1b57fdf639fdb  marimba-audio/export_head.py
+71a19b670c820f400515e664f4ee18fca6d401305954117c3ff17b68f7d53c07  marimba-audio/export_tower.py
+3b54c9e9101d0290a37315470369de0f396f88f719f19e7446bfa3f92864f195  marimba-audio/node-parity.mjs
+ac49ade2da9a6f9e73a563ef15acae76e9d6411339891920243c47b1235bfbdc  marimba-audio/prep.py
+a6abad9e4b13bae5a9669b1e695975f807093d60c3b08cc8ee73299a950b6f32  marimba-audio/refs.py
+5396ba744951b37822e58c37b7323a4d48d2651fcd76ecf85fd29dd2ca9e7357  marimba-audio/run.py
+
+# weight files pinned by the manifests (not in the repository): sha256  size  package/path
+d0ff159793d5ee691b3113223c776727a69c85f216a8fbe8f2ee2190095aa5bd  745697054  marimba-audio/audio_tower.onnx
+17bf8e53d57ee7f203ee93017a183ece4954f8b75787dee383fd07206f50a63e  9670121  marimba-audio/vad_head.onnx
+ff19dab1417afb106f21f5abe6f617023dae5c7bf83a8f2126f1030eb4ed191e  1024  marimba-audio/vad_question.f32
+908a2a1a6fd9770d031684aa47f2eb5f5cb748e5a8a4f3e5ca2c10c4988c2ee9  18348  marimba-audio/turn_end/readout.safetensors
+47a77387c8cee820b7174040a4b7cad8b5dc3f23ba6ff82e0cd2148b9b5b7ea6  22196  marimba-audio/diarization/same_speaker.safetensors
+e18ec6e25ba5c30b92de338808681aaf6ac9032250ab639b82ef5c7b6221a1d7  3672796  marimba-audio/diarization/speaker_change.safetensors
+a93128ba279ba2e0d13421bb00c6c0a62372cad2edb5f2a95cab2536645d3e8b  43644  marimba-audio/diarization/speaker_count.safetensors

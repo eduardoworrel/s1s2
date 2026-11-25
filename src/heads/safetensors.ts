@@ -1,7 +1,8 @@
 // Minimal safetensors reader (https://github.com/huggingface/safetensors: u64 LE header length, JSON header
-// {name: {dtype, shape, data_offsets}}, raw little-endian data). F32, F16 and BF16 are widened to Float32Array.
+// {name: {dtype, shape, data_offsets}}, raw little-endian data). F32, F16, BF16 and F64 are widened to Float32Array;
+// F64 tensors also keep their exact values in `f64` (the audio readers standardise with float64 mean / scale).
 
-export interface Tensor { dtype: string; shape: number[]; data: Float32Array }
+export interface Tensor { dtype: string; shape: number[]; data: Float32Array; /** F64 only: the exact values. */ f64?: Float64Array }
 export interface SafeTensors { metadata: Record<string, string>; tensors: Record<string, Tensor> }
 
 function f16(h: number): number {
@@ -22,14 +23,16 @@ export function parseSafetensors(buf: ArrayBuffer): SafeTensors {
     const [a, b] = t.data_offsets as [number, number], count = (t.shape as number[]).reduce((x, y) => x * y, 1);
     if (!(base + b <= buf.byteLength && b >= a)) throw new Error(`safetensors: ${name} outside the file`);
     const out = new Float32Array(count);
-    const w = t.dtype === "F32" ? 4 : t.dtype === "F16" || t.dtype === "BF16" ? 2 : 0;
-    if (!w) throw new Error(`safetensors: ${name} dtype ${t.dtype} not supported (F32, F16, BF16)`);
+    const w = t.dtype === "F64" ? 8 : t.dtype === "F32" ? 4 : t.dtype === "F16" || t.dtype === "BF16" ? 2 : 0;
+    if (!w) throw new Error(`safetensors: ${name} dtype ${t.dtype} not supported (F64, F32, F16, BF16)`);
     if (b - a !== count * w) throw new Error(`safetensors: ${name} has ${b - a} bytes for ${count} x ${t.dtype}`);
     const o = base + a;
-    if (t.dtype === "F32") for (let i = 0; i < count; i++) out[i] = dv.getFloat32(o + 4 * i, true);
+    let f64: Float64Array | undefined;
+    if (t.dtype === "F64") { f64 = new Float64Array(count); for (let i = 0; i < count; i++) { f64[i] = dv.getFloat64(o + 8 * i, true); out[i] = f64[i]; } }
+    else if (t.dtype === "F32") for (let i = 0; i < count; i++) out[i] = dv.getFloat32(o + 4 * i, true);
     else if (t.dtype === "F16") for (let i = 0; i < count; i++) out[i] = f16(dv.getUint16(o + 2 * i, true));
     else { const u = new Uint32Array(1), f = new Float32Array(u.buffer); for (let i = 0; i < count; i++) { u[0] = dv.getUint16(o + 2 * i, true) << 16; out[i] = f[0]; } }
-    tensors[name] = { dtype: t.dtype, shape: t.shape, data: out };
+    tensors[name] = { dtype: t.dtype, shape: t.shape, data: out, ...(f64 ? { f64 } : {}) };
   }
   return { metadata: head.__metadata__ ?? {}, tensors };
 }

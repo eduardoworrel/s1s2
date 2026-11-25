@@ -1,0 +1,251 @@
+{
+  "schema": "s1s2.manifest/1",
+  "id": "marimba-qwen3-asr-0.6b-web",
+  "modalities": [
+    "audio"
+  ],
+  "repo": "local/marimba-audio-web",
+  "revision": "local",
+  "license": "Apache-2.0",
+  "provenance": {
+    "generator": {
+      "name": "recipes/marimba-audio",
+      "version": "0.1.0"
+    },
+    "base": {
+      "repo": "Qwen/Qwen3-ASR-0.6B",
+      "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+      "license": "Apache-2.0"
+    },
+    "source": {
+      "format": "marimba-readouts",
+      "repo": "charcot-ai/marimba",
+      "revision": "ad374b4e61202c8425d1b3b2766bef985b01df45",
+      "files": [
+        "turn_end/readout.safetensors",
+        "diarization/same_speaker.safetensors",
+        "diarization/speaker_change.safetensors",
+        "diarization/speaker_count.safetensors",
+        "speech_head/model.safetensors"
+      ]
+    },
+    "notes": "Unpublished package (revision local). audio_tower.onnx and vad_head.onnx are ONNX exports of the frozen Qwen3-ASR-0.6B audio encoder and of the Marimba speech head (recipes/marimba-audio/export_*.py); the readout safetensors are the Marimba files unchanged (their sha256 are in Marimba's config.json). Licenses as the cards state them: Apache-2.0 for the encoder and for the head/readout weights (Marimba card); training data of the turn-end readout is CC BY 4.0 (pipecat-ai/smart-turn-data-v3.2-train). Publishing the exports is undecided."
+  },
+  "audio": {
+    "preprocess": {
+      "kind": "log-mel",
+      "sampleRate": 16000,
+      "windowSeconds": 8,
+      "nFft": 400,
+      "hop": 160,
+      "nMels": 128,
+      "window": "hann-periodic",
+      "padding": "reflect",
+      "filters": "slaney",
+      "log": {
+        "floor": 1e-10,
+        "dynamicRange": 8,
+        "shift": 4,
+        "divide": 4
+      },
+      "frames": 800
+    },
+    "tower": {
+      "runtime": "onnx",
+      "file": {
+        "path": "audio_tower.onnx",
+        "sha256": "d0ff159793d5ee691b3113223c776727a69c85f216a8fbe8f2ee2190095aa5bd",
+        "size": 745697054
+      },
+      "input": {
+        "name": "mel",
+        "shape": [
+          128,
+          800
+        ]
+      },
+      "outputs": {
+        "h9": {
+          "layer": 9,
+          "frames": 104,
+          "dim": 896
+        },
+        "h12": {
+          "layer": 12,
+          "frames": 104,
+          "dim": 896
+        },
+        "h18": {
+          "layer": 18,
+          "frames": 104,
+          "dim": 896
+        },
+        "audio_features": {
+          "layer": "final",
+          "frames": 104,
+          "dim": 1024
+        }
+      },
+      "devices": [
+        "webgpu",
+        "wasm",
+        "cpu"
+      ]
+    },
+    "readers": {
+      "voice_activity": {
+        "kind": "speech-head",
+        "type": "predicate",
+        "tap": "h9",
+        "graph": {
+          "path": "vad_head.onnx",
+          "sha256": "17bf8e53d57ee7f203ee93017a183ece4954f8b75787dee383fd07206f50a63e",
+          "size": 9670121
+        },
+        "question": {
+          "path": "vad_question.f32",
+          "sha256": "ff19dab1417afb106f21f5abe6f617023dae5c7bf83a8f2126f1030eb4ed191e",
+          "size": 1024,
+          "dim": 256,
+          "prompt": "Há fala humana neste áudio?\nA. sim\nB. não\nResponda só com a letra da opção."
+        },
+        "inputs": {
+          "tap": "h9",
+          "mask": "fmask",
+          "question": "qpool",
+          "output": "score"
+        },
+        "frames": 100,
+        "temperature": 0.6540604692061299,
+        "threshold": 0.225
+      },
+      "turn_end": {
+        "kind": "pooled-linear",
+        "type": "predicate",
+        "tap": "h18",
+        "pooling": {
+          "kind": "tail-mean",
+          "seconds": 2
+        },
+        "weights": {
+          "path": "turn_end/readout.safetensors",
+          "sha256": "908a2a1a6fd9770d031684aa47f2eb5f5cb748e5a8a4f3e5ca2c10c4988c2ee9",
+          "size": 18348
+        },
+        "tensors": {
+          "coef": "coef",
+          "intercept": "intercept",
+          "mean": "mean",
+          "scale": "scale"
+        },
+        "calibration": {
+          "kind": "platt",
+          "coefficient": "platt_coef",
+          "intercept": "platt_intercept"
+        }
+      },
+      "same_speaker": {
+        "type": "predicate",
+        "tap": "h12",
+        "weights": {
+          "path": "diarization/same_speaker.safetensors",
+          "sha256": "47a77387c8cee820b7174040a4b7cad8b5dc3f23ba6ff82e0cd2148b9b5b7ea6",
+          "size": 22196
+        },
+        "kind": "pooled-linear",
+        "pooling": {
+          "kind": "pair",
+          "a": {
+            "from": 0,
+            "to": 4
+          },
+          "b": {
+            "from": 4,
+            "to": 8
+          }
+        },
+        "tensors": {
+          "coef": "coef",
+          "intercept": "intercept",
+          "mean": "scaler_mean",
+          "scale": "scaler_scale"
+        },
+        "calibration": {
+          "kind": "platt",
+          "coefficient": "platt_coefficient",
+          "intercept": "platt_intercept"
+        }
+      },
+      "speaker_change": {
+        "kind": "pooled-mlp",
+        "type": "predicate",
+        "tap": "h12",
+        "pooling": {
+          "kind": "pair-split",
+          "split": 6
+        },
+        "weights": {
+          "path": "diarization/speaker_change.safetensors",
+          "sha256": "e18ec6e25ba5c30b92de338808681aaf6ac9032250ab639b82ef5c7b6221a1d7",
+          "size": 3672796
+        },
+        "tensors": {
+          "layer0Weight": "layer_0_weight",
+          "layer0Bias": "layer_0_bias",
+          "layer1Weight": "layer_1_weight",
+          "layer1Bias": "layer_1_bias"
+        },
+        "calibration": {
+          "kind": "platt",
+          "coefficient": "platt_coefficient",
+          "intercept": "platt_intercept"
+        }
+      },
+      "speaker_count": {
+        "kind": "pooled-linear",
+        "type": "choice",
+        "labels": [
+          "0",
+          "1",
+          "2",
+          "3+"
+        ],
+        "tap": "h12",
+        "pooling": {
+          "kind": "mean-std"
+        },
+        "weights": {
+          "path": "diarization/speaker_count.safetensors",
+          "sha256": "a93128ba279ba2e0d13421bb00c6c0a62372cad2edb5f2a95cab2536645d3e8b",
+          "size": 43644
+        },
+        "tensors": {
+          "coef": "coef",
+          "intercept": "intercept",
+          "mean": "scaler_mean",
+          "scale": "scaler_scale"
+        },
+        "calibration": {
+          "kind": "temperature",
+          "tensor": "temperature"
+        }
+      }
+    },
+    "notes": "voice_activity answers ONE canonical Portuguese question (its encoding is pinned in question). Speaker tasks need a full 8 s window; turn_end reads the last 2 s of real audio. Language and spoken-word questions of Marimba need the Qwen3-ASR decoder and are not part of this package.",
+    "fidelity": {
+      "reference": "marimba-audio 0.1.2 (torch float32 CPU), 56 FLEURS pt-BR clips, windows right-aligned to 8 s (set A) and 3 clips concatenated (set B)",
+      "chrome157WebGPU": {
+        "n": 56,
+        "maxAbsDiffP": {
+          "voice_activity": 0.0000204,
+          "turn_end": 0.0000382,
+          "same_speaker": 0.0000317,
+          "speaker_change": 0.0000082,
+          "speaker_count": 0.0000335
+        },
+        "decisionAgreement": "56/56 (vad at 0.225, turn_end at 0.5)"
+      },
+      "source": "test/browser/media-chrome.mjs audio"
+    }
+  }
+}

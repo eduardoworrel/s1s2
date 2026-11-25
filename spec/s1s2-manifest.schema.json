@@ -6,19 +6,7 @@
   "type": "object",
   "required": [
     "schema",
-    "id",
-    "base",
-    "hiddenSize",
-    "layer",
-    "tokenizer",
-    "eos",
-    "encoding",
-    "markers",
-    "readout",
-    "logits",
-    "defaults",
-    "generation",
-    "builds"
+    "id"
   ],
   "properties": {
     "schema": {
@@ -495,6 +483,30 @@
         }
       },
       "description": "Confidence definition answers report (spec 5.1); reserved hook until a comparison of confidence definitions is done, ignored by s1s2 0.1."
+    },
+    "modalities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "text",
+          "audio"
+        ]
+      },
+      "description": "Inputs `decide` takes. Absent = [\"text\"] (a text manifest). A media package (no text sections) lists \"audio\" and needs repo + revision. See spec/MULTIMODAL.md."
+    },
+    "repo": {
+      "$ref": "#/$defs/nonEmpty",
+      "description": "Media packages: where the pinned files live (Hub repo id, or a name mapped by baseUrls / localDirs)."
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|local)$",
+      "description": "Media packages: pinned commit sha, or \"local\" for an unpublished package."
+    },
+    "audio": {
+      "$ref": "#/$defs/audioSpec"
     }
   },
   "patternProperties": {
@@ -1543,6 +1555,561 @@
           "description": "Format the package was converted from, declared by the converter (never guessed from file names)."
         }
       }
+    },
+    "audioSpec": {
+      "type": "object",
+      "required": [
+        "preprocess",
+        "tower",
+        "readers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "preprocess": {
+          "type": "object",
+          "required": [
+            "kind",
+            "sampleRate",
+            "windowSeconds",
+            "nFft",
+            "hop",
+            "nMels",
+            "window",
+            "padding",
+            "filters",
+            "log",
+            "frames"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "log-mel"
+            },
+            "sampleRate": {
+              "const": 16000
+            },
+            "windowSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "nFft": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "hop": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "nMels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "window": {
+              "const": "hann-periodic"
+            },
+            "padding": {
+              "const": "reflect"
+            },
+            "filters": {
+              "const": "slaney"
+            },
+            "log": {
+              "type": "object",
+              "required": [
+                "floor",
+                "dynamicRange",
+                "shift",
+                "divide"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "floor": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "dynamicRange": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "shift": {
+                  "type": "number"
+                },
+                "divide": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            "frames": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "tower": {
+          "type": "object",
+          "required": [
+            "runtime",
+            "file",
+            "input",
+            "outputs",
+            "devices"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "runtime": {
+              "const": "onnx"
+            },
+            "file": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "input": {
+              "type": "object",
+              "required": [
+                "name",
+                "shape"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "shape": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            },
+            "outputs": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "layer",
+                  "frames",
+                  "dim"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "layer": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "const": "final"
+                      }
+                    ]
+                  },
+                  "frames": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "dim": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "enum": [
+                  "webgpu",
+                  "wasm",
+                  "cpu"
+                ]
+              }
+            }
+          }
+        },
+        "readers": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/pooledReader"
+              },
+              {
+                "$ref": "#/$defs/speechHeadReader"
+              }
+            ]
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "fidelity": {
+          "type": "object"
+        }
+      }
+    },
+    "pooledReader": {
+      "type": "object",
+      "required": [
+        "kind",
+        "type",
+        "tap",
+        "pooling",
+        "weights",
+        "tensors",
+        "calibration"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "pooled-linear",
+            "pooled-mlp"
+          ]
+        },
+        "type": {
+          "enum": [
+            "predicate",
+            "choice"
+          ]
+        },
+        "tap": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/nonEmpty"
+          }
+        },
+        "pooling": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "seconds"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "tail-mean"
+                },
+                "seconds": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "a",
+                "b"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "pair"
+                },
+                "a": {
+                  "type": "object",
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "properties": {
+                    "from": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "to": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "b": {
+                  "type": "object",
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "properties": {
+                    "from": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "to": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "split"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "pair-split"
+                },
+                "split": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "mean-std"
+                }
+              }
+            }
+          ]
+        },
+        "weights": {
+          "$ref": "#/$defs/pinnedFile"
+        },
+        "tensors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "coef": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "intercept": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "mean": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "scale": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "layer0Weight": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "layer0Bias": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "layer1Weight": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "layer1Bias": {
+              "$ref": "#/$defs/nonEmpty"
+            }
+          }
+        },
+        "calibration": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "coefficient",
+                "intercept"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "platt"
+                },
+                "coefficient": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "intercept": {
+                  "$ref": "#/$defs/nonEmpty"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "tensor"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "temperature"
+                },
+                "tensor": {
+                  "$ref": "#/$defs/nonEmpty"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "none"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "speechHeadReader": {
+      "type": "object",
+      "required": [
+        "kind",
+        "type",
+        "tap",
+        "graph",
+        "question",
+        "inputs",
+        "frames",
+        "temperature",
+        "threshold"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "speech-head"
+        },
+        "type": {
+          "const": "predicate"
+        },
+        "tap": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "graph": {
+          "$ref": "#/$defs/pinnedFile"
+        },
+        "question": {
+          "type": "object",
+          "required": [
+            "path",
+            "sha256",
+            "dim",
+            "prompt"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "dim": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "prompt": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "inputs": {
+          "type": "object",
+          "required": [
+            "tap",
+            "mask",
+            "question",
+            "output"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tap": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "mask": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "question": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "output": {
+              "$ref": "#/$defs/nonEmpty"
+            }
+          }
+        },
+        "frames": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "temperature": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "threshold": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "modalities"
+        ],
+        "properties": {
+          "modalities": {
+            "not": {
+              "contains": {
+                "const": "text"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "repo",
+          "revision"
+        ]
+      },
+      "else": {
+        "required": [
+          "base",
+          "hiddenSize",
+          "layer",
+          "tokenizer",
+          "eos",
+          "encoding",
+          "markers",
+          "readout",
+          "logits",
+          "defaults",
+          "generation",
+          "builds"
+        ]
+      }
+    }
+  ]
 }
