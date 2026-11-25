@@ -283,7 +283,7 @@ test("voice activity: the speech-head graph on the stored h9 reproduces the torc
 
 test("all 56 windows through the real tower on Node CPU (opt-in: S1S2_AUDIO_FULL=1, heavy; see recipes/marimba-audio/node-parity.mjs)", { skip: process.env.S1S2_AUDIO_FULL !== "1" && "SKIPPED, opt-in: needs the weights and the torch reference run; set S1S2_AUDIO_FULL=1 and S1S2_AUDIO_REF=<reference run directory> (see recipes/marimba-audio/node-parity.mjs)" }, async () => {
   const { execFileSync } = await import("node:child_process");
-  const out = path.join(ROOT, ".capturas-multimodal-node-parity.json");
+  const out = path.join(ROOT, ".captures-media-node-parity.json");
   execFileSync("node", [path.join(ROOT, "recipes/marimba-audio/node-parity.mjs"), process.env.S1S2_AUDIO_REF, "--out", out], { stdio: "inherit" });
   const r = JSON.parse(readFileSync(out, "utf8"));
   for (const [k, v] of Object.entries(r.maxAbsDiff)) assert.ok(v <= (k.startsWith("log-mel") ? TOL_MEL : TOL_P), `${k}: ${v}`);

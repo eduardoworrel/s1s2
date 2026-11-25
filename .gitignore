@@ -6,9 +6,9 @@ __pycache__/
 *.egg-info/
 .venv/
 .weights/
-.capturas-multimodal/
-.capturas-multimodal-node-parity.json
-.capt-tmp/
+.captures-media/
+.captures-media-node-parity.json
+.tmp-captures/
 *.onnx
 *.onnx_data
 *.f32

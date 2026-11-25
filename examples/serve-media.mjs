@@ -101,5 +101,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     if (v.problems.length) { console.error("weights do not match the manifests:\n  " + v.problems.join("\n  ")); process.exit(1); }
     console.log(`${v.checked} files match`);
   }
-  createMediaServer({ weights }).listen(port, "127.0.0.1", () => console.log(`http://127.0.0.1:${port}/audio-turno/`));
+  createMediaServer({ weights }).listen(port, "127.0.0.1", () => console.log(`http://127.0.0.1:${port}/audio-turn/`));
 }

@@ -18,7 +18,7 @@ const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/M
 
 const [what, weights, lab] = process.argv.slice(2);
 const oi = process.argv.indexOf("--out");
-const OUT = oi > 0 ? path.resolve(process.argv[oi + 1]) : path.join(ROOT, ".capturas-multimodal");
+const OUT = oi > 0 ? path.resolve(process.argv[oi + 1]) : path.join(ROOT, ".captures-media");
 if (!["audio"].includes(what) || !weights || !lab) { console.error("usage: media-chrome.mjs audio <weights dir> <lab dir> [--out dir]"); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -54,7 +54,7 @@ const waitReady = (page, re, ms = 20 * 60 * 1000) => page.waitForFunction((r) =>
 try {
   if (what === "audio") {
     const page = await newPage({ width: 1280, height: 900 });
-    await page.goto(`${base}/audio-turno/index.html?lang=en`);
+    await page.goto(`${base}/audio-turn/index.html?lang=en`);
     await page.waitForFunction(() => window.s1s2demo, null, { timeout: 30000 });
     result.rss.beforeLoadMB = rss();
     const t0 = Date.now();

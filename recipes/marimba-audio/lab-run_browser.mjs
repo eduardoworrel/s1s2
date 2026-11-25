@@ -1,4 +1,4 @@
-// AUDIO_REF_DIR: directory with web/ and porte/ (default: current directory). Uso: node run_browser.mjs <webgpu|wasm> [n] [saida.json] [extra querystring]
+// AUDIO_REF_DIR: directory with web/ and porte/ (default: current directory). Usage: node run_browser.mjs <webgpu|wasm> [n] [out.json] [extra querystring]
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import puppeteer from "puppeteer-core";
 const ROOT = process.env.AUDIO_REF_DIR ?? process.cwd(), [ ep = "wasm", n = "56", out = `resultado_${ep}.json`, extra = ""] = process.argv.slice(2);
 const mime = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".wasm": "application/wasm", ".onnx": "application/octet-stream" };

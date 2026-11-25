@@ -162,4 +162,4 @@ sources state, not legal advice, and nothing here distributes weights.
   these Hugging Face repositories have no `LICENSE` file, only the card field.
 - Training data have their own terms: the Smart Turn v3.2 data (turn-end readout) is CC BY 4.0. Whether those terms reach the trained
   weights is not stated by the sources.
-- FLEURS (the example clips and test fixtures) is CC BY 4.0; attribution is in `examples/audio-turno/clips/ATTRIBUTION.md`.
+- FLEURS (the example clips and test fixtures) is CC BY 4.0; attribution is in `examples/audio-turn/clips/ATTRIBUTION.md`.

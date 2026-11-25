@@ -67,7 +67,7 @@ and applies to the entries of this section. Model weights and heads keep the lic
 == Data under Creative Commons Attribution 4.0 (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/) ==
 
 FLEURS (https://huggingface.co/datasets/google/fleurs, arXiv:2205.12446)
-  Copyright Google. CC BY 4.0. Audio of the pt_br dev split is in examples/audio-turno/clips/ and
+  Copyright Google. CC BY 4.0. Audio of the pt_br dev split is in examples/audio-turn/clips/ and
   test/fixtures/media/audio/; the clips, the changes made and the attribution per file are in the ATTRIBUTION.md next to each.
 
 Smart Turn v3.2 training data (https://huggingface.co/datasets/pipecat-ai/smart-turn-data-v3.2-train)
