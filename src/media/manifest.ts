@@ -73,6 +73,8 @@ function audioProblems(a: any, p: string[]): void {
   }
   if (a.decoder !== undefined) decoderProblems(a.decoder, p);
   if (!isObj(a.readers) || !Object.keys(a.readers).length) { p.push("audio.readers: at least one task"); return; }
+  const decoderTaps = new Set(Object.values<any>(a.readers).filter((r) => isObj(r) && (r.kind === "decoder-language" || r.kind === "decoder-term")).map((r) => r.tap));
+  if (decoderTaps.size > 1) p.push(`audio.readers: the decoder readers must read the same tap (found ${[...decoderTaps].join(", ")})`);
   for (const [name, r] of Object.entries<any>(a.readers)) {
     const at = `audio.readers.${name}`;
     if (!isObj(r)) { p.push(`${at}: object`); continue; }

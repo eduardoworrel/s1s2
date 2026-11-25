@@ -47,9 +47,9 @@ test("term fraction equals exact_fraction (whole words after normalisation)", ()
   assert.equal(termFraction("jo", ["São João chegou"]), 0);
 });
 
-test("float16 rounding of the audio rows is round-to-nearest-even like the hardware conversion", () => {
+test("float16 rounding of the audio rows is round-to-nearest-even like the hardware conversion", (t) => {
   const F16 = globalThis.Float16Array;
-  if (!F16) return;
+  if (!F16) return t.skip("Float16Array needs Node 24+ (the rounding is also checked against Math.f16round / the exhaustive half table in media-audio.test.mjs)");
   const f = new F16(1), u = new Uint16Array(f.buffer);
   let seed = 12345; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   for (let i = 0; i < 200000; i++) { const x = Math.fround((rnd() * 2 - 1) * 2 ** Math.floor(rnd() * 40 - 30)); f[0] = x; assert.equal(f32ToF16Bits(x), u[0], String(x)); }
@@ -130,6 +130,30 @@ test("beam: returns the 4 best finished sequences, best first, and the best one 
   }
 });
 
+test("beam with a length penalty other than 1: still returns four finished sequences, best first by the penalised score", async () => {
+  for (const lengthPenalty of [0.6, 2]) for (const seed of [4, 9]) {
+    const MAX = 6, T = chain(seed), e = engine(T, { term: { beams: 4, maxNewTokens: MAX, lengthPenalty, repetitionThreshold: 20 } }), w = await e.open(audio());
+    const beams = await w.beam();
+    assert.equal(beams.length, 4);
+    const score = (seq) => seq.reduce((a, t, i) => a + T[i === 0 ? 4 : seq[i - 1]][t], 0) / seq.length ** lengthPenalty;
+    for (let i = 1; i < 4; i++) assert.ok(score(beams[i - 1]) >= score(beams[i]) - 1e-12, `sorted (lp ${lengthPenalty}, seed ${seed})`);
+    for (const b of beams) assert.ok(EOS.includes(b.at(-1)) || b.length >= MAX, "finished");
+  }
+});
+
+test("the repetition threshold of the manifest is the one the transcript is cleaned with; a BOM inside a piece is kept", async () => {
+  const toks = { tokens: ["a", "b", "x", "y", "", "", "", "", "", "", "", ""], added: [], special: EOS };
+  const ids = Array(25).fill(0);
+  const e20 = engine(chain(1), {}), e5 = engine(chain(1), { term: { beams: 4, maxNewTokens: 12, lengthPenalty: 1, repetitionThreshold: 5 } });
+  const mk = (e) => new DecoderEngine(e.be, table, e.spec, toks, { minBlock: 0, prefixRows: 3 });
+  assert.equal(mk(e20).decode(ids), "a".repeat(25).replace(/^a+$/, "a"));       // 25 > 20: collapsed to one
+  assert.equal(mk(e5).decode(Array(4).fill(0)), "aaaa");                          // 4 <= 5: kept
+  assert.equal(mk(e5).decode(Array(6).fill(0)), "a");                             // 6 > 5: collapsed (with the default 20 it would stay)
+  assert.equal(detectAndFixRepetitions("a".repeat(6)), "aaaaaa");
+  // the byte-level pieces of EF BB BF (three characters of the byte table) decode to U+FEFF, which Python keeps
+  assert.equal(decodeIds([0, 1], { tokens: ["\u00ef\u00bb\u00bf", "a"], added: [], special: [] }), "\ufeffa");
+});
+
 test("hypotheses: greedy first, then four beams, decoded and parsed", async () => {
   const T = chain(3), e = engine(T), w = await e.open(audio());
   const h = await w.hypotheses();
@@ -154,6 +178,8 @@ test("the manifest lists the decoder, validates, and its rules catch broken bloc
   assert.ok(problems(m3).some((x) => /languages\.pt/.test(x)));
   const m4 = clone(MANIFEST); delete m4.audio.decoder.cpuBuild;
   assert.ok(problems(m4).some((x) => /need cpuBuild/.test(x)));
+  const m6 = clone(MANIFEST); m6.audio.readers.term.tap = "h18";
+  assert.ok(problems(m6).some((x) => /must be 104 x 1024|same tap/.test(x)));
   const m5 = clone(MANIFEST); m5.audio.decoder.embeddings.size = 1000;
   assert.ok(problems(m5).some((x) => /vocab \* hidden \* 2/.test(x)));
 });
@@ -162,12 +188,14 @@ test("a request without a term, or with one that has no letters, is refused befo
   const fake = { tower: async () => ({}), speech: async () => 0, dispose: async () => {}, backend: "fake", device: "cpu" };
   const m = clone(MANIFEST);
   const T = chain(2), e = new DecoderEngine(fakeBackend(T), table, spec(), tokens, { minBlock: 0, prefixRows: 3 });
+  m.audio.decoder.languages = spec().languages;
   const weights = {}; // pooled readers need weights; drop them for this check
   for (const k of ["turn_end", "same_speaker", "speaker_change", "speaker_count", "voice_activity"]) delete m.audio.readers[k];
   const model = new AudioModel({ spec: m.audio, weights, questions: {}, runtime: fake, decoder: e });
   await assert.rejects(() => model.decodeFeatures(audio(), [{ task: "term" }]), /needs \{ task, term \}/);
   await assert.rejects(() => model.decodeFeatures(audio(), [{ task: "term", term: "!!!" }]), /needs \{ task, term \}/);
   await assert.rejects(() => model.decodeFeatures(audio(), [{ task: "language", options: ["pt"] }]), /at least two distinct/);
+  await assert.rejects(() => model.decodeFeatures(audio(), [{ task: "language", options: ["aa", "constructor"] }]), /not codes of this package/);
   const a = await model.decodeFeatures(audio(), [{ task: "language", options: ["aa", "bb"] }, { task: "term", term: "a" }, { task: "term", term: "zz" }]);
   assert.equal(a[0].modality, "audio"); assert.equal(a[0].type, "choice"); assert.deepEqual(a[0].probabilities.map((x) => x.value), ["aa", "bb"]);
   assert.ok(Math.abs(a[0].probabilities.reduce((s, x) => s + x.probability, 0) - 1) < 1e-12);

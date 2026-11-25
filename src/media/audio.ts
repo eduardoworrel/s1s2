@@ -37,7 +37,12 @@ export interface AudioParts {
   filters?: Float32Array;
   /** The Qwen3-ASR decoder, when the manifest lists decoder readers and it was loaded. */
   decoder?: DecoderEngine;
+  /** Why the decoder is not there: `"off"` (loadMedia option `decoder: false`) or the message of the load error (`decoder: "auto"`). */
+  decoderMissing?: string;
 }
+
+/** What `model.decoder` says: whether the language and term questions can be answered, and if not, why. */
+export interface DecoderStatus { loaded: boolean; reason?: string }
 
 /** What one window costs once: tower outputs by tap (as [frames * dim]), real samples in the window, the mel. */
 export interface AudioEncoding {
@@ -56,6 +61,9 @@ export class AudioModel {
   private mel: MelExtractor;
   private readers = new Map<string, { run?: PooledReaderRun; speech?: SpeechHeadReader; decoder?: "language" | "term" }>();
   private gate = createGate("audio");
+  private inflight = new Set<Promise<unknown>>();
+  private closing = false;
+  private disposing: Promise<void> | null = null;
 
   constructor(private parts: AudioParts) {
     const { spec } = parts;
@@ -82,6 +90,12 @@ export class AudioModel {
   get backend(): string { return this.parts.runtime.backend; }
 
   get spec(): AudioSpec { return this.parts.spec; }
+
+  /** Whether the decoder (language, term) is loaded; when it is listed in the manifest but is not, the reason. Absent from a manifest without one. */
+  get decoder(): DecoderStatus | undefined {
+    if (!this.parts.spec.decoder) return undefined;
+    return this.parts.decoder ? { loaded: true } : { loaded: false, reason: this.parts.decoderMissing ?? "not loaded" };
+  }
 
   private checkAudio(a: MediaDecisionRequest["audio"]): asserts a is NonNullable<MediaDecisionRequest["audio"]> {
     if (!a || !(a.samples instanceof Float32Array)) throw new Error("decide: audio.samples (Float32Array) is required");
@@ -137,7 +151,17 @@ export class AudioModel {
     return this.decoderAnswers(asks, async () => features, timing);
   }
 
-  private async decoderAnswers(asks: Ask[], features: () => Promise<Float32Array>, timing?: Record<string, number>): Promise<MediaAnswer[]> {
+  /** Decoder questions in flight are counted: `dispose` waits for them instead of closing the session under a running `feed`. */
+  private decoderAnswers(asks: Ask[], features: () => Promise<Float32Array>, timing?: Record<string, number>): Promise<MediaAnswer[]> {
+    if (this.closing) return Promise.reject(new Error("audio: backend already disposed"));
+    const run = this.runDecoderAnswers(asks, features, timing);
+    this.inflight.add(run);
+    const done = () => { this.inflight.delete(run); };
+    run.then(done, done);
+    return run;
+  }
+
+  private async runDecoderAnswers(asks: Ask[], features: () => Promise<Float32Array>, timing?: Record<string, number>): Promise<MediaAnswer[]> {
     const tm = (k: string, t0: number) => { if (timing) timing[k] = (timing[k] ?? 0) + performance.now() - t0; };
     const out: MediaAnswer[] = [];
     let hyps: string[] | null = null;
@@ -192,11 +216,18 @@ export class AudioModel {
       const r = this.readers.get(task);
       if (!r) {
         const need = this.parts.spec.readers[task];
-        if (need && (need.kind === "decoder-language" || need.kind === "decoder-term")) throw new Error(`decide: task ${JSON.stringify(task)} needs the decoder, which was not loaded (loadMedia option decoder: false)`);
+        if (need && (need.kind === "decoder-language" || need.kind === "decoder-term")) {
+          const why = this.parts.decoderMissing && this.parts.decoderMissing !== "off" ? `failed to load: ${this.parts.decoderMissing}` : "was not loaded (loadMedia option decoder: false)";
+          throw new Error(`decide: task ${JSON.stringify(task)} needs the decoder, which ${why}`);
+        }
         throw new Error(`decide: unknown audio task ${JSON.stringify(task)} (this package has: ${this.tasks.join(", ")})`);
       }
       if (r.decoder === "term" && !(typeof o.term === "string" && normalizeTerm(o.term))) throw new Error(`decide: task ${JSON.stringify(task)} needs { task, term } with a word that has letters or digits`);
-      if (r.decoder === "language" && o.options !== undefined && !(Array.isArray(o.options) && o.options.length >= 2 && new Set(o.options).size === o.options.length)) throw new Error(`decide: language options must be at least two distinct codes`);
+      if (r.decoder === "language" && o.options !== undefined) {
+        if (!(Array.isArray(o.options) && o.options.length >= 2 && new Set(o.options).size === o.options.length)) throw new Error(`decide: language options must be at least two distinct codes`);
+        const known = this.parts.spec.decoder!.languages, bad = o.options.filter((c) => typeof c !== "string" || !Object.hasOwn(known, c));
+        if (bad.length) throw new Error(`decide: language options ${bad.map((c) => JSON.stringify(c)).join(", ")} are not codes of this package (${Object.keys(known).join(", ")})`);
+      }
       return { task, term: o.term, options: o.options };
     });
   }
@@ -220,7 +251,14 @@ export class AudioModel {
     return { ...a, modality: "audio", task, decision: p >= r.threshold ? "yes" : "no", threshold: r.threshold, available: true };
   }
 
-  async dispose(): Promise<void> { await this.gate.dispose(async () => { try { await this.parts.decoder?.close(); } finally { await this.parts.runtime.dispose(); } }); }
+  /** Waits for the decoder questions in flight (the session is released only after them), then releases the decoder and the tower. */
+  dispose(): Promise<void> {
+    return this.disposing ??= (async () => {
+      this.closing = true;
+      await Promise.allSettled([...this.inflight]);
+      await this.gate.dispose(async () => { try { await this.parts.decoder?.close(); } finally { await this.parts.runtime.dispose(); } });
+    })();
+  }
 }
 
 // ---- loading from a manifest ---------------------------------------------------------------------------------------
@@ -232,8 +270,12 @@ export interface AudioLoadOptions {
   repo: string;
   revision: string;
   onStatus?: (m: string) => void;
-  /** Load the decoder (language, term) when the manifest has one. Default true. */
-  decoder?: boolean;
+  /**
+   * The decoder (language, term questions) of a manifest that has one. `"auto"` (default): load it; if that fails (not enough GPU memory, a server
+   * without Range requests, a build for another device) the model runs without it, `onStatus` and `model.decoder` say why, and only a language or
+   * term question throws. `true`: a failed load throws. `false`: nothing of the decoder is loaded.
+   */
+  decoder?: boolean | "auto";
   fetch?: typeof fetch;
 }
 
@@ -270,10 +312,16 @@ export async function loadAudio(spec: AudioSpec, o: AudioLoadOptions): Promise<A
     for (const [task, b] of Object.entries(speechBytes)) heads[task] = await ort.InferenceSession.create(b, opts);
   } catch (e) { await tower.release?.(); throw e; }
 
-  let decoder: DecoderEngine | undefined;
-  if (spec.decoder && o.decoder !== false) {
+  let decoder: DecoderEngine | undefined, decoderMissing: string | undefined;
+  const mode = o.decoder ?? "auto";
+  if (spec.decoder && mode === false) decoderMissing = "off";
+  else if (spec.decoder) {
     try { decoder = await loadDecoder(spec.decoder, { ort, files, repo, revision, device: device as any, platform, status, fetch: o.fetch }); }
-    catch (e) { await tower.release?.(); for (const h of Object.values(heads)) await h.release?.(); throw e; }
+    catch (e) {
+      if (mode === true) { await tower.release?.(); for (const h of Object.values(heads)) await h.release?.(); throw e; }
+      decoderMissing = e instanceof Error ? e.message : String(e);
+      status(`decoder not loaded, language and term are unavailable: ${decoderMissing}`);
+    }
   }
 
   const runtime: AudioRuntime = {
@@ -302,7 +350,7 @@ export async function loadAudio(spec: AudioSpec, o: AudioLoadOptions): Promise<A
     },
     async dispose() { for (const h of Object.values(heads)) await h.release?.(); await tower.release?.(); },
   };
-  return new AudioModel({ spec, weights, questions, runtime, decoder });
+  return new AudioModel({ spec, weights, questions, runtime, decoder, decoderMissing });
 }
 
 async function loadDecoder(d: NonNullable<AudioSpec["decoder"]>, o: { ort: any; files: Files; repo: string; revision: string; device: "webgpu" | "wasm" | "cpu"; platform: string; status: (m: string) => void; fetch?: typeof fetch }): Promise<DecoderEngine> {
@@ -335,6 +383,6 @@ async function loadDecoder(d: NonNullable<AudioSpec["decoder"]>, o: { ort: any; 
       });
     }
   } catch (e) { await table.close?.(); throw e; }
-  const be = ortDecoder(session, ort, { hidden: H, vocab: d.model.vocab, kvHeadDim: d.model.headDim });
+  const be = ortDecoder(session, ort, { hidden: H, vocab: d.model.vocab, kvHeadDim: d.model.headDim, layers: d.model.layers, kvHeads: d.model.kvHeads });
   return new DecoderEngine(be, table, d, tokens);
 }

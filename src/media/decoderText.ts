@@ -113,10 +113,10 @@ const WS = "[\\t\\n\\v\\f\\r \\x1c-\\x1f\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\
 const pyStrip = (s: string) => s.replace(new RegExp(`^${WS}+|${WS}+$`, "g"), "");
 
 /** parse_asr_output(raw)[1]: the transcript after "<asr_text>" (or the whole text when the tag is missing). */
-export function parseAsrText(raw: string): string {
+export function parseAsrText(raw: string, repetitionThreshold = 20): string {
   const s0 = pyStrip(raw ?? "");
   if (!s0) return "";
-  const s = detectAndFixRepetitions(s0);
+  const s = detectAndFixRepetitions(s0, repetitionThreshold);
   const at = s.indexOf("<asr_text>");
   if (at < 0) return pyStrip(s);
   return pyStrip(s.slice(at + "<asr_text>".length));
@@ -145,7 +145,7 @@ function byteOf(): Map<string, number> {
 export function decodeIds(ids: number[], t: DecoderTokens): string {
   const table = byteOf(), special = new Set(t.special), added = new Set(t.added);
   let out = "", bytes: number[] = [];
-  const flush = () => { if (bytes.length) { out += new TextDecoder("utf-8").decode(Uint8Array.from(bytes)); bytes = []; } };
+  const flush = () => { if (bytes.length) { out += new TextDecoder("utf-8", { ignoreBOM: true }).decode(Uint8Array.from(bytes)); bytes = []; } };
   for (const id of ids) {
     if (special.has(id)) continue;
     const piece = t.tokens[id] ?? "";

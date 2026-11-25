@@ -68,7 +68,8 @@ export interface DecoderBackend {
   close(): Promise<void>;
 }
 
-export interface OrtDecoderOptions { hidden: number; vocab: number; kvHeadDim: number }
+/** `layers` and `kvHeads` (the manifest's `audio.decoder.model`), when given, are checked against the graph's cache inputs. */
+export interface OrtDecoderOptions { hidden: number; vocab: number; kvHeadDim: number; layers?: number; kvHeads?: number }
 
 export function ortDecoder(session: any, ort: { Tensor: new (type: any, data: any, dims: number[]) => any }, o: OrtDecoderOptions): DecoderBackend {
   const T = ort.Tensor;
@@ -88,6 +89,8 @@ export function ortDecoder(session: any, ort: { Tensor: new (type: any, data: an
     if (typeof m.shape[3] !== "number") dims[3] = o.kvHeadDim;
     specs.push({ name: n, type: m.type, dims });
   }
+  if (o.layers !== undefined && specs.length !== 2 * o.layers) throw new Error(`decoder: the graph has ${specs.length} cache inputs, the manifest says ${o.layers} layers (2 each)`);
+  if (o.kvHeads !== undefined) for (const s of specs) if (s.dims[1] !== o.kvHeads) throw new Error(`decoder: cache input ${s.name} has ${s.dims[1]} heads, the manifest says ${o.kvHeads}`);
   const pastOf = new Map<string, string>();
   for (const out of outNames) { const p = pastNameFor(out); if (p && inNames.includes(p)) pastOf.set(out, p); }
   if (specs.some((s) => ![...pastOf.values()].includes(s.name))) throw new Error("decoder: cache inputs without a present output");
@@ -198,7 +201,7 @@ export class DecoderEngine {
 
   async tokenRow(id: number): Promise<Uint16Array> { return this.table.rows([id]); }
 
-  decode(ids: number[]): string { return parseAsrText(decodeIds(ids, this.tokens)); }
+  decode(ids: number[]): string { return parseAsrText(decodeIds(ids, this.tokens), this.spec.term.repetitionThreshold); }
 
   async close(): Promise<void> { try { await this.be.close(); } finally { await this.table.close?.(); } }
 }
@@ -316,11 +319,13 @@ export class DecoderWindow {
         if (!cont) { dispose(running); break; }
         // forward of the surviving beams (one token each, from their parents' states)
         const nr: Run[] = [];
-        for (const n of next) {
-          const p = running[n.parent];
-          const r = await this.e.be.feed(await this.e.tokenRow(n.tok), p.kv, true);
-          nr.push({ kv: r.kv, logits: r.logits!, seq: n.seq, score: n.score });
-        }
+        try {
+          for (const n of next) {
+            const p = running[n.parent];
+            const r = await this.e.be.feed(await this.e.tokenRow(n.tok), p.kv, true);
+            nr.push({ kv: r.kv, logits: r.logits!, seq: n.seq, score: n.score });
+          }
+        } catch (e) { dispose(nr); throw e; }
         dispose(running);
         running = nr;
       }

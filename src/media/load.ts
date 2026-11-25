@@ -21,8 +21,8 @@ export interface MediaLoadOptions {
   baseUrls?: Record<string, string>;
   /** Accept files over 300 MB from non-Hub hosts without a browser-side hash (the demo server hashes them at start-up). */
   allowUnverified?: boolean;
-  /** Load the decoder (language, term questions) when the manifest has one. Default true. */
-  decoder?: boolean;
+  /** The decoder (language, term questions) of a manifest that has one: `"auto"` (default) loads it and goes on without it if that fails, `true` fails, `false` loads nothing. */
+  decoder?: boolean | "auto";
   fetch?: typeof fetch;
   onStatus?: (msg: string) => void;
 }
