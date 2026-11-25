@@ -15,8 +15,23 @@ export function combining(cp: number): boolean {
   return false;
 }
 
-/** Python str.casefold, approximated by upper-then-lower case (exact for the full case foldings that matter: ß, ς, ſ, ǰ, ...). */
-export const casefold = (s: string): string => s.toUpperCase().toLowerCase();
+/**
+ * Python str.casefold, approximated per character by upper-then-lower case (exact for the full foldings that matter: ß -> ss, ς -> σ, ſ -> s, ...).
+ * Per character, because lower-casing a whole word turns a final Σ into ς. Two scripts fold the other way and are handled by hand:
+ * dotless ı stays, capital ẞ is "ss", Cherokee folds to upper case.
+ */
+export function casefold(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    if (cp === 0x1e9e) out += "ss";
+    else if (cp === 0x131 || (cp >= 0x13a0 && cp <= 0x13f5)) out += ch;
+    else if (cp >= 0xab70 && cp <= 0xabbf) out += String.fromCodePoint(cp - 0xab70 + 0x13a0);
+    else if (cp >= 0x13f8 && cp <= 0x13fd) out += String.fromCodePoint(cp - 8);
+    else out += ch.toUpperCase().toLowerCase();
+  }
+  return out;
+}
 
 /** lexical.normalize: casefold, NFKD, drop combining marks, runs of non-alphanumeric characters (and "_") become one space. */
 export function normalizeTerm(text: string): string {
