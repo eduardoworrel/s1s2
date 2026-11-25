@@ -115,8 +115,13 @@ export type AudioReader = PooledLinearReader | PooledMlpReader | SpeechHeadReade
 /** The Qwen3-ASR text decoder as an ONNX Runtime GenAI build that reads embeddings (converter: `asr-decoder`). */
 export interface DecoderSpec {
   runtime: "onnx-genai";
-  /** model.onnx and model.onnx.data (the graph names its data file). */
+  /** model.onnx and model.onnx.data (the graph names its data file): the WebGPU build. */
   graph: PinnedFile; data: PinnedFile;
+  /**
+   * The same decoder built for CPU kernels (Node CPU and browser WASM): the WebGPU build fuses the per-head query/key norm into its
+   * attention node, which only the WebGPU kernel implements. Absent: the decoder runs on WebGPU only.
+   */
+  cpuBuild?: { graph: PinnedFile; data: PinnedFile };
   /** Float16 little-endian [vocab, hidden]: rows of the prompt's text tokens. */
   embeddings: PinnedFile;
   /** JSON { tokens: string[vocab], added: number[], special: number[] }: byte-level pieces, to decode generated ids. */

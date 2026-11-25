@@ -112,7 +112,10 @@ async function checkMediaFiles(m: MediaManifest, dir: string, o: ValidateOptions
       else if (rd.kind === "decoder-language" || rd.kind === "decoder-term") continue;
       else pins.push([`audio.readers.${n}.weights`, rd.weights]);
     }
-    if (a.decoder) for (const k of ["graph", "data", "embeddings", "tokens"] as const) pins.push([`audio.decoder.${k}`, a.decoder[k]]);
+    if (a.decoder) {
+      for (const k of ["graph", "data", "embeddings", "tokens"] as const) pins.push([`audio.decoder.${k}`, a.decoder[k]]);
+      if (a.decoder.cpuBuild) for (const k of ["graph", "data"] as const) pins.push([`audio.decoder.cpuBuild.${k}`, a.decoder.cpuBuild[k]]);
+    }
   }
   const root = o.roots?.[m.repo] ?? dir, seen = new Set<string>();
   for (const [what, p] of pins) {

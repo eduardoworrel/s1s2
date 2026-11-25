@@ -125,6 +125,8 @@ function decoderProblems(d: any, p: string[]): void {
   if (!isObj(d)) { p.push(`${at}: object`); return; }
   if (d.runtime !== "onnx-genai") p.push(`${at}.runtime: "onnx-genai"`);
   for (const k of ["graph", "data", "embeddings", "tokens"]) pinnedProblems(d[k], `${at}.${k}`, p);
+  if (d.cpuBuild !== undefined) { if (!isObj(d.cpuBuild)) p.push(`${at}.cpuBuild: {graph, data}`); else for (const k of ["graph", "data"]) pinnedProblems(d.cpuBuild[k], `${at}.cpuBuild.${k}`, p); }
+  if (Array.isArray(d.devices) && d.cpuBuild === undefined && d.devices.some((x: any) => x !== "webgpu")) p.push(`${at}.devices: "wasm" and "cpu" need cpuBuild (the WebGPU graph does not run on CPU kernels)`);
   const m = d.model;
   if (!isObj(m) || !["layers", "kvHeads", "headDim", "hidden", "vocab"].every((k) => int(m[k]))) p.push(`${at}.model: {layers, kvHeads, headDim, hidden, vocab} positive integers`);
   else if (isObj(d.embeddings) && Number.isInteger(d.embeddings.size) && d.embeddings.size !== m.vocab * m.hidden * 2) p.push(`${at}.embeddings.size: ${d.embeddings.size} != vocab * hidden * 2 = ${m.vocab * m.hidden * 2} (float16 [vocab, hidden])`);

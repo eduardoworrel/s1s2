@@ -2274,6 +2274,23 @@
               "cpu"
             ]
           }
+        },
+        "cpuBuild": {
+          "type": "object",
+          "required": [
+            "graph",
+            "data"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "graph": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "data": {
+              "$ref": "#/$defs/pinnedFile"
+            }
+          },
+          "description": "The decoder built for CPU kernels (Node CPU, browser WASM)."
         }
       }
     }

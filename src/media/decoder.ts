@@ -23,7 +23,7 @@ export function f32ToF16Bits(x: number): number {
   if (ne >= 0x1f) return sign | 0x7c00;
   if (ne <= 0) {
     if (ne < -10) return sign;
-    const mm = (m | 0x800000) >>> (1 - ne), rem = (m | 0x800000) & ((1 << (1 - ne)) - 1), half = 1 << (-ne);
+    const sh = 14 - ne, full = m | 0x800000, mm = full >>> sh, rem = full & ((1 << sh) - 1), half = 1 << (sh - 1);
     let r = mm; if (rem > half || (rem === half && (r & 1))) r++;
     return sign | r;
   }

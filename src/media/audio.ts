@@ -113,38 +113,57 @@ export class AudioModel {
     const asks = this.asksOf(questions);
     const { spec } = this.parts, sr = spec.preprocess.sampleRate;
     const answers: MediaAnswer[] = new Array(asks.length);
-    let win: DecoderWindow | null = null, hyps: string[] | null = null, scoreCache = new Map<string, { codes: string[]; scores: number[] }>();
+    const dec: number[] = [];
+    for (let i = 0; i < asks.length; i++) {
+      const a = asks[i], r = this.readers.get(a.task)!;
+      if (r.run) answers[i] = r.run.read(enc.taps, { win: enc.win, sampleRate: sr, nValid: enc.nValid });
+      else if (r.speech) answers[i] = await this.speech(a.task, r.speech, enc.taps, enc.nValid, enc.win);
+      else dec.push(i);
+    }
+    if (dec.length) {
+      const sub = await this.decoderAnswers(dec.map((i) => asks[i]), () => this.decoderFeatures(enc, (spec.readers[asks[dec[0]].task] as any).tap, timing), timing);
+      dec.forEach((i, k) => { answers[i] = sub[k]; });
+    }
+    return answers;
+  }
+
+  /**
+   * Decoder questions (language, term) answered from the tower's final vectors of a window with the audio at index 0 ([104 * 1024],
+   * what `encode` yields for a full window). For tests and offline features; `read` and `decide` do this for you.
+   */
+  async decodeFeatures(features: Float32Array, questions: MediaDecisionRequest["questions"], timing?: Record<string, number>): Promise<MediaAnswer[]> {
+    const asks = this.asksOf(questions);
+    if (asks.some((a) => !this.readers.get(a.task)!.decoder)) throw new Error("decodeFeatures: only decoder tasks (language, term) can be answered from features");
+    return this.decoderAnswers(asks, async () => features, timing);
+  }
+
+  private async decoderAnswers(asks: Ask[], features: () => Promise<Float32Array>, timing?: Record<string, number>): Promise<MediaAnswer[]> {
     const tm = (k: string, t0: number) => { if (timing) timing[k] = (timing[k] ?? 0) + performance.now() - t0; };
+    const out: MediaAnswer[] = [];
+    let hyps: string[] | null = null;
+    const scoreCache = new Map<string, { codes: string[]; scores: number[] }>();
+    const t0 = performance.now();
+    const win: DecoderWindow = await this.parts.decoder!.open(await features());
+    tm("decoderOpen", t0);
     try {
-      for (let i = 0; i < asks.length; i++) {
-        const a = asks[i], r = this.readers.get(a.task)!;
-        if (r.run) answers[i] = r.run.read(enc.taps, { win: enc.win, sampleRate: sr, nValid: enc.nValid });
-        else if (r.speech) answers[i] = await this.speech(a.task, r.speech, enc.taps, enc.nValid, enc.win);
-        else {
-          if (!win) {
-            const t0 = performance.now();
-            const af = await this.decoderFeatures(enc, (spec.readers[a.task] as any).tap, timing);
-            win = await this.parts.decoder!.open(af); tm("decoderOpen", t0);
-          }
-          if (r.decoder === "language") {
-            const t0 = performance.now(), key = (a.options ?? []).join(",");
-            let sc = scoreCache.get(key);
-            if (!sc) { sc = await win.language(a.options); scoreCache.set(key, sc); }
-            tm("language", t0);
-            const c = choiceFromScores(a.task, sc.codes, sc.scores, "logits");
-            answers[i] = { ...c, modality: "audio", task: a.task, decision: c.choice, available: true };
-          } else {
-            const t0 = performance.now();
-            if (!hyps) hyps = await win.hypotheses();
-            tm("term", t0);
-            const p = termFraction(a.term!, hyps);
-            const pa = predicateFromP(a.task, p, "logits");
-            answers[i] = { ...pa, modality: "audio", task: a.task, decision: p >= 0.5 ? "yes" : "no", threshold: 0.5, hypotheses: hyps, available: true };
-          }
+      for (const a of asks) {
+        if (this.readers.get(a.task)!.decoder === "language") {
+          const t1 = performance.now(), key = (a.options ?? []).join(",");
+          let sc = scoreCache.get(key);
+          if (!sc) { sc = await win.language(a.options); scoreCache.set(key, sc); }
+          tm("language", t1);
+          const c = choiceFromScores(a.task, sc.codes, sc.scores, "logits");
+          out.push({ ...c, modality: "audio", task: a.task, decision: c.choice, available: true });
+        } else {
+          const t1 = performance.now();
+          if (!hyps) hyps = await win.hypotheses();
+          tm("term", t1);
+          const p = termFraction(a.term!, hyps);
+          out.push({ ...predicateFromP(a.task, p, "logits"), modality: "audio", task: a.task, decision: p >= 0.5 ? "yes" : "no", threshold: 0.5, hypotheses: hyps, available: true });
         }
       }
-    } finally { await win?.close(); }
-    return answers;
+    } finally { await win.close(); }
+    return out;
   }
 
   /** Tower output of the window with the audio at index 0 (what the decoder lane reads); the right-aligned pass when the window is full. */
@@ -288,7 +307,8 @@ export async function loadAudio(spec: AudioSpec, o: AudioLoadOptions): Promise<A
 
 async function loadDecoder(d: NonNullable<AudioSpec["decoder"]>, o: { ort: any; files: Files; repo: string; revision: string; device: "webgpu" | "wasm" | "cpu"; platform: string; status: (m: string) => void; fetch?: typeof fetch }): Promise<DecoderEngine> {
   const { ort, files, repo, revision, device } = o;
-  if (!d.devices.includes(device)) throw new Error(`audio decoder lists devices ${d.devices.join(", ")}, not ${device}`);
+  const build = device === "webgpu" ? { graph: d.graph, data: d.data } : d.cpuBuild;
+  if (!build || !d.devices.includes(device)) throw new Error(`audio decoder lists devices ${d.devices.join(", ")}, not ${device}`);
   const H = d.model.hidden, base = (p: string) => p.split("/").pop()!;
   o.status("loading decoder tokens…");
   const tokens = await files.json(repo, revision, d.tokens);
@@ -302,14 +322,14 @@ async function loadDecoder(d: NonNullable<AudioSpec["decoder"]>, o: { ort: any; 
   let session: any;
   try {
     if (o.platform === "node") {
-      await files.local(repo, revision, d.data);
+      await files.local(repo, revision, build.data);
       nodeFloat16Workaround(ort);
-      session = await ort.InferenceSession.create(await files.local(repo, revision, d.graph), { executionProviders: ["cpu"], graphOptimizationLevel: "all", logSeverityLevel: 3 });
+      session = await ort.InferenceSession.create(await files.local(repo, revision, build.graph), { executionProviders: ["cpu"], graphOptimizationLevel: "all", logSeverityLevel: 3 });
     } else {
-      const graph = await files.bytes(repo, revision, d.graph), dataUrl = await files.large(repo, revision, d.data);
+      const graph = await files.bytes(repo, revision, build.graph), dataUrl = await files.large(repo, revision, build.data);
       session = await ort.InferenceSession.create(graph, {
         executionProviders: [device === "webgpu" ? { name: "webgpu", validationMode: "disabled" } : "wasm"],
-        externalData: [{ path: base(d.data.path), data: dataUrl }],
+        externalData: [{ path: base(build.data.path), data: dataUrl }],
         graphOptimizationLevel: "all", enableGraphCapture: false, logSeverityLevel: 3,
         ...(device === "webgpu" ? { preferredOutputLocation: "gpu-buffer" } : {}),
       });
