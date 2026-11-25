@@ -21,13 +21,11 @@ const dist = (f) => pathToFileURL(path.join(here, "..", "dist", f)).href;
 /** cmd.exe and PowerShell pass "dir/*.json" through as typed; expand the last path segment here. */
 function expand(a) {
   if (!a.includes("*") || fs.existsSync(a)) return [a];
-  const dir = path.dirname(a), parts = path.basename(a).split("*");
-  const match = (f) => {
-    if (!f.startsWith(parts[0]) || !f.endsWith(parts.at(-1))) return false;
-    let i = parts[0].length;
-    for (const s of parts.slice(1)) { const j = f.indexOf(s, i); if (j < 0) return false; i = j + s.length; }
-    return true;
-  };
+  const dir = path.dirname(a), base = path.basename(a);
+  const esc = (s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp("^" + base.split("*").map(esc).join(".*") + "$");
+  // like a shell, a leading * does not match a name that starts with a dot
+  const match = (f) => re.test(f) && !(f.startsWith(".") && !base.startsWith("."));
   const hit = fs.existsSync(dir) ? fs.readdirSync(dir).filter(match).sort().map((f) => path.join(dir, f)) : [];
   return hit.length ? hit : [a];
 }
