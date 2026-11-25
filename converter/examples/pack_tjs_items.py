@@ -84,6 +84,6 @@ if __name__ == "__main__":
     per = per or max(5, -(-20 // len(mans)))
     rows = []
     for p in mans:
-        rows += items_for(p.name, json.loads(p.read_text())["lab"], per)
-    dst.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+        rows += items_for(p.name, json.loads(p.read_text(encoding="utf-8"))["lab"], per)
+    dst.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8", newline="\n")
     print(len(rows), "rows", [p.name for p in mans])
