@@ -11,9 +11,16 @@ the same computation. This command:
   3. writes `embed_tokens.fp16.bin` (float16 little-endian [vocab, hidden]) and `decoder_tokens.json` (byte-level BPE pieces and the
      ids of the special tokens, for decoding generated ids without a tokenizer library).
 
-  s1s2-convert asr-decoder --model Qwen/Qwen3-ASR-0.6B --revision <40-hex> --work W --out OUT [--precision int4 --ep webgpu]
+  s1s2-convert asr-decoder --model <checkpoint dir> --revision <40-hex> --expect-sha256 <model.safetensors sha256> --work W --out OUT [--ep webgpu]
+  s1s2-convert asr-decoder ... --out OUT --ep cpu        # the second build, for CPU kernels (Node CPU, browser WASM), into the same OUT
 
-Output OUT/: decoder/{model.onnx,model.onnx.data,genai_config.json}, embed_tokens.fp16.bin, decoder_tokens.json, decoder.json (record with sha256).
+The checkpoint is pinned twice: `--revision` must be the name of the snapshot directory when the directory is a Hugging Face cache snapshot
+(`.../snapshots/<revision>`), and `--expect-sha256` (required) is checked against `model.safetensors`.
+
+Output OUT/decoder/ (the layout the manifest lists): model.onnx, model.onnx.data, genai_config.json (the `--ep webgpu` build), cpu/ (the `--ep cpu`
+build, same three files), embed_tokens.fp16.bin, decoder_tokens.json, decoder_prompt.json, and decoder.json: sha256 and size of every file, the
+checkpoint, the generation settings of the term question, the build arguments of each run and the versions of the tools. Run the webgpu build
+first into a fresh OUT (it replaces OUT/decoder); the cpu build adds OUT/decoder/cpu and checks that the shared files are byte-identical.
 """
 import argparse
 import json
@@ -124,8 +131,26 @@ def prompt_spec(src: Path):
         langs[code] = {"name": name, "ids": full[len(base):]}
     gen = json.loads((src / "generation_config.json").read_text())
     eos = gen["eos_token_id"] if isinstance(gen["eos_token_id"], list) else [gen["eos_token_id"]]
-    return {"before": ids[:k], "after": ids[k + 1:], "audioPad": pad, "languageToken": base[len(ids):][0] if len(base) == len(ids) + 1 else base[-1],
-            "languages": langs, "eos": eos, "asrTextToken": tok.convert_tokens_to_ids("<asr_text>")}
+    if len(base) != len(ids) + 1:
+        raise SystemExit('"language" is not one token after the prompt: the prompt of the language question would be wrong')
+    return {"before": ids[:k], "after": ids[k + 1:], "languageToken": base[-1], "languages": langs, "eos": eos}
+
+
+# Settings of the term question (Marimba's `hypotheses`: greedy + beam search, Hugging Face generation defaults otherwise) and the audio rows of its prompt.
+# The manifest copies them from decoder.json; the library reads them from the manifest.
+TERM = {"beams": 4, "maxNewTokens": 256, "lengthPenalty": 1, "repetitionThreshold": 20}
+AUDIO_FRAMES = 104
+
+
+def versions():
+    out = {"python": sys.version.split()[0]}
+    from importlib import metadata
+    for pkg in ("torch", "transformers", "safetensors", "onnx", "onnxruntime", "onnxruntime-genai"):
+        try:
+            out[pkg] = metadata.version(pkg)
+        except metadata.PackageNotFoundError:
+            pass
+    return out
 
 
 def write_fp16_table(emb, path: Path):
@@ -140,12 +165,18 @@ def write_fp16_table(emb, path: Path):
     return {"max_abs_error_bf16_to_fp16": err, "rows": int(emb.shape[0]), "hidden": int(emb.shape[1])}
 
 
+def check_revision(model: Path, revision: str):
+    snap = model.resolve()
+    if snap.parent.name == "snapshots" and snap.name != revision:
+        raise SystemExit(f"--revision {revision} but the snapshot directory is {snap.name}")
+
+
 def main(argv):
     ap = argparse.ArgumentParser(prog="s1s2-convert asr-decoder", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True, help="local directory of the checkpoint (Qwen/Qwen3-ASR-0.6B)")
-    ap.add_argument("--revision", required=True, help="40-hex revision the directory was downloaded at (recorded)")
+    ap.add_argument("--revision", required=True, help="40-hex revision of the checkpoint (checked against a Hugging Face snapshot directory name, recorded)")
     ap.add_argument("--repo", default="Qwen/Qwen3-ASR-0.6B")
-    ap.add_argument("--expect-sha256", help="sha256 of model.safetensors")
+    ap.add_argument("--expect-sha256", required=True, help="sha256 of model.safetensors")
     ap.add_argument("--work", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--precision", default="int4", choices=["int4", "fp16", "fp32"])
@@ -155,32 +186,61 @@ def main(argv):
     import re
     if not re.fullmatch(r"[0-9a-f]{40}", a.revision):
         raise SystemExit("--revision: a 40-hex commit")
+    if not re.fullmatch(r"[0-9a-f]{64}", a.expect_sha256):
+        raise SystemExit("--expect-sha256: 64 lowercase hex characters")
     from .build import build
     W, OUT, SRC = Path(a.work), Path(a.out), Path(a.model)
+    check_revision(SRC, a.revision)
+    D = OUT / "decoder"
+    cpu = a.ep == "cpu"
+    if cpu and not (D / "decoder.json").exists():
+        raise SystemExit("--ep cpu adds to an existing --ep webgpu run in the same --out (decoder/decoder.json not found)")
+    if not cpu and (D / "cpu").exists():
+        raise SystemExit(f"{D / 'cpu'} exists and the webgpu build would replace {D}: use a fresh --out")
     plain = W / "qwen3-decoder"
     log("asr-decoder", "plain Qwen3 checkpoint")
     rec = plain_checkpoint(SRC, plain, a.expect_sha256)
-    OUT.mkdir(parents=True, exist_ok=True)
     emb = rec.pop("embedding")
     vocab = int(rec["config"]["vocab_size"])
-    log("asr-decoder", "embedding table (float16) and tokens")
-    table = write_fp16_table(emb, OUT / "embed_tokens.fp16.bin")
-    toks = byte_level_pieces(SRC, vocab)
-    (OUT / "decoder_tokens.json").write_text(json.dumps(toks, ensure_ascii=False, separators=(",", ":")))
-    prompt = prompt_spec(SRC)
-    write_json(OUT / "decoder_prompt.json", prompt)
-    log("asr-decoder", f"prompt: {len(prompt['before'])} + audio + {len(prompt['after'])} ids; languages: {sum(len(v['ids']) == 1 for v in prompt['languages'].values())} of one token")
     log("asr-decoder", f"{a.precision} {a.ep} build (exclude_embeds)")
-    prov = build(plain, OUT / "decoder", W, precision=a.precision, ep=a.ep, builder_src=a.builder_src, extra=["exclude_embeds=true"], hidden=False)
-    files = {}
-    for rel in ("decoder/model.onnx", "decoder/model.onnx.data", "decoder/genai_config.json", "embed_tokens.fp16.bin", "decoder_tokens.json", "decoder_prompt.json"):
-        p = OUT / rel
-        files[rel] = {"sha256": sha256_file(p), "size": p.stat().st_size}
-    write_json(OUT / "decoder.json", {
-        "schema": "s1s2.asr-decoder/1", "base": {"repo": a.repo, "revision": a.revision, "model_safetensors_sha256": rec["source_sha256"]},
-        "tied_head": rec["tied_head"], "text_config": rec["config"], "embedding_table": table, "build": prov, "files": files,
-        "tokens": {"count": vocab, "added": len(toks["added"]), "special": len(toks["special"])},
-    })
+    prov = build(plain, D / "cpu" if cpu else D, W, precision=a.precision, ep=a.ep, builder_src=a.builder_src, extra=["exclude_embeds=true"], hidden=False)
+    shared = {}
+    log("asr-decoder", "embedding table (float16), tokens and prompt")
+    import tempfile
+    with tempfile.TemporaryDirectory(dir=str(OUT)) as tmp:
+        T = Path(tmp)
+        table = write_fp16_table(emb, T / "embed_tokens.fp16.bin")
+        toks = byte_level_pieces(SRC, vocab)
+        (T / "decoder_tokens.json").write_text(json.dumps(toks, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        prompt = prompt_spec(SRC)
+        write_json(T / "decoder_prompt.json", prompt)
+        log("asr-decoder", f"prompt: {len(prompt['before'])} + audio + {len(prompt['after'])} ids; languages: {sum(len(v['ids']) == 1 for v in prompt['languages'].values())} of one token")
+        for name in ("embed_tokens.fp16.bin", "decoder_tokens.json", "decoder_prompt.json"):
+            h = sha256_file(T / name)
+            if cpu:
+                if sha256_file(D / name) != h:
+                    raise SystemExit(f"{D / name} differs from what this run produces: the two builds must share these files")
+            else:
+                shutil.move(str(T / name), str(D / name))
+            shared[name] = {"sha256": h, "size": (D / name).stat().st_size}
+    files = dict(shared)
+    for rel in (("cpu/" if cpu else "") + n for n in ("model.onnx", "model.onnx.data", "genai_config.json")):
+        files[rel] = {"sha256": sha256_file(D / rel), "size": (D / rel).stat().st_size}
+    if cpu:
+        record = json.loads((D / "decoder.json").read_text())
+        if record["base"]["model_safetensors_sha256"] != rec["source_sha256"]:
+            raise SystemExit("the webgpu build in this --out came from another checkpoint")
+        record["builds"]["cpu"] = prov
+        record["files"].update({k: v for k, v in files.items() if k.startswith("cpu/")})
+        record["versions"][a.ep] = versions()
+    else:
+        record = {
+            "schema": "s1s2.asr-decoder/2", "base": {"repo": a.repo, "revision": a.revision, "model_safetensors_sha256": rec["source_sha256"]},
+            "tied_head": rec["tied_head"], "text_config": rec["config"], "embedding_table": table, "term": TERM, "audioFrames": AUDIO_FRAMES,
+            "builds": {"webgpu": prov}, "versions": {"webgpu": versions()}, "files": files,
+            "tokens": {"count": vocab, "added": len(toks["added"]), "special": len(toks["special"])},
+        }
+    write_json(D / "decoder.json", record)
     log("asr-decoder", "done: " + ", ".join(f"{k} {v['size']}" for k, v in files.items()))
     return 0
 

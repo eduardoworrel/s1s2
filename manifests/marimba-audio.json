@@ -262,7 +262,7 @@
           "build": "cpuBuild",
           "languageArgmax": "72/72",
           "maxAbsDiffTopProbability": 0.09,
-          "speechOnlyMaxAbsDiffTopProbability": 0.02,
+          "speechOnlyMaxAbsDiffTopProbability": 0.0201,
           "termFractionIdentical": 0.943,
           "termFractionWithin02": 0.981,
           "termDecisionEqual": 0.986,
@@ -288,7 +288,7 @@
           "greedyTextEqual": 1,
           "beamTextEqual": 1
         },
-        "note": "The largest probability difference is the synthetic noise clip (not speech); the tolerance of spec section 9.4 (0.02) is not met there. Float32 and torch agree to 1e-7, so the differences are int4."
+        "note": "The tolerance of spec section 9.4 for the probability of the most probable language (0.02) is not met: on the synthetic noise clip (largest difference 0.090 on Node CPU, 0.035 on WebGPU) and by 0.0001 on one speech window of the Node CPU run with torch features (0.0201). Float32 and torch agree to 1e-7, so the differences are int4. Measured on Portuguese audio only."
       }
     },
     "decoder": {

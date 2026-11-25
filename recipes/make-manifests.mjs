@@ -73,9 +73,9 @@ async function pin(dir, rel) {
       runtime: "onnx-genai", graph: await P("decoder/model.onnx"), data: await P("decoder/model.onnx.data"),
       embeddings: await P("decoder/embed_tokens.fp16.bin"), tokens: await P("decoder/decoder_tokens.json"),
       model: { layers: tc.num_hidden_layers, kvHeads: tc.num_key_value_heads, headDim: tc.head_dim, hidden: tc.hidden_size, vocab: tc.vocab_size },
-      prompt: { before: pr.before, after: pr.after, audioFrames: 104, languageToken: pr.languageToken },
+      prompt: { before: pr.before, after: pr.after, audioFrames: rec.audioFrames, languageToken: pr.languageToken },
       eos: pr.eos, languages: pr.languages,
-      term: { beams: 4, maxNewTokens: 256, lengthPenalty: 1, repetitionThreshold: 20 },
+      term: rec.term,
       devices: ["webgpu"],
     };
     // The same decoder built for CPU kernels (`s1s2-convert asr-decoder --ep cpu`): Node CPU and browser WASM.
@@ -87,10 +87,10 @@ async function pin(dir, rel) {
       ...audio.fidelity,
       decoder: {
         reference: "marimba-audio 0.1.2 (torch float32 CPU); 72 windows with the audio at index 0: 56 FLEURS pt-BR clips, 3 demo clips, 12 joined 8 s windows; 952 (window, term) pairs",
-        nodeCpuInt4: { build: "cpuBuild", languageArgmax: "72/72", maxAbsDiffTopProbability: 0.090, speechOnlyMaxAbsDiffTopProbability: 0.020, termFractionIdentical: 0.943, termFractionWithin02: 0.981, termDecisionEqual: 0.986, greedyTextEqual: 0.51, beamTextEqual: 0.26 },
+        nodeCpuInt4: { build: "cpuBuild", languageArgmax: "72/72", maxAbsDiffTopProbability: 0.090, speechOnlyMaxAbsDiffTopProbability: 0.0201, termFractionIdentical: 0.943, termFractionWithin02: 0.981, termDecisionEqual: 0.986, greedyTextEqual: 0.51, beamTextEqual: 0.26 },
         chromeWebGPUInt4: { build: "graph", languageArgmax: "72/72", maxAbsDiffTopProbability: 0.035, speechOnlyMaxAbsDiffTopProbability: 0.015, termFractionIdentical: 0.943, termFractionWithin02: 0.982, termDecisionEqual: 0.985, greedyTextEqual: 0.47, beamTextEqual: 0.25 },
         nodeCpuFloat32: { windows: 12, languageArgmax: "12/12", maxAbsDiffProbability: 7.5e-8, termFractionIdentical: 1, greedyTextEqual: 1, beamTextEqual: 1 },
-        note: "The largest probability difference is the synthetic noise clip (not speech); the tolerance of spec section 9.4 (0.02) is not met there. Float32 and torch agree to 1e-7, so the differences are int4.",
+        note: "The tolerance of spec section 9.4 for the probability of the most probable language (0.02) is not met: on the synthetic noise clip (largest difference 0.090 on Node CPU, 0.035 on WebGPU) and by 0.0001 on one speech window of the Node CPU run with torch features (0.0201). Float32 and torch agree to 1e-7, so the differences are int4. Measured on Portuguese audio only."
       },
     };
     audio.readers.language = { kind: "decoder-language", type: "choice", tap: "audio_features" };
