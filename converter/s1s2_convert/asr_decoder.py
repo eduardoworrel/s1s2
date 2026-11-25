@@ -94,6 +94,40 @@ def byte_level_pieces(src: Path, vocab: int):
     return {"tokens": tokens, "added": sorted(added), "special": sorted(special)}
 
 
+# The 30 languages of the Qwen3-ASR decoder's built-in language identification (code -> the name the model writes after "language").
+LANGUAGES = {"zh": "Chinese", "en": "English", "yue": "Cantonese", "ar": "Arabic", "de": "German", "fr": "French", "es": "Spanish", "pt": "Portuguese",
+             "id": "Indonesian", "it": "Italian", "ko": "Korean", "ru": "Russian", "th": "Thai", "vi": "Vietnamese", "ja": "Japanese", "tr": "Turkish",
+             "hi": "Hindi", "ms": "Malay", "nl": "Dutch", "sv": "Swedish", "da": "Danish", "fi": "Finnish", "pl": "Polish", "cs": "Czech", "fil": "Filipino",
+             "fa": "Persian", "el": "Greek", "ro": "Romanian", "hu": "Hungarian", "mk": "Macedonian"}
+
+
+def prompt_spec(src: Path):
+    """Token ids of the fixed prompt around the audio rows, of "language", and of the 30 names written after it."""
+    from transformers import AutoTokenizer
+    tok = AutoTokenizer.from_pretrained(str(src))
+    ct = json.loads((src / "chat_template.json").read_text())["chat_template"]
+    text = tok.apply_chat_template([{"role": "system", "content": ""}, {"role": "user", "content": [{"type": "audio", "audio": ""}]}],
+                                   chat_template=ct, add_generation_prompt=True, tokenize=False)
+    ids = tok.encode(text, add_special_tokens=False)
+    pad = tok.convert_tokens_to_ids("<|audio_pad|>")
+    if ids.count(pad) != 1:
+        raise SystemExit(f"the prompt holds {ids.count(pad)} <|audio_pad|> tokens, expected 1")
+    k = ids.index(pad)
+    base = tok.encode(text + "language", add_special_tokens=False)
+    if base[: len(ids)] != ids:
+        raise SystemExit('the prompt followed by "language" does not keep the prompt tokens')
+    langs = {}
+    for code, name in LANGUAGES.items():
+        full = tok.encode(text + "language " + name, add_special_tokens=False)
+        if full[: len(base)] != base:
+            raise SystemExit(f"{name}: unstable token prefix")
+        langs[code] = {"name": name, "ids": full[len(base):]}
+    gen = json.loads((src / "generation_config.json").read_text())
+    eos = gen["eos_token_id"] if isinstance(gen["eos_token_id"], list) else [gen["eos_token_id"]]
+    return {"before": ids[:k], "after": ids[k + 1:], "audioPad": pad, "languageToken": base[len(ids):][0] if len(base) == len(ids) + 1 else base[-1],
+            "languages": langs, "eos": eos, "asrTextToken": tok.convert_tokens_to_ids("<asr_text>")}
+
+
 def write_fp16_table(emb, path: Path):
     import torch
     f16 = emb.to(torch.float32).to(torch.float16)
@@ -133,10 +167,13 @@ def main(argv):
     table = write_fp16_table(emb, OUT / "embed_tokens.fp16.bin")
     toks = byte_level_pieces(SRC, vocab)
     (OUT / "decoder_tokens.json").write_text(json.dumps(toks, ensure_ascii=False, separators=(",", ":")))
+    prompt = prompt_spec(SRC)
+    write_json(OUT / "decoder_prompt.json", prompt)
+    log("asr-decoder", f"prompt: {len(prompt['before'])} + audio + {len(prompt['after'])} ids; languages: {sum(len(v['ids']) == 1 for v in prompt['languages'].values())} of one token")
     log("asr-decoder", f"{a.precision} {a.ep} build (exclude_embeds)")
     prov = build(plain, OUT / "decoder", W, precision=a.precision, ep=a.ep, builder_src=a.builder_src, extra=["exclude_embeds=true"], hidden=False)
     files = {}
-    for rel in ("decoder/model.onnx", "decoder/model.onnx.data", "decoder/genai_config.json", "embed_tokens.fp16.bin", "decoder_tokens.json"):
+    for rel in ("decoder/model.onnx", "decoder/model.onnx.data", "decoder/genai_config.json", "embed_tokens.fp16.bin", "decoder_tokens.json", "decoder_prompt.json"):
         p = OUT / rel
         files[rel] = {"sha256": sha256_file(p), "size": p.stat().st_size}
     write_json(OUT / "decoder.json", {
