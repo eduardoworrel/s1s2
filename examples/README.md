@@ -3,7 +3,7 @@
 | Demo | What it does |
 |---|---|
 | [`policy-checker/`](policy-checker) | Privacy Policy Checker (GDPR / LGPD / CCPA) with the published S5-nano package; own `serve.mjs`. |
-| [`audio-turn/`](audio-turn) | **Experimental.** Voice activity, end of turn, same speaker, speaker change and speaker count from an audio file, the microphone (on click; **not yet verified**: see the report) or example clips, each with probability and margin. Frozen Qwen3-ASR-0.6B encoder + Marimba readouts; one pass for all five. |
+| [`audio-turn/`](audio-turn) | **Experimental.** Voice activity, end of turn, same speaker, speaker change and speaker count from an audio file, the microphone (on click; **not yet verified**: see [`spec/MULTIMODAL.md`](../spec/MULTIMODAL.md)) or example clips, each with probability and margin. Frozen Qwen3-ASR-0.6B encoder + Marimba readouts; one pass for all five. |
 
 The media demo runs 100 % in the browser and need **local weights**: they are not published and the pages never fetch them from
 anywhere else. Produce them as described in [`../recipes/marimba-audio`](../recipes/marimba-audio/README.md), put them in one directory (`marimba-audio/`), then:
@@ -31,7 +31,7 @@ Design, tolerances and limits: [`../spec/MULTIMODAL.md`](../spec/MULTIMODAL.md).
 | Demo | O que faz |
 |---|---|
 | [`policy-checker/`](policy-checker) | Verificador de política de privacidade (GDPR / LGPD / CCPA) com o pacote S5-nano publicado; `serve.mjs` próprio. |
-| [`audio-turn/`](audio-turn) | **Experimental.** Voz ativa, fim de turno, mesmo locutor, troca de locutor e contagem de locutores a partir de um arquivo, do microfone (ao clicar; **ainda não verificado**, ver o relatório) ou de clipes de exemplo, com probabilidade e margem. Codificador Qwen3-ASR-0.6B congelado + leituras do Marimba; uma passada para as cinco. |
+| [`audio-turn/`](audio-turn) | **Experimental.** Voz ativa, fim de turno, mesmo locutor, troca de locutor e contagem de locutores a partir de um arquivo, do microfone (ao clicar; **ainda não verificado**, ver [`spec/MULTIMODAL.md`](../spec/MULTIMODAL.md)) ou de clipes de exemplo, com probabilidade e margem. Codificador Qwen3-ASR-0.6B congelado + leituras do Marimba; uma passada para as cinco. |
 
 A demo de mídia roda 100 % no navegador e precisam de **pesos locais**: não estão publicados e as páginas nunca os buscam em
 outro lugar. Gere-os como em [`../recipes/marimba-audio`](../recipes/marimba-audio/README.md), coloque em uma pasta (`marimba-audio/`) e rode

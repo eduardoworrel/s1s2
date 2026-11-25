@@ -385,6 +385,8 @@ checks `device === "wasm"` on `ort-wasm-simd-threaded.wasm` plus one decision.
 From `@s1s2/web/media` (its own entry point: the text API does not carry the media code), `loadMedia({ manifest, baseUrls | localDirs, modules, device, allowUnverified })` loads a media package (a manifest whose
 `modalities` has no `"text"`) and returns an `AudioModel`.
 
+`@s1s2/web/media` also exports `validateMediaManifest` and `ManifestError`. The bundles are separate, so the `ManifestError` of `@s1s2/web/media` is not `instanceof` the one of `@s1s2/web` or `@s1s2/web/manifest`: compare `e.name === "ManifestError"` when you catch errors from more than one entry point.
+
 - `model.decide({ audio, questions })` returns `{ answers, cost }`. An answer is a `PredicateAnswer` or a `ChoiceAnswer`
   (same `probability`, `confidence`, `margin`, `rawMargin`) plus `modality`, `task`, `decision` (by the reader's own threshold) and
   `threshold`; a question the input cannot answer is `{ available: false, reason }`. `cost` = `{ ms, parts, passes, backend, device }`.

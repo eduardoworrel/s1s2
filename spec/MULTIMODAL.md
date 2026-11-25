@@ -1,7 +1,7 @@
 # Media packages: audio (experimental)
 
-Status: draft, written before the code in `src/media/`. Package spec 0.2-draft stays as it is; this file adds three optional
-top-level keys to the manifest (`modalities`, `audio`) and one new entry point (`loadMedia`). The numbers below were
+Status: draft, written before the code in `src/media/`. Package spec 0.2-draft stays as it is; this file adds two optional
+top-level keys to the manifest (`modalities`, `audio`; a package without a base model also carries `repo` and `revision`) and one new entry point (`loadMedia`). The numbers below were
 measured in the reference runs on the builds named here; nothing else is claimed.
 
 ## 1. What changes and what does not
@@ -111,6 +111,8 @@ const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions:
 const enc = await audio.encode({ samples, sampleRate: 16000 });          // one tower pass ...
 const more = await audio.read(enc, ["same_speaker", "speaker_count"]);   // ... any number of readers (the five together: 8-11 ms, no tower pass)
 ```
+
+`@s1s2/web/media` exports its own `ManifestError` (thrown by `validateMediaManifest`). Each entry point is a separate bundle, so it is not `instanceof` the `ManifestError` of `@s1s2/web` or `@s1s2/web/manifest`: compare `e.name === "ManifestError"` across entry points.
 
 ## 5. Tolerances (fixed before the tests that use them)
 
