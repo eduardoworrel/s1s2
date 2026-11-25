@@ -143,6 +143,19 @@ test("s1s2 validate CLI: exit code 0 on valid, 1 on invalid", () => {
   assert.throws(() => execFileSync(process.execPath, [join(ROOT, "bin/s1s2.mjs"), "validate", dir], { encoding: "utf8", stdio: "pipe" }), (e) => e.status === 1);
 });
 
+test("s1s2 validate CLI: a * in the last path segment is expanded when the shell does not (cmd, PowerShell)", () => {
+  const { dir } = makePackage();
+  const src = readFileSync(join(dir, "manifest.json"));
+  const glob = mkdtempSync(join(tmpdir(), "s1s2-glob-"));
+  for (const f of ["m1.json", "m2.json", ".hidden.json"]) writeFileSync(join(glob, f), src);
+  const run = (pattern) => execFileSync(process.execPath, [join(ROOT, "bin/s1s2.mjs"), "validate", "--manifest-only", join(glob, pattern)], { encoding: "utf8", stdio: "pipe" });
+  assert.match(run("m*.json"), /2\/2 manifests valid/);
+  assert.match(run("*.json"), /2\/2 manifests valid/); // like a shell, a leading * skips the dotfile
+  assert.match(run("m*2.json"), /1\/1 manifests valid/);
+  // prefix and suffix must not overlap: "m1*1.json" does not match "m1.json"
+  assert.throws(() => run("m1*1.json"), (e) => e.status === 1);
+});
+
 test("head scale: header scale, scale_folded_into_q, the manifest's, else 1/sqrt(headDim) (alias3-web); a conflict is refused", async () => {
   const { loadHead, headScore } = await import("../dist/index.js");
   const mk = (meta) => {
