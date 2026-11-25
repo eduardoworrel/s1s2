@@ -109,8 +109,10 @@ async function checkMediaFiles(m: MediaManifest, dir: string, o: ValidateOptions
     pins.push(["audio.tower.file", a.tower.file]);
     for (const [n, rd] of Object.entries(a.readers)) {
       if (rd.kind === "speech-head") { pins.push([`audio.readers.${n}.graph`, rd.graph], [`audio.readers.${n}.question`, rd.question]); }
+      else if (rd.kind === "decoder-language" || rd.kind === "decoder-term") continue;
       else pins.push([`audio.readers.${n}.weights`, rd.weights]);
     }
+    if (a.decoder) for (const k of ["graph", "data", "embeddings", "tokens"] as const) pins.push([`audio.decoder.${k}`, a.decoder[k]]);
   }
   const root = o.roots?.[m.repo] ?? dir, seen = new Set<string>();
   for (const [what, p] of pins) {
