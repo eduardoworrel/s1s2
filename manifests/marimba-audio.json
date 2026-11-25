@@ -229,9 +229,19 @@
           "kind": "temperature",
           "tensor": "temperature"
         }
+      },
+      "language": {
+        "kind": "decoder-language",
+        "type": "choice",
+        "tap": "audio_features"
+      },
+      "term": {
+        "kind": "decoder-term",
+        "type": "predicate",
+        "tap": "audio_features"
       }
     },
-    "notes": "voice_activity answers ONE canonical Portuguese question (its encoding is pinned in question). Speaker tasks need a full 8 s window; turn_end reads the last 2 s of real audio. Language and spoken-word questions of Marimba need the Qwen3-ASR decoder and are not part of this package.",
+    "notes": "voice_activity answers ONE canonical Portuguese question (its encoding is pinned in question). Speaker tasks need a full 8 s window; turn_end reads the last 2 s of real audio. Language and term are answered by the Qwen3-ASR decoder over the tower's final vectors (spec section 9): language is the closed-set score over 30 languages, term the fraction of five hypotheses (greedy + beam 4) that contain the word, uncalibrated.",
     "fidelity": {
       "reference": "marimba-audio 0.1.2 (torch float32 CPU), 56 FLEURS pt-BR clips, windows right-aligned to 8 s (set A) and 3 clips concatenated (set B)",
       "chrome157WebGPU": {
@@ -245,7 +255,305 @@
         },
         "decisionAgreement": "56/56 (vad at 0.225, turn_end at 0.5)"
       },
-      "source": "test/browser/media-chrome.mjs audio"
+      "source": "test/browser/media-chrome.mjs audio",
+      "decoder": {
+        "reference": "marimba-audio 0.1.2 (torch float32 CPU); 72 windows with the audio at index 0: 56 FLEURS pt-BR clips, 3 demo clips, 12 joined 8 s windows; 952 (window, term) pairs",
+        "nodeCpuInt4": {
+          "build": "cpuBuild",
+          "languageArgmax": "72/72",
+          "maxAbsDiffTopProbability": 0.09,
+          "speechOnlyMaxAbsDiffTopProbability": 0.0201,
+          "termFractionIdentical": 0.943,
+          "termFractionWithin02": 0.981,
+          "termDecisionEqual": 0.986,
+          "greedyTextEqual": 0.51,
+          "beamTextEqual": 0.26
+        },
+        "chromeWebGPUInt4": {
+          "build": "graph",
+          "languageArgmax": "72/72",
+          "maxAbsDiffTopProbability": 0.035,
+          "speechOnlyMaxAbsDiffTopProbability": 0.015,
+          "termFractionIdentical": 0.943,
+          "termFractionWithin02": 0.982,
+          "termDecisionEqual": 0.985,
+          "greedyTextEqual": 0.47,
+          "beamTextEqual": 0.25
+        },
+        "nodeCpuFloat32": {
+          "windows": 12,
+          "languageArgmax": "12/12",
+          "maxAbsDiffProbability": 7.5e-8,
+          "termFractionIdentical": 1,
+          "greedyTextEqual": 1,
+          "beamTextEqual": 1
+        },
+        "note": "The tolerance of spec section 9.4 for the probability of the most probable language (0.02) is not met: on the synthetic noise clip (largest difference 0.090 on Node CPU, 0.035 on WebGPU) and by 0.0001 on one speech window of the Node CPU run with torch features (0.0201). Float32 and torch agree to 1e-7, so the differences are int4. Measured on Portuguese audio only."
+      }
+    },
+    "decoder": {
+      "runtime": "onnx-genai",
+      "graph": {
+        "path": "decoder/model.onnx",
+        "sha256": "f587b38e01ecc7db0118db67973f0919d4b86a4d369373dd0a13c2087812c33f",
+        "size": 232843
+      },
+      "data": {
+        "path": "decoder/model.onnx.data",
+        "sha256": "148fed06bf4445f528a81eb9d616b056fe7ef26f0f3ec656616da91eef4674fb",
+        "size": 352149504
+      },
+      "embeddings": {
+        "path": "decoder/embed_tokens.fp16.bin",
+        "sha256": "e80150119fa5f7e56e85aed64c3a02d5c78eb7a37cfdcb973d0987316f15bee2",
+        "size": 311164928
+      },
+      "tokens": {
+        "path": "decoder/decoder_tokens.json",
+        "sha256": "1fcf6ee3b7462b50c59382a4e9af1ef79b6531d5180d36d6884b031a199af19b",
+        "size": 1828819
+      },
+      "model": {
+        "layers": 28,
+        "kvHeads": 8,
+        "headDim": 128,
+        "hidden": 1024,
+        "vocab": 151936
+      },
+      "prompt": {
+        "before": [
+          151644,
+          8948,
+          198,
+          151645,
+          198,
+          151644,
+          872,
+          198,
+          151669
+        ],
+        "after": [
+          151670,
+          151645,
+          198,
+          151644,
+          77091,
+          198
+        ],
+        "audioFrames": 104,
+        "languageToken": 11528
+      },
+      "eos": [
+        151643,
+        151645
+      ],
+      "languages": {
+        "zh": {
+          "name": "Chinese",
+          "ids": [
+            8453
+          ]
+        },
+        "en": {
+          "name": "English",
+          "ids": [
+            6364
+          ]
+        },
+        "yue": {
+          "name": "Cantonese",
+          "ids": [
+            72366,
+            2367
+          ]
+        },
+        "ar": {
+          "name": "Arabic",
+          "ids": [
+            34117
+          ]
+        },
+        "de": {
+          "name": "German",
+          "ids": [
+            5938
+          ]
+        },
+        "fr": {
+          "name": "French",
+          "ids": [
+            8585
+          ]
+        },
+        "es": {
+          "name": "Spanish",
+          "ids": [
+            15154
+          ]
+        },
+        "pt": {
+          "name": "Portuguese",
+          "ids": [
+            42188
+          ]
+        },
+        "id": {
+          "name": "Indonesian",
+          "ids": [
+            58829
+          ]
+        },
+        "it": {
+          "name": "Italian",
+          "ids": [
+            14811
+          ]
+        },
+        "ko": {
+          "name": "Korean",
+          "ids": [
+            16134
+          ]
+        },
+        "ru": {
+          "name": "Russian",
+          "ids": [
+            8522
+          ]
+        },
+        "th": {
+          "name": "Thai",
+          "ids": [
+            26392
+          ]
+        },
+        "vi": {
+          "name": "Vietnamese",
+          "ids": [
+            48477
+          ]
+        },
+        "ja": {
+          "name": "Japanese",
+          "ids": [
+            10769
+          ]
+        },
+        "tr": {
+          "name": "Turkish",
+          "ids": [
+            23734
+          ]
+        },
+        "hi": {
+          "name": "Hindi",
+          "ids": [
+            43980
+          ]
+        },
+        "ms": {
+          "name": "Malay",
+          "ids": [
+            79140
+          ]
+        },
+        "nl": {
+          "name": "Dutch",
+          "ids": [
+            23234
+          ]
+        },
+        "sv": {
+          "name": "Swedish",
+          "ids": [
+            30109
+          ]
+        },
+        "da": {
+          "name": "Danish",
+          "ids": [
+            43680
+          ]
+        },
+        "fi": {
+          "name": "Finnish",
+          "ids": [
+            57853
+          ]
+        },
+        "pl": {
+          "name": "Polish",
+          "ids": [
+            31984
+          ]
+        },
+        "cs": {
+          "name": "Czech",
+          "ids": [
+            33150
+          ]
+        },
+        "fil": {
+          "name": "Filipino",
+          "ids": [
+            62417
+          ]
+        },
+        "fa": {
+          "name": "Persian",
+          "ids": [
+            49861
+          ]
+        },
+        "el": {
+          "name": "Greek",
+          "ids": [
+            17860
+          ]
+        },
+        "ro": {
+          "name": "Romanian",
+          "ids": [
+            73597
+          ]
+        },
+        "hu": {
+          "name": "Hungarian",
+          "ids": [
+            56769
+          ]
+        },
+        "mk": {
+          "name": "Macedonian",
+          "ids": [
+            56452,
+            75491
+          ]
+        }
+      },
+      "term": {
+        "beams": 4,
+        "maxNewTokens": 256,
+        "lengthPenalty": 1,
+        "repetitionThreshold": 20
+      },
+      "devices": [
+        "webgpu",
+        "wasm",
+        "cpu"
+      ],
+      "cpuBuild": {
+        "graph": {
+          "path": "decoder/cpu/model.onnx",
+          "sha256": "ded2fffbbffd71255ed5bb4e596e65c86e1da201f9b5851c380d569ca302ba99",
+          "size": 289443
+        },
+        "data": {
+          "path": "decoder/cpu/model.onnx.data",
+          "sha256": "ff373a624e2759c3032065d9ea3b754105844e39b8c6fdfbb95c458c1b7f84f7",
+          "size": 406306816
+        }
+      }
     }
   }
 }

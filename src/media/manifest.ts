@@ -71,11 +71,20 @@ function audioProblems(a: any, p: string[]): void {
     else for (const [k, o] of Object.entries<any>(t.outputs)) if (!(isObj(o) && int(o.frames) && int(o.dim) && (int(o.layer) || o.layer === "final"))) p.push(`audio.tower.outputs.${k}: {layer: int | "final", frames, dim}`);
     if (!Array.isArray(t.devices) || !t.devices.length || !t.devices.every((d: any) => ["webgpu", "wasm", "cpu"].includes(d))) p.push('audio.tower.devices: non-empty list of "webgpu" | "wasm" | "cpu"');
   }
+  if (a.decoder !== undefined) decoderProblems(a.decoder, p);
   if (!isObj(a.readers) || !Object.keys(a.readers).length) { p.push("audio.readers: at least one task"); return; }
+  const decoderTaps = new Set(Object.values<any>(a.readers).filter((r) => isObj(r) && (r.kind === "decoder-language" || r.kind === "decoder-term")).map((r) => r.tap));
+  if (decoderTaps.size > 1) p.push(`audio.readers: the decoder readers must read the same tap (found ${[...decoderTaps].join(", ")})`);
   for (const [name, r] of Object.entries<any>(a.readers)) {
     const at = `audio.readers.${name}`;
     if (!isObj(r)) { p.push(`${at}: object`); continue; }
     if (!str(r.tap) || !isObj(t?.outputs) || !t.outputs[r.tap]) p.push(`${at}.tap: one of the tower outputs`);
+    if (r.kind === "decoder-language" || r.kind === "decoder-term") {
+      if (r.type !== (r.kind === "decoder-language" ? "choice" : "predicate")) p.push(`${at}.type: "${r.kind === "decoder-language" ? "choice" : "predicate"}"`);
+      if (a.decoder === undefined) p.push(`${at}: kind ${r.kind} needs audio.decoder`);
+      else if (t?.outputs?.[r.tap] && !(t.outputs[r.tap].frames === a.decoder.prompt?.audioFrames && t.outputs[r.tap].dim === a.decoder.model?.hidden)) p.push(`${at}.tap: ${r.tap} must be ${a.decoder.prompt?.audioFrames} x ${a.decoder.model?.hidden} (the decoder's audio rows)`);
+      continue;
+    }
     if (r.kind === "speech-head") {
       if (r.type !== "predicate") p.push(`${at}.type: "predicate"`);
       pinnedProblems(r.graph, `${at}.graph`, p); pinnedProblems(r.question, `${at}.question`, p);
@@ -86,7 +95,7 @@ function audioProblems(a: any, p: string[]): void {
       if (!(num(r.threshold) && r.threshold > 0 && r.threshold < 1)) p.push(`${at}.threshold: number in (0, 1)`);
       continue;
     }
-    if (r.kind !== "pooled-linear" && r.kind !== "pooled-mlp") { p.push(`${at}.kind: "pooled-linear" | "pooled-mlp" | "speech-head"`); continue; }
+    if (r.kind !== "pooled-linear" && r.kind !== "pooled-mlp") { p.push(`${at}.kind: "pooled-linear" | "pooled-mlp" | "speech-head" | "decoder-language" | "decoder-term"`); continue; }
     pinnedProblems(r.weights, `${at}.weights`, p);
     if (!isObj(r.tensors)) p.push(`${at}.tensors: names of the tensors in the weights file`);
     const tn = r.tensors ?? {};
@@ -111,6 +120,27 @@ function audioProblems(a: any, p: string[]): void {
     else if (g.kind !== "mean-std") p.push(`${at}.pooling.kind: "tail-mean" | "pair" | "pair-split" | "mean-std"`);
     if (r.kind === "pooled-mlp" && g.kind === "mean-std") p.push(`${at}: the MLP reader is specified for pair features`);
   }
+}
+
+function decoderProblems(d: any, p: string[]): void {
+  const at = "audio.decoder";
+  if (!isObj(d)) { p.push(`${at}: object`); return; }
+  if (d.runtime !== "onnx-genai") p.push(`${at}.runtime: "onnx-genai"`);
+  for (const k of ["graph", "data", "embeddings", "tokens"]) pinnedProblems(d[k], `${at}.${k}`, p);
+  if (d.cpuBuild !== undefined) { if (!isObj(d.cpuBuild)) p.push(`${at}.cpuBuild: {graph, data}`); else for (const k of ["graph", "data"]) pinnedProblems(d.cpuBuild[k], `${at}.cpuBuild.${k}`, p); }
+  if (Array.isArray(d.devices) && d.cpuBuild === undefined && d.devices.some((x: any) => x !== "webgpu")) p.push(`${at}.devices: "wasm" and "cpu" need cpuBuild (the WebGPU graph does not run on CPU kernels)`);
+  const m = d.model;
+  if (!isObj(m) || !["layers", "kvHeads", "headDim", "hidden", "vocab"].every((k) => int(m[k]))) p.push(`${at}.model: {layers, kvHeads, headDim, hidden, vocab} positive integers`);
+  else if (isObj(d.embeddings) && Number.isInteger(d.embeddings.size) && d.embeddings.size !== m.vocab * m.hidden * 2) p.push(`${at}.embeddings.size: ${d.embeddings.size} != vocab * hidden * 2 = ${m.vocab * m.hidden * 2} (float16 [vocab, hidden])`);
+  const ids = (x: any) => Array.isArray(x) && x.every((i: any) => Number.isInteger(i) && i >= 0 && (!isObj(m) || !int(m.vocab) || i < m.vocab));
+  const pr = d.prompt;
+  if (!isObj(pr) || !ids(pr.before) || !ids(pr.after) || !int(pr.audioFrames) || !ids([pr.languageToken])) p.push(`${at}.prompt: {before: ids, after: ids, audioFrames, languageToken} within the vocabulary`);
+  if (!Array.isArray(d.eos) || !d.eos.length || !ids(d.eos)) p.push(`${at}.eos: non-empty list of token ids`);
+  if (!isObj(d.languages) || !Object.keys(d.languages).length) p.push(`${at}.languages: code -> {name, ids}`);
+  else for (const [c, l] of Object.entries<any>(d.languages)) if (!(isObj(l) && str(l.name) && Array.isArray(l.ids) && l.ids.length >= 1 && l.ids.length <= 2 && ids(l.ids))) p.push(`${at}.languages.${c}: {name, ids: one or two token ids}`);
+  const t = d.term;
+  if (!isObj(t) || !int(t.beams) || !int(t.maxNewTokens) || !num(t.lengthPenalty) || !int(t.repetitionThreshold)) p.push(`${at}.term: {beams, maxNewTokens, lengthPenalty, repetitionThreshold}`);
+  if (!Array.isArray(d.devices) || !d.devices.length || !d.devices.every((x: any) => ["webgpu", "wasm", "cpu"].includes(x))) p.push(`${at}.devices: non-empty list of "webgpu" | "wasm" | "cpu"`);
 }
 
 /** Validate a media package manifest (no text sections; `modalities` lists "audio"). Throws ManifestError. */

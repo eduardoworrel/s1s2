@@ -1742,6 +1742,9 @@
               },
               {
                 "$ref": "#/$defs/speechHeadReader"
+              },
+              {
+                "$ref": "#/$defs/decoderReader"
               }
             ]
           }
@@ -1751,6 +1754,9 @@
         },
         "fidelity": {
           "type": "object"
+        },
+        "decoder": {
+          "$ref": "#/$defs/decoderSpec"
         }
       }
     },
@@ -2068,6 +2074,223 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "exclusiveMaximum": 1
+        }
+      }
+    },
+    "decoderReader": {
+      "type": "object",
+      "required": [
+        "kind",
+        "type",
+        "tap"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "decoder-language",
+            "decoder-term"
+          ]
+        },
+        "type": {
+          "enum": [
+            "choice",
+            "predicate"
+          ]
+        },
+        "tap": {
+          "$ref": "#/$defs/nonEmpty"
+        }
+      },
+      "description": "Language (choice) or spoken term (predicate) read with the Qwen3-ASR decoder from the tower's final vectors; needs audio.decoder. See spec/MULTIMODAL.md section 9."
+    },
+    "decoderSpec": {
+      "type": "object",
+      "required": [
+        "runtime",
+        "graph",
+        "data",
+        "embeddings",
+        "tokens",
+        "model",
+        "prompt",
+        "eos",
+        "languages",
+        "term",
+        "devices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "const": "onnx-genai"
+        },
+        "graph": {
+          "$ref": "#/$defs/pinnedFile"
+        },
+        "data": {
+          "$ref": "#/$defs/pinnedFile"
+        },
+        "embeddings": {
+          "$ref": "#/$defs/pinnedFile"
+        },
+        "tokens": {
+          "$ref": "#/$defs/pinnedFile"
+        },
+        "model": {
+          "type": "object",
+          "required": [
+            "layers",
+            "kvHeads",
+            "headDim",
+            "hidden",
+            "vocab"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "layers": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "kvHeads": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "headDim": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "hidden": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "vocab": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "prompt": {
+          "type": "object",
+          "required": [
+            "before",
+            "after",
+            "audioFrames",
+            "languageToken"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "before": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "after": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "audioFrames": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "languageToken": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "eos": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "languages": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "name",
+              "ids"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/nonEmpty"
+              },
+              "ids": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "term": {
+          "type": "object",
+          "required": [
+            "beams",
+            "maxNewTokens",
+            "lengthPenalty",
+            "repetitionThreshold"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "beams": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxNewTokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "lengthPenalty": {
+              "type": "number"
+            },
+            "repetitionThreshold": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "devices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "webgpu",
+              "wasm",
+              "cpu"
+            ]
+          }
+        },
+        "cpuBuild": {
+          "type": "object",
+          "required": [
+            "graph",
+            "data"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "graph": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "data": {
+              "$ref": "#/$defs/pinnedFile"
+            }
+          },
+          "description": "The decoder built for CPU kernels (Node CPU, browser WASM)."
         }
       }
     }

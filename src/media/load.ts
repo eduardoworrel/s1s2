@@ -21,6 +21,8 @@ export interface MediaLoadOptions {
   baseUrls?: Record<string, string>;
   /** Accept files over 300 MB from non-Hub hosts without a browser-side hash (the demo server hashes them at start-up). */
   allowUnverified?: boolean;
+  /** The decoder (language, term questions) of a manifest that has one: `"auto"` (default) loads it and goes on without it if that fails, `true` fails, `false` loads nothing. */
+  decoder?: boolean | "auto";
   fetch?: typeof fetch;
   onStatus?: (msg: string) => void;
 }
@@ -45,5 +47,5 @@ export async function loadMedia(o: MediaLoadOptions): Promise<AudioModel> {
   if (!m.modalities.includes(which)) throw new Error(`loadMedia: this manifest takes ${m.modalities.join(", ")}, not ${which}`);
   const fo: FilesOptions = { platform, cacheDir: o.cacheDir, localDirs: o.localDirs, baseUrls: o.baseUrls, allowUnverified: o.allowUnverified, fetch: o.fetch, onStatus: o.onStatus };
   const files = new Files(fo);
-  return loadAudio(m.audio!, { device: o.device, modules: o.modules, files, repo: m.repo, revision: m.revision, onStatus: o.onStatus });
+  return loadAudio(m.audio!, { device: o.device, modules: o.modules, files, repo: m.repo, revision: m.revision, onStatus: o.onStatus, decoder: o.decoder, fetch: o.fetch });
 }

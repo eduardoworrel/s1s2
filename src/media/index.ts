@@ -6,3 +6,5 @@ export { AudioModel, loadAudio, type AudioRuntime, type AudioEncoding, type Audi
 export { loadMedia, type MediaLoadOptions } from "./load.js";
 export { ManifestError } from "../manifest.js";
 export { mediaProblems, pinnedProblems, validateMediaManifest } from "./manifest.js";
+export { DecoderEngine, DecoderWindow, ortDecoder, f32ToF16Bits, type DecoderBackend, type DecoderKv } from "./decoder.js";
+export { normalizeTerm, termFraction, containsTerm, detectAndFixRepetitions, parseAsrText, decodeIds, type DecoderTokens } from "./decoderText.js";

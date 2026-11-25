@@ -54,7 +54,7 @@ def patched_builder(work):
                               "description": "; ".join(FORK["commits"])}]}
 
 
-def build(fused_dir, out_dir, work, precision="int4", ep="webgpu", builder_src=None, extra=None):
+def build(fused_dir, out_dir, work, precision="int4", ep="webgpu", builder_src=None, extra=None, hidden=True):
     out_dir = Path(out_dir)
     if builder_src:
         bdir = Path(builder_src)
@@ -69,7 +69,7 @@ def build(fused_dir, out_dir, work, precision="int4", ep="webgpu", builder_src=N
     cache.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True)
-    opts = ["include_hidden_states=true", "exclude_mtp=true", *(extra or [])]
+    opts = [*(["include_hidden_states=true"] if hidden else []), "exclude_mtp=true", *(extra or [])]
     args = ["-i", str(fused_dir), "-o", str(out_dir), "-p", precision, "-e", ep, "-c", str(cache), "--extra_options", *opts]
     run([python_exe(), bdir / "builder.py", *args], "build", env={"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}, cwd=bdir)
     for f in ("genai_config.json", "model.onnx", "model.onnx.data"):

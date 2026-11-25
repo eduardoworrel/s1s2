@@ -105,13 +105,44 @@ export interface SpeechHeadReader {
   threshold: number;
 }
 
-export type AudioReader = PooledLinearReader | PooledMlpReader | SpeechHeadReader;
+/** "Which language": closed-set scoring with the Qwen3-ASR decoder over the tower's final vectors (spec section 9). Needs `audio.decoder`. */
+export interface DecoderLanguageReader { kind: "decoder-language"; type: "choice"; tap: string }
+/** "Was this word said": the term is looked for in five decoder hypotheses (greedy + beam 4). Needs `audio.decoder`. */
+export interface DecoderTermReader { kind: "decoder-term"; type: "predicate"; tap: string }
+
+export type AudioReader = PooledLinearReader | PooledMlpReader | SpeechHeadReader | DecoderLanguageReader | DecoderTermReader;
+
+/** The Qwen3-ASR text decoder as an ONNX Runtime GenAI build that reads embeddings (converter: `asr-decoder`). */
+export interface DecoderSpec {
+  runtime: "onnx-genai";
+  /** model.onnx and model.onnx.data (the graph names its data file): the WebGPU build. */
+  graph: PinnedFile; data: PinnedFile;
+  /**
+   * The same decoder built for CPU kernels (Node CPU and browser WASM): the WebGPU build fuses the per-head query/key norm into its
+   * attention node, which only the WebGPU kernel implements. Absent: the decoder runs on WebGPU only.
+   */
+  cpuBuild?: { graph: PinnedFile; data: PinnedFile };
+  /** Float16 little-endian [vocab, hidden]: rows of the prompt's text tokens. */
+  embeddings: PinnedFile;
+  /** JSON { tokens: string[vocab], added: number[], special: number[] }: byte-level pieces, to decode generated ids. */
+  tokens: PinnedFile;
+  model: { layers: number; kvHeads: number; headDim: number; hidden: number; vocab: number };
+  /** Token ids before and after the audio rows (their number is audioFrames) and the id of "language". */
+  prompt: { before: number[]; after: number[]; audioFrames: number; languageToken: number };
+  eos: number[];
+  /** Language code -> name and the token ids of " Name" after "language". */
+  languages: Record<string, { name: string; ids: number[] }>;
+  term: { beams: number; maxNewTokens: number; lengthPenalty: number; repetitionThreshold: number };
+  devices: ("webgpu" | "wasm" | "cpu")[];
+}
 
 export interface AudioSpec {
   preprocess: LogMelSpec;
   tower: AudioTowerSpec;
   /** Task name -> reader. The request names the task. */
   readers: Record<string, AudioReader>;
+  /** Present when readers of kind decoder-language / decoder-term are listed. */
+  decoder?: DecoderSpec;
   /** Free text: what each task means and was validated on. */
   notes?: string;
   /** Measured fidelity against the reference implementation, per task (free-form record). */
@@ -146,8 +177,8 @@ export interface AudioInput {
 
 export interface MediaDecisionRequest {
   audio?: AudioInput;
-  /** Task names (or `{ task }` objects). */
-  questions: (string | { name?: string; task?: string })[];
+  /** Task names, or `{ task }` objects; `{ task: "term", term }` carries the word; `{ task: "language", options }` a closed set of codes. */
+  questions: (string | { name?: string; task?: string; term?: string; options?: string[] })[];
 }
 
 export interface MediaCost {
@@ -170,6 +201,8 @@ export interface MediaFields {
   threshold?: number;
   /** Predicate: probability before calibration (pooled readers: sigmoid of the raw logit; the speech head: absent). */
   uncalibrated?: number;
+  /** term: the five hypotheses (greedy first, then four beams) the fraction was counted on. */
+  hypotheses?: string[];
 }
 export type MediaPredicateAnswer = PredicateAnswer & MediaFields & { available: true };
 export type MediaChoiceAnswer = ChoiceAnswer & MediaFields & { available: true };

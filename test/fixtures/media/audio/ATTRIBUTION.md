@@ -15,3 +15,7 @@ Changes: the dataset's 16 kHz mono float WAV samples were kept as float32 and cu
 and padded with zeros; B0: the tail of one clip joined to the next), then stored gzip-compressed as raw little-endian float32.
 Nothing was filtered or re-recorded. The other files (`*.mel_torch`, `*.h9`, `*.h12`, `*.h18`) are numbers computed from these windows by the
 torch Marimba package and by the JavaScript log-mel and the ONNX encoder; they are derived from the same audio and carry the same attribution.
+
+`../decoder-text.json` (one level up) holds text only: a few FLEURS pt_br dev sentences (the `raw` transcripts of the same dataset, CC BY 4.0,
+same attribution as above) used as inputs of the term normaliser, plus synthetic strings, with the outputs of the Python originals
+(Qwen3-ASR and `marimba-audio`, Apache-2.0). No audio is in it.
