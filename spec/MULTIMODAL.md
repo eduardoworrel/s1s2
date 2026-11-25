@@ -132,8 +132,9 @@ itself differs from torch by <= 1.8e-4 on any hidden value, which moves a probab
 
 ## 6. Limits
 
-- **Audio language and spoken-word questions are not here.** In Marimba they need the Qwen3-ASR decoder (closed-set language scoring,
-  beam hypotheses for a term). The package has voice activity, turn end, same speaker, speaker change and speaker count only.
+- **Language and spoken-word questions need the decoder block.** They are answered by Marimba's own route, the Qwen3-ASR decoder fed the
+  tower's 104 final vectors (section 9). A package without `audio.decoder` has voice activity, turn end, same speaker, speaker change and
+  speaker count only.
 - **`voice_activity` answers one question.** Its question vector is the pre-computed encoding of one Portuguese prompt; another
   wording needs Marimba's text encoder, which is not exported. Speech head temperature and threshold are those of that prompt.
 - **Windows are 8 s.** The tower graph is fixed at 800 mel frames. Speaker tasks need 8 s of real audio; nothing longer than 8 s is
@@ -165,3 +166,97 @@ sources state, not legal advice, and nothing here distributes weights.
 - Training data have their own terms: the Smart Turn v3.2 data (turn-end readout) is CC BY 4.0. Whether those terms reach the trained
   weights is not stated by the sources.
 - FLEURS (the example clips and test fixtures) is CC BY 4.0; attribution is in `examples/audio-turn/clips/ATTRIBUTION.md`.
+
+## 9. Language and spoken term (decoder)
+
+Status: written before the code that implements it and before any number below existed; the tolerances in 9.4 were fixed first.
+
+Marimba answers "which language" and "was this word said" with no extra model: the Qwen3-ASR decoder (a Qwen3 text model: 28 layers,
+hidden 1024, 16 / 8 attention heads, vocabulary 151936) reads the tower's final 104 x 1024 vectors in place of the `<|audio_pad|>`
+tokens of a fixed prompt. The package has two more readers over that decoder and one more block, `audio.decoder`. Source of the behaviour:
+`marimba-audio` 0.1.2 (Apache-2.0), `language_scores`, `hypotheses`, `exact_fraction`; nothing below is the authors' claim about this port.
+
+### 9.1 Behaviour that is ported
+
+- **Window.** The decoder lane takes the window with the audio at index 0 and zeros after it (left-aligned; the tower reads the right-aligned
+  one). With less than 8 s of real audio that is a second tower pass (mel + tower, once per `encode`, reused by both questions); with 8 s it is
+  the same pass. Always 104 audio vectors.
+- **Prompt (119 positions).** 9 ids, 104 audio positions, 6 ids: `<|im_start|>system\n<|im_end|>\n<|im_start|>user\n<|audio_start|>`, audio,
+  `<|audio_end|><|im_end|>\n<|im_start|>assistant\n`. The ids are in the manifest; no tokenizer runs for the prompt. The audio rows enter as float16.
+- **`language`** (choice). The prompt plus the token `language` (120 positions) is read; each language's score is the sum of the log-probabilities
+  (full-vocabulary log-softmax) of the tokens of its name written after `language ` (30 names, 28 of one token; Cantonese and Macedonian have two).
+  One prefill, then one extra step for each two-token name. Probabilities are the softmax of the scores over the languages asked for (default all 30).
+  Decision = the most probable code.
+- **`term`** (predicate; the request carries the term). Free generation from the 119-position prompt, with no forced language: one greedy
+  hypothesis and four beam hypotheses (beam 4, `max_new_tokens` 256, length penalty 1, `early_stopping` false, EOS 151645 and 151643), five in all.
+  Each is decoded without special tokens, repetitions are collapsed (`detect_and_fix_repetitions`, threshold 20), text before `<asr_text>` is dropped.
+  The term is normalised (case-fold, NFKD, combining marks removed, runs of non-letters and digits and underscores become one space) and counts as said when
+  its words occur as whole words in the normalised hypothesis. `probability` = fraction of the five hypotheses that contain it (0, 0.2, ..., 1), **uncalibrated**; `decision`
+  "yes" at 0.5 or more. The answer carries the five hypotheses.
+
+### 9.2 Manifest (`audio.decoder`) and readers
+
+```ts
+interface DecoderSpec {
+  runtime: "onnx-genai";
+  graph: PinnedFile; data: PinnedFile;          // model.onnx + model.onnx.data (ONNX Runtime GenAI int4 build, built with inputs_embeds)
+  embeddings: PinnedFile;                       // float16 little-endian [vocab, hidden]: the token-embedding rows of the prompt
+  tokens: PinnedFile;                           // JSON {tokens: string[vocab] (byte-level BPE pieces), special: number[]}, to decode hypotheses
+  model: { layers: 28; kvHeads: 8; headDim: 128; hidden: 1024; vocab: 151936 };
+  prompt: { before: number[]; after: number[]; audioFrames: 104; languageToken: number };
+  eos: number[]; asrTextToken: number;
+  languages: Record<string, { name: string; ids: number[] }>;   // code -> the token ids of " Name"
+  term: { beams: 4; maxNewTokens: 256; lengthPenalty: 1; repetitionThreshold: 20 };
+  devices: ("webgpu" | "wasm" | "cpu")[];
+}
+// readers: { language: { kind: "decoder-language", type: "choice", tap: "audio_features" },
+//            term:     { kind: "decoder-term",     type: "predicate", tap: "audio_features" } }
+```
+
+Request: `questions: ["language", { task: "term", term: "obrigado" }]`, and `{ task: "language", options: ["pt", "en", "es"] }` for a closed set.
+Answers: `language` is a `ChoiceAnswer` (labels = codes, `probabilities`), `term` a `PredicateAnswer` with `threshold` 0.5 and `hypotheses`.
+Both are answered from one prefill of one encoding (`read` many times); `cost.parts` names `decoderPrefill`, `language`, `term`.
+
+### 9.3 Build of the decoder
+
+Exported from the `Qwen/Qwen3-ASR-0.6B` checkpoint (revision `5eb144179a02acc5e5ba31e748d22b0cf3e303b0`, safetensors) by `s1s2-convert asr-decoder`:
+the `thinker.model.*` tensors become a plain Qwen3 causal LM (`lm_head` is byte-identical to the embedding, so the head is tied), the audio tower is dropped,
+and the ONNX Runtime GenAI 0.19.0 builder writes an int4 graph that takes `inputs_embeds` (no embedding in the graph) plus the float16 table. For audio-only
+input the three rotary positions of the original are equal, so the plain rotary embedding is the same computation; the converter checks it
+against the original thinker on real audio embeddings and records the largest logit difference.
+
+### 9.4 Tolerances (fixed before the tests that use them)
+
+References: `marimba-audio` 0.1.2, float32, CPU, on the 56 pt-BR clips, the three demo clips and 12 full windows made of three joined clips
+(`recipes/marimba-audio/decoder_refs.py`). A "pair" is a (window, term) with terms taken from the reference transcript (present), from other
+clips (absent) and from the hypotheses.
+
+| quantity | reference | tolerance |
+|---|---|---|
+| `audio_features` of the left-aligned window, tower ONNX (Node CPU) | torch | max abs <= 2e-3 |
+| prompt ids, name token ids, decoded text of given token ids, `normalize`, `detect_and_fix_repetitions`, `parse_asr_output` | Python | exactly equal on every fixture |
+| language, decoder fed torch `audio_features` (int4, Node CPU): most probable code | torch | identical on every window |
+| same: probability of the most probable code | torch | abs <= 0.02 |
+| term fractions, same input | torch | within 0.2 on >= 95 % of pairs; identical on >= 85 % |
+| term decision at 0.5 | torch | identical on >= 95 % of pairs |
+| greedy hypothesis text, beam hypotheses text | torch | **reported**, not required |
+| end to end (JS mel -> tower -> decoder), same quantities | torch | the same as the three rows above |
+| Chrome WebGPU against Node CPU, same graph | Node CPU | language code identical on every window; probability abs <= 0.02; term decision identical on >= 95 % of pairs |
+
+Not a gate: time and memory (reported in 9.5). Marimba's own acceptance rule (change of AUROC at most 0.005, unchanged language accuracy against float32)
+cannot be tested at this sample size and is not claimed.
+
+### 9.5 Measured
+
+(filled in after the runs)
+
+### 9.6 Limits of the decoder questions
+
+- Only Portuguese audio was run (the clips available). The other 29 languages are the reference's behaviour, not checked here, and the two-token
+  names (Cantonese, Macedonian) go through one extra decoding step that was not checked on their own audio.
+- Rare words, names and numbers: the hypotheses come from a 0.6B model; a term the model spells another way is "no". Not validated beyond the
+  probe terms of 9.4.
+- Beam search was re-written (the reference uses the Hugging Face generation code); the hypotheses can differ in ties and spelling without a quality
+  difference. The int4 graph and the float16 audio rows can reorder the beams. Equality of text is reported, not promised.
+- 8 s windows; Marimba itself calls longer context unvalidated.
+- `probability` of `term` is a fraction of five hypotheses, not a calibrated probability.
