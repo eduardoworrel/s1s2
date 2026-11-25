@@ -8,10 +8,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const { createMediaServer } = await import(path.join(ROOT, "examples/serve-media.mjs"));
+const { createMediaServer } = await import(pathToFileURL(path.join(ROOT, "examples/serve-media.mjs")).href);
 const require = createRequire(process.env.PLAYWRIGHT_DIR ? process.env.PLAYWRIGHT_DIR + "/" : process.cwd() + "/")   // a directory where playwright-core is installed;
 const { chromium } = require("playwright-core");
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";

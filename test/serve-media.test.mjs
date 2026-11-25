@@ -53,3 +53,12 @@ test("malformed requests get an error status and the server keeps answering", as
   const ok = await get("/t/s.txt");
   assert.equal(ok.status, 200); assert.equal(ok.body, "public!");
 });
+
+test("the media scripts import files through file URLs (a Windows path is not a valid import specifier)", () => {
+  const root = new URL("../", import.meta.url);
+  for (const f of ["examples/serve-media.mjs", "recipes/marimba-audio/node-parity.mjs", "test/browser/media-chrome.mjs"]) {
+    const src = fs.readFileSync(new URL(f, root), "utf8");
+    assert.doesNotMatch(src, /import\(\s*path\.(join|resolve)\(/, f);
+    assert.doesNotMatch(src, /import\.meta\.url\)\.pathname/, f);
+  }
+});

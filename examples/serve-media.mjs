@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.resolve(HERE, "..");
@@ -78,7 +78,7 @@ function handle(routes, req, res) {
 
 /** sha256 + size check of every pinned file of the media manifests against the weights directory. Returns {checked, problems}. */
 export async function verifyWeights(weights) {
-  const { validateManifestFile } = await import(path.join(LIB, "dist/package.js"));
+  const { validateManifestFile } = await import(pathToFileURL(path.join(LIB, "dist/package.js")).href);
   const out = { checked: 0, problems: [] };
   for (const [manifest, pkg] of [["marimba-audio.json", "marimba-audio"]]) {
     const dir = path.join(weights, pkg);
