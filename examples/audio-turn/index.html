@@ -33,6 +33,8 @@
   input[type=file] { max-width: 100%; }
   footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
   a { color: var(--accent); }
+  input[type=text] { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); min-width: 0; flex: 1 1 120px; }
+  .hyp { margin-top: 6px; font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -43,6 +45,7 @@
   <section>
     <div class="row">
       <button id="load" class="primary" data-t="load"></button>
+      <label class="muted"><input id="dec" type="checkbox" checked> <span data-t="dec"></span></label>
       <span id="status" class="muted" role="status"></span>
     </div>
   </section>
@@ -68,6 +71,8 @@
     <div class="card" data-task="same_speaker"><h2 data-t="same"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
     <div class="card" data-task="speaker_change"><h2 data-t="change"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
     <div class="card" data-task="speaker_count"><h2 data-t="count"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
+    <div class="card" data-task="language" hidden><h2 data-t="lang"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
+    <div class="card" data-task="term" hidden><h2 data-t="word"></h2><div class="row"><input id="term" type="text" autocomplete="off" spellcheck="false"><button id="ask" data-t="ask"></button></div><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div><div class="hyp" id="hyp"></div></div>
   </section>
   <div class="muted" id="cost"></div>
 
@@ -84,13 +89,13 @@ import { loadMedia } from "../lib/media.js";
 const L = (new URLSearchParams(location.search).get("lang") ?? navigator.language).startsWith("pt") ? "pt" : "en";
 const T = {
   en: { title: "Turn taking from audio", lead: "Is someone speaking, has the turn ended, who is it? One pass of a frozen speech encoder, in this tab.",
-    load: "Load model (746 MB)", file: "Audio file", rec: "Record (8 s)", examples: "Examples", noise: "noise", two: "1 + 2 (8 s)",
+    load: "Load model", dec: "Language and word (+0.7 GB)", lang: "Language", word: "Spoken word", ask: "Check", ph: "a word", file: "Audio file", rec: "Record (8 s)", examples: "Examples", noise: "noise", two: "1 + 2 (8 s)",
     voice: "Voice", turn: "End of turn", same: "Same speaker", change: "Speaker change", count: "Speakers",
     yes: "yes", no: "no", margin: "margin", needs: "needs 8 s of audio", threshold: "decides at", ready: "Model ready", loading: "Loading",
     windowOf: (s, w) => `${s.toFixed(1)} s of audio, the last ${Math.min(s, w).toFixed(1)} s are read`, ms: "ms", pass: "one pass for all five",
     foot: "Nothing leaves this page. Example clips:", mic: "Microphone not available", rec1: "Recording…" },
   pt: { title: "Troca de turno por áudio", lead: "Alguém fala, o turno acabou, quem é? Uma passada de um codificador de fala congelado, nesta aba.",
-    load: "Carregar modelo (746 MB)", file: "Arquivo de áudio", rec: "Gravar (8 s)", examples: "Exemplos", noise: "ruído", two: "1 + 2 (8 s)",
+    load: "Carregar modelo", dec: "Idioma e palavra (+0,7 GB)", lang: "Idioma", word: "Palavra dita", ask: "Verificar", ph: "uma palavra", file: "Arquivo de áudio", rec: "Gravar (8 s)", examples: "Exemplos", noise: "ruído", two: "1 + 2 (8 s)",
     voice: "Voz", turn: "Fim de turno", same: "Mesmo locutor", change: "Troca de locutor", count: "Locutores",
     yes: "sim", no: "não", margin: "margem", needs: "precisa de 8 s de áudio", threshold: "decide em", ready: "Modelo pronto", loading: "Carregando",
     windowOf: (s, w) => `${s.toFixed(1)} s de áudio, os últimos ${Math.min(s, w).toFixed(1)} s são lidos`, ms: "ms", pass: "uma passada para as cinco",
@@ -98,6 +103,7 @@ const T = {
 }[L];
 document.documentElement.lang = L;
 for (const e of document.querySelectorAll("[data-t]")) e.textContent = T[e.dataset.t];
+document.querySelector("#term").placeholder = T.ph;
 
 const $ = (s) => document.querySelector(s);
 const root = document.documentElement;
@@ -115,12 +121,13 @@ async function load() {
   try {
     const t0 = performance.now();
     model = await loadMedia({
-      manifest: MANIFEST, modules: { ort }, allowUnverified: true,     // the demo server checked the sha256 of what it serves
+      manifest: MANIFEST, modules: { ort }, allowUnverified: true, decoder: $("#dec").checked, device: q.get("device") ?? "auto",     // the demo server checked the sha256 of what it serves
       baseUrls: { "local/marimba-audio-web": WEIGHTS + "marimba-audio/" },
       onStatus: (m) => setStatus(`${T.loading}: ${m}`),
     });
     setStatus(`${T.ready} (${model.device}, ${((performance.now() - t0) / 1000).toFixed(1)} s)`);
     window.s1s2demo.loadMs = performance.now() - t0;
+    for (const c of document.querySelectorAll('[data-task="language"],[data-task="term"]')) c.hidden = !model.tasks.includes(c.dataset.task);
     if (samples) run();
   } catch (e) { setStatus(String(e?.message ?? e)); $("#load").disabled = false; console.error(e); throw e; }
 }
@@ -156,8 +163,17 @@ function drawWave(x) {
 const pct = (v) => `${(v * 100).toFixed(1)} %`;
 function show(card, a) {
   const el = $(`[data-task="${card}"]`), big = el.querySelector(".big"), bar = el.querySelector(".bar i"), note = el.querySelector(".muted");
-  if (!a || !a.available) { big.textContent = "-"; big.className = "big na"; bar.style.width = "0"; note.textContent = a?.reason ? (/^needs a full window/.test(a.reason) ? T.needs : a.reason) : "";   // only a short window gives "needs 8 s"; any other reason is shown as the library states it return; }
-  if (a.type === "choice") {
+  // only a short window gives "needs 8 s"; any other reason is shown as the library states it
+  if (!a || !a.available) { big.textContent = "-"; big.className = "big na"; bar.style.width = "0"; note.textContent = a?.reason ? (/^needs a full window/.test(a.reason) ? T.needs : a.reason) : ""; return; }
+  if (a.task === "language") {
+    const names = model.spec.decoder.languages, top = [...a.probabilities].sort((x, y) => y.probability - x.probability).slice(0, 3);
+    big.textContent = names[a.choice]?.name ?? a.choice; big.className = "big";
+    note.textContent = top.map((p) => `${p.value} ${pct(p.probability)}`).join(" · ");
+  } else if (a.task === "term") {
+    big.textContent = a.decision === "yes" ? T.yes : T.no; big.className = "big " + a.decision;
+    note.textContent = `${Math.round(a.probability * 5)} / 5`;
+    $("#hyp").textContent = a.hypotheses[0] ? `“${a.hypotheses[0]}”` : "";
+  } else if (a.type === "choice") {
     big.textContent = a.choice; big.className = "big";
     note.textContent = `${T.margin} ${a.margin.toFixed(2)} · ${a.probabilities.map((p) => `${p.value}: ${pct(p.probability)}`).join(" · ")}`;
   } else {
@@ -167,15 +183,38 @@ function show(card, a) {
   bar.style.width = `${(a.margin ?? 0) * 100}%`;
 }
 
+let enc = null;
 async function run() {
   if (!model || !samples) return;
-  const d = await model.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count"] });
+  const five = ["voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count"], t0 = performance.now();
+  enc = await model.encode({ samples, sampleRate: 16000 });
+  const t1 = performance.now(), answers = await model.read(enc, five), t2 = performance.now();
+  const parts = { mel: enc.ms.mel, tower: enc.ms.tower, readers: t2 - t1 };
+  if (model.tasks.includes("language")) {
+    const tm = {}, a = await model.read(enc, ["language"], tm);
+    answers.push(...a); Object.assign(parts, tm);
+  }
+  const d = { answers, cost: { ms: performance.now() - t0, parts, device: model.device } };
   $("#out").hidden = false;
   for (const a of d.answers) show(a.task, a);
-  const p = d.cost.parts;
-  $("#cost").textContent = `${d.cost.device} · mel ${p.mel.toFixed(0)} ${T.ms} + tower ${p.tower.toFixed(0)} ${T.ms} + readers ${p.readers.toFixed(1)} ${T.ms} · ${T.pass}`;
+  $("#term").disabled = $("#ask").disabled = false; $("[data-task=term] .big").textContent = ""; $("#hyp").textContent = "";
+  $("#cost").textContent = `${d.cost.device} · mel ${parts.mel.toFixed(0)} ${T.ms} + tower ${parts.tower.toFixed(0)} ${T.ms} + readers ${parts.readers.toFixed(1)} ${T.ms}`
+    + (parts.language !== undefined ? ` · ${(parts.leftTower ? `tower (left) ${parts.leftTower.toFixed(0)} ${T.ms} + ` : "")}${T.lang.toLowerCase()} ${(parts.decoderOpen + parts.language).toFixed(0)} ${T.ms}` : "");
   window.s1s2demo.last = d;
   return d;
+}
+
+async function ask() {
+  const term = $("#term").value.trim();
+  if (!model || !enc || !term) return;
+  $("#ask").disabled = true; const t0 = performance.now();
+  try {
+    const tm = {}, a = (await model.read(enc, [{ task: "term", term }], tm))[0];
+    show("term", a);
+    $("#cost").textContent += ` · ${T.word.toLowerCase()} ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+    window.s1s2demo.term = a;
+    return a;
+  } catch (e) { setStatus(String(e?.message ?? e)); } finally { $("#ask").disabled = false; }
 }
 
 async function setSamples(x, label) {
@@ -193,6 +232,8 @@ async function fromUrls(list) {
 }
 
 $("#load").onclick = load;
+$("#ask").onclick = ask;
+$("#term").onkeydown = (e) => { if (e.key === "Enter") ask(); };
 $("#file").onchange = async (e) => { const f = e.target.files[0]; if (f) await setSamples(await decodeMono16k(await f.arrayBuffer()), f.name); };
 for (const b of document.querySelectorAll(".ex")) b.onclick = () => fromUrls(b.dataset.src.split(","));
 $("#rec").onclick = async () => {
@@ -205,7 +246,7 @@ $("#rec").onclick = async () => {
   } catch { setStatus(T.mic); }
 };
 
-window.s1s2demo = { load, fromUrls, setSamples, run, get model() { return model; } };
+window.s1s2demo = { load, fromUrls, setSamples, run, ask, get model() { return model; } };
 window.dispatchEvent(new Event("s1s2demo-ready"));
 </script>
 </body>
