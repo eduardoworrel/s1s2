@@ -5,17 +5,16 @@
 //   log-mel vs torch feature extractor ........ max abs <= 1e-4        (lab: 3.2e-5)
 //   every probability vs torch Marimba ........ abs <= 1e-4            (lab, Chrome WebGPU: <= 3.8e-5)
 //   decisions at their thresholds ............. identical
-//   float16 rounding fallback vs Math.f16round  exactly equal
+//   float16 rounding fallback vs every half and midpoint (and Math.f16round where it exists) exactly equal
 // Opt-in tests (need the weights; skipped without them): S1S2_MM_WEIGHTS=<dir holding marimba-audio/> (default <repo>/.weights).
-// S1S2_AUDIO_REF=<lab audio dir> + S1S2_AUDIO_FULL=1 runs all 56 windows through the real tower on Node CPU (heavy:
-// heavy: several GB of memory).
+// S1S2_AUDIO_REF=<reference run directory> + S1S2_AUDIO_FULL=1 runs all 56 windows through the real tower on Node CPU (several GB of memory).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   createLogMel, melFilters, f16round, f16roundSoft, frameCenter, pooledFeature, createPooledReader, rightAlign, frameMask,
-  parseSafetensors, AudioModel, validateMediaManifest, Files,
+  parseSafetensors, AudioModel, validateMediaManifest, Files, f16ToF32,
 } from "../dist/index.js";
 import { safetensors, fixtureF32, audioMeta, audioWeightsDir, ROOT } from "./media-helpers.mjs";
 
@@ -24,12 +23,28 @@ const SPEC = validateMediaManifest(MANIFEST).audio;
 const TOL_MEL = 1e-4, TOL_P = 1e-4;
 const sigmoid = (x) => 1 / (1 + Math.exp(-x));
 
-test("float16 rounding: the JavaScript fallback equals Math.f16round on edge values and 20000 random values", () => {
+test("float16 rounding: the JavaScript fallback is exact on every half, every midpoint and just beside it (no Math.f16round needed)", () => {
+  const half = f16ToF32(Uint16Array.from({ length: 0x7c00 }, (_, i) => i));          // every finite non-negative half, decoded by the safetensors/embedding reader
+  for (let i = 0; i < half.length; i++) {
+    const a = half[i];
+    assert.equal(f16roundSoft(a), a); assert.equal(f16roundSoft(-a), -a);
+    const b = i + 1 < half.length ? half[i + 1] : 65536, mid = (a + b) / 2;         // a and b are adjacent halves; mid is exact in float64
+    const tie = i % 2 === 0 ? a : b;                                                   // ties go to the even mantissa (the even bit pattern)
+    assert.equal(f16roundSoft(mid), i + 1 < half.length ? tie : Infinity, `tie ${mid}`);
+    const eps = (b - a) * 2 ** -20;
+    if (i + 1 < half.length) { assert.equal(f16roundSoft(mid - eps), a); assert.equal(f16roundSoft(mid + eps), b); }
+  }
+  assert.equal(f16roundSoft(65519.9), 65504); assert.equal(f16roundSoft(65520), Infinity); assert.equal(f16roundSoft(-65520), -Infinity);
+  assert.equal(f16roundSoft(1e-9), 0); assert.ok(Object.is(f16roundSoft(-1e-9), -0));
+  assert.ok(Number.isNaN(f16roundSoft(NaN)));
+  assert.equal(f16round(2049), 2048); assert.equal(f16round(2051), 2052);            // ties to even, with whichever implementation this Node uses
+});
+
+test("float16 rounding: the fallback equals Math.f16round on edge values and 20000 random values", { skip: typeof Math.f16round !== "function" && "Math.f16round needs Node 24+; the exhaustive test above checks the fallback without it" }, () => {
   const edge = [0, -0, 1, -1, 0.1, 65504, 65519.9, 65520, 1e-8, 6e-8, 5.96e-8, 2.98e-8, 2.99e-8, 6.1e-5, 6.104e-5, 0.0009765625, 1.0009765625, 1.00048828125, 2049, 2050, 2051, NaN, Infinity];
   const rnd = (() => { let a = 12345; return () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; })();
   const xs = [...edge];
   for (let i = 0; i < 20000; i++) xs.push((rnd() - 0.5) * 2 * 10 ** (Math.floor(rnd() * 14) - 8));
-  if (typeof Math.f16round !== "function") return; // Node < 24: the fallback IS f16round (nothing to compare with)
   for (const x of xs) assert.ok(Object.is(f16roundSoft(x), Math.f16round(x)) || (Number.isNaN(x) && Number.isNaN(f16roundSoft(x))), `${x}: ${f16roundSoft(x)} vs ${Math.f16round(x)}`);
   assert.equal(f16round(2049), 2048); assert.equal(f16round(2051), 2052);   // ties to even
 });
@@ -133,6 +148,8 @@ test("pooled-linear choice with a temperature; pooled-mlp; shape errors; unavail
   assert.ok(Math.abs(a.margin - (sorted[0] - sorted[1])) < 1e-12);
   assert.equal(a.choice, a.probabilities.reduce((b, p) => (p.probability > b.probability ? p : b)).value);
   assert.throws(() => mk(["0", "1"]), /rows need/);
+  const nanTap = Float32Array.from(h); nanTap[3] = NaN;
+  assert.throws(() => mk(["0", "1", "2+"]).read({ t: nanTap }, geo), /not finite/);
   assert.equal(mk(["0", "1", "2+"]).read({ t: h }, { ...geo, nValid: 5 * SR }).available, false);
 
   // MLP: in = 2*D (pair), hidden 3
@@ -195,6 +212,12 @@ test("AudioModel.decide: request errors say what is wrong", async () => {
   await assert.rejects(() => m.decide({ questions: ["turn_end"] }), /audio.samples/);
   await assert.rejects(() => m.decide({ audio: { samples: new Float32Array(100), sampleRate: 16000 }, questions: ["turn_end"] }), /too short/);
   await assert.rejects(() => m.decide({ audio: { samples: Array.from(sine(64000)), sampleRate: 16000 }, questions: ["turn_end"] }), /Float32Array/);
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    const x = sine(64000); x[3000] = bad;
+    await assert.rejects(() => m.decide({ audio: { samples: x, sampleRate: 16000 }, questions: ["turn_end"] }), /samples\[3000\] is .*finite/);
+  }
+  const long = sine(300000); long[10] = NaN;                                               // outside the last 8 s: not read, not an error
+  assert.equal((await m.decide({ audio: { samples: long, sampleRate: 16000 }, questions: ["turn_end"] })).answers[0].available, true);
 });
 
 // ---- torch references on stored windows ----
@@ -212,7 +235,11 @@ test("log-mel in JavaScript vs the torch feature extractor on stored FLEURS wind
 
 // readers + real heads on the stored tower outputs
 const wdir = audioWeightsDir();
-const skipW = (!meta && "fixtures not generated") || (!wdir && "weights not found (S1S2_MM_WEIGHTS or .weights/marimba-audio)");
+// Without the weights these two parity tests (readers and speech head against the torch probabilities) do not run: the weights
+// are not published. To run them: put the package files in <repo>/.weights/marimba-audio/ (layout: recipes/marimba-audio/README.md)
+// or point S1S2_MM_WEIGHTS at the directory that holds marimba-audio/, then `node --test test/media-audio.test.mjs`.
+const skipW = (!meta && "fixtures not generated (recipes/marimba-audio/node-parity.mjs --write-fixtures)")
+  || (!wdir && "SKIPPED, not passed: the Marimba weights are missing (not published). Put marimba-audio/ in .weights/ or set S1S2_MM_WEIGHTS=<dir holding marimba-audio/>; layout in recipes/marimba-audio/README.md");
 test("pooled readers with the real Marimba readouts reproduce the torch probabilities (stored tower outputs)", { skip: skipW }, async () => {
   const files = new Files({ platform: "node", localDirs: { [MANIFEST.repo]: wdir } });
   const run = {};
@@ -256,7 +283,7 @@ test("voice activity: the speech-head graph on the stored h9 reproduces the torc
   }
 });
 
-test("all 56 windows through the real tower on Node CPU (opt-in: S1S2_AUDIO_FULL=1, heavy; see recipes/marimba-audio/node-parity.mjs)", { skip: process.env.S1S2_AUDIO_FULL !== "1" && "set S1S2_AUDIO_FULL=1 and S1S2_AUDIO_REF=<lab audio dir>" }, async () => {
+test("all 56 windows through the real tower on Node CPU (opt-in: S1S2_AUDIO_FULL=1, heavy; see recipes/marimba-audio/node-parity.mjs)", { skip: process.env.S1S2_AUDIO_FULL !== "1" && "SKIPPED, opt-in: needs the weights and the torch reference run; set S1S2_AUDIO_FULL=1 and S1S2_AUDIO_REF=<reference run directory> (see recipes/marimba-audio/node-parity.mjs)" }, async () => {
   const { execFileSync } = await import("node:child_process");
   const out = path.join(ROOT, ".capturas-multimodal-node-parity.json");
   execFileSync("node", [path.join(ROOT, "recipes/marimba-audio/node-parity.mjs"), process.env.S1S2_AUDIO_REF, "--out", out], { stdio: "inherit" });

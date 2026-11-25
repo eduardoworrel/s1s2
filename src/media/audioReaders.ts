@@ -103,6 +103,8 @@ function platt(st: SafeTensors, c: Extract<Calibration, { kind: "platt" }>, logi
   return logit * tensor(st, c.coefficient, "Platt coefficient").data[0] + tensor(st, c.intercept, "Platt intercept").data[0];
 }
 
+const finite = (name: string, x: number) => { if (!Number.isFinite(x)) throw new Error(`audio reader ${name}: the score is not finite (the tap holds NaN or Infinity)`); return x; };
+
 export interface PooledReaderRun { read(taps: Record<string, Float32Array>, g: Pick<FrameGeometry, "win" | "sampleRate" | "nValid">): MediaAnswer }
 
 /** Build the reader of a manifest entry from its parsed safetensors. Checks every tensor and shape at build time. */
@@ -130,7 +132,7 @@ export function createPooledReader(name: string, r: PooledLinearReader | PooledM
         for (let c = 0; c < C; c++) {
           let s = B[c];
           for (let d = 0; d < D; d++) s += ((mu ? (f[d] - mu[d]) / sc![d] : f[d]) * W[c * D + d]);
-          z[c] = s;
+          z[c] = finite(name, s);
         }
         if (r.type === "choice") {
           const a = choiceFromScores(name, r.labels!, Array.from(z, (v) => v / T), "head");
@@ -156,6 +158,7 @@ export function createPooledReader(name: string, r: PooledLinearReader | PooledM
       for (let d = 0; d < D; d++) { const xv = x[d], row = d * H; for (let j = 0; j < H; j++) hid[j] += xv * W0.data[row + j]; }
       let z = B1.data[0];
       for (let j = 0; j < H; j++) z += Math.max(hid[j], 0) * W1.data[j];
+      finite(name, z);
       const p1 = Math.min(Math.max(sigmoid(z), 1e-12), 1), lg = Math.log(p1) - Math.log(Math.max(1 - p1, 1e-12));
       const raw = r.calibration.kind === "platt" ? platt(st, r.calibration, lg) : lg;
       const a = predicateFromP(name, sigmoid(raw), "head", raw);

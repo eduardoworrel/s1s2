@@ -121,6 +121,10 @@ const more = await audio.read(enc, ["same_speaker", "speaker_count"]);   // ... 
 | decisions at their thresholds | torch | identical on every window | 56 / 56 |
 | float16 rounding, JS fallback vs `Math.f16round` | itself | exactly equal | n/a |
 
+The comparison of the readers and of the speech head with the torch probabilities needs the weights, which are not published: on a clone
+without `.weights/marimba-audio/` (or `S1S2_MM_WEIGHTS`) those tests are reported as skipped, with the message saying what is missing, and
+`npm test` does not prove them. The log-mel against torch, the float16 fallback and the reader arithmetic run from the stored fixtures on every clone.
+
 A reader tested on fixtures (tower outputs stored with the tests) is held to the same 1e-4 against the torch reference: the tower
 itself differs from torch by <= 1.8e-4 on any hidden value, which moves a probability by < 4e-5.
 

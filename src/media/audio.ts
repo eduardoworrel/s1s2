@@ -69,6 +69,9 @@ export class AudioModel {
     const sr = this.parts.spec.preprocess.sampleRate;
     if (a.sampleRate !== sr) throw new Error(`decide: audio is ${a.sampleRate} Hz, this package takes ${sr} Hz mono; resample first (spec/MULTIMODAL.md, limits)`);
     if (a.samples.length <= this.parts.spec.preprocess.nFft / 2) throw new Error("decide: audio is too short");
+    // only the last window is read: a NaN or Infinity in it would turn every mel frame, and every probability, into NaN
+    const x = a.samples, from = Math.max(0, x.length - Math.round(this.parts.spec.preprocess.windowSeconds * sr));
+    for (let i = from; i < x.length; i++) if (!Number.isFinite(x[i])) throw new Error(`decide: audio.samples[${i}] is ${x[i]}; samples must be finite numbers`);
   }
 
   /** The shared part of every question: log-mel and ONE tower pass. Readers can then run many times on the taps (`read`). */
