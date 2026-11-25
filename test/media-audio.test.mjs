@@ -1,9 +1,9 @@
-// Audio: log-mel, pooling, readers, AudioModel. Torch references: the lab's refs.py -> ref.json (torch Marimba 0.1.2, float32 CPU),
+// Audio: log-mel, pooling, readers, AudioModel. Torch references: the reference run's refs.py -> ref.json (torch Marimba 0.1.2, float32 CPU),
 // 56 FLEURS pt-BR clips; a window of two of them is stored in test/fixtures/media/audio (see README there).
 //
 // TOLERANCES, fixed before these tests ran (spec/MULTIMODAL.md section 6):
-//   log-mel vs torch feature extractor ........ max abs <= 1e-4        (lab: 3.2e-5)
-//   every probability vs torch Marimba ........ abs <= 1e-4            (lab, Chrome WebGPU: <= 3.8e-5)
+//   log-mel vs torch feature extractor ........ max abs <= 1e-4        (reference: 3.2e-5)
+//   every probability vs torch Marimba ........ abs <= 1e-4            (reference, Chrome WebGPU: <= 3.8e-5)
 //   decisions at their thresholds ............. identical
 //   float16 rounding fallback vs every half and midpoint (and Math.f16round where it exists) exactly equal
 // Opt-in tests (need the weights; skipped without them): S1S2_MM_WEIGHTS=<dir holding marimba-audio/> (default <repo>/.weights).

@@ -1,4 +1,4 @@
-// Log-mel extractor equal to the WhisperFeatureExtractor of Qwen3-ASR (ported from the lab's mel.js, which matched the
+// Log-mel extractor equal to the WhisperFeatureExtractor of Qwen3-ASR (ported from the reference run's mel.js, which matched the
 // torch features to 3.2e-5 max abs on 56 windows): periodic Hann window, reflect padding of nFft/2, power spectrum,
 // Slaney mel filters, log10 with a floor, a dynamic-range clamp, (x + shift) / divide, last STFT frame dropped.
 // Pure JavaScript (float64 inside, float32 out): runs in a browser tab, a worker and Node, with no model file.

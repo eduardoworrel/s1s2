@@ -2,7 +2,7 @@
 
 Status: draft, written before the code in `src/media/`. Package spec 0.2-draft stays as it is; this file adds three optional
 top-level keys to the manifest (`modalities`, `audio`) and one new entry point (`loadMedia`). The numbers below were
-measured in the lab on the builds named here; nothing else is claimed.
+measured in the reference runs on the builds named here; nothing else is claimed.
 
 ## 1. What changes and what does not
 
@@ -78,7 +78,7 @@ interface MediaDecision { answers: MediaAnswer[]; cost: { ms: number; parts: Rec
 
 Pre-processor (`audio.preprocess`, `src/media/mel.ts`): Whisper-style log-mel, 16 kHz mono, window 8 s (128000 samples, right
 aligned: shorter audio is zero-padded on the left, longer keeps its last 8 s), n_fft 400, hop 160, 128 Slaney mel bands (the filter
-bank is computed, identical to the 25728 values of the lab's `mel_filters.json`), periodic Hann, reflect padding 200, power,
+bank is computed, identical to the 25728 values of the reference run's `mel_filters.json`), periodic Hann, reflect padding 200, power,
 `log10(max(x, 1e-10))`, floor at max - 8, `(x + 4) / 4`, last frame dropped: [128, 800]. Float64 inside, float32 out; about 0.15-0.22 s per
 window in JS (median 118-128 ms in Node and Chrome).
 
@@ -114,7 +114,7 @@ const more = await audio.read(enc, ["same_speaker", "speaker_count"]);   // ... 
 
 ## 5. Tolerances (fixed before the tests that use them)
 
-| quantity | reference | tolerance | lab measurement |
+| quantity | reference | tolerance | reference measurement |
 |---|---|---|---|
 | log-mel, JS vs torch feature extractor | `melA.f32` / `melB.f32` | max abs <= 1e-4 | 3.2e-5 (56 + 56 windows) |
 | voice_activity, turn_end, same_speaker, speaker_change, speaker_count: probability | torch Marimba (`ref.json`) | abs <= 1e-4 | <= 3.8e-5 (Chrome WebGPU, 56 clips) |
@@ -136,7 +136,7 @@ itself differs from torch by <= 1.8e-4 on any hidden value, which moves a probab
   wording needs Marimba's text encoder, which is not exported. Speech head temperature and threshold are those of that prompt.
 - **Windows are 8 s.** The tower graph is fixed at 800 mel frames. Speaker tasks need 8 s of real audio; nothing longer than 8 s is
   scored (the last 8 s are). Marimba itself calls context above 8 s unvalidated.
-- **Sample rate is 16 kHz mono, checked, not converted.** The lab parity used soxr-resampled windows; the demos resample with the
+- **Sample rate is 16 kHz mono, checked, not converted.** The reference parity used soxr-resampled windows; the demos resample with the
   browser (Web Audio), which is another resampler. Parity of that path is not measured.
 - **Readers are calibrated on their own data.** The Marimba card reports that turn-end calibration shifts across domains (ICSI: ECE 0.200 before per-domain calibration, 0.011 after), and that speaker questions compare two four-second halves or the last two seconds with the previous six; they identify no one. A `turn_end` or `speaker_*` answer on something that is not speech is not defined: the demo's synthetic noise clip gets `voice_activity` no and `turn_end` yes (90 %). Read `voice_activity` first.
 - **The demo's microphone button is not verified.** It is written (MediaRecorder on click, decoded with Web Audio at 16 kHz); in headless Chrome with a fake device `getUserMedia` did not resolve, so that path was never run. File and clip inputs were.

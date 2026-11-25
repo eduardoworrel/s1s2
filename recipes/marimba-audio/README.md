@@ -1,7 +1,6 @@
 # Marimba audio package (Qwen3-ASR-0.6B encoder + readouts)
 
-How `manifests/marimba-audio.json` is produced. Nothing here is downloaded by the library; the files below were copied from the
-lab (then renamed and their comments translated; hashes of the committed files in `../SOURCES.sha256`) and are the record of how the ONNX files and the references were made.
+How `manifests/marimba-audio.json` is produced. Nothing here is downloaded by the library; the files below were copied from the reference run (then renamed and their comments translated; hashes of the committed files in `../SOURCES.sha256`) and are the record of how the ONNX files and the references were made.
 
 Sources (all read from the pinned revisions in the manifest):
 
@@ -20,12 +19,12 @@ turn_end/readout.safetensors
 diarization/same_speaker.safetensors   diarization/speaker_change.safetensors   diarization/speaker_count.safetensors
 ```
 
-`vad_question.f32` is `base64-decode(weights.json.vad.qpool.b64)` of the lab's `export_head.py` output (256 float32, little-endian).
+`vad_question.f32` is `base64-decode(weights.json.vad.qpool.b64)` of the `export_head.py` output (256 float32, little-endian).
 `node recipes/make-manifests.mjs <weights dir>` rewrites the manifest with the sha256 and size of each file as found.
 
-Files here: `browser-index.html`, `browser-readers.js` and `browser-mel.js` are the lab's browser page, readers and mel pre-processor, and `browser-run.mjs`
+Files here: `browser-index.html`, `browser-readers.js` and `browser-mel.js` are the reference run's browser page, readers and mel pre-processor, and `browser-run.mjs`
 its Chrome runner (the library re-implements them in `src/media/`); `node-parity.mjs` reproduces the measurements through the library on Node CPU;
-`../../test/browser/media-chrome.mjs audio` does it in Chrome. The lab scripts are a record, not a build; paths come from `AUDIO_REF_DIR` and `CHROME`.
+`../../test/browser/media-chrome.mjs audio` does it in Chrome. These scripts are a record, not a build; paths come from `AUDIO_REF_DIR` and `CHROME`.
 
 Layout of the reference directory (`<reference dir>`; `S1S2_AUDIO_REF` for the opt-in test, the first argument of `node-parity.mjs`):
 

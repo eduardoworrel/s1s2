@@ -1,7 +1,7 @@
 // Audio readers over pooled tower states (no model runtime here: pure maths on Float32Array taps).
 //   pooled-linear: float16-round -> pool -> standardise -> W x + b -> Platt | temperature softmax
 //   pooled-mlp:    float16-round -> pool -> Linear -> ReLU -> Linear -> sigmoid -> logit -> Platt
-// Ported from the lab's marimba.js (parity with the torch Marimba package: |dp| <= 3.8e-5 on 56 windows). Answers reuse
+// Ported from the reference run's marimba.js (parity with the torch Marimba package: |dp| <= 3.8e-5 on 56 windows). Answers reuse
 // predicateFromP / choiceFromScores, so probability, margin and rawMargin mean what they mean for text.
 
 import { predicateFromP, choiceFromScores, sigmoid, type PredicateAnswer } from "../readout.js";

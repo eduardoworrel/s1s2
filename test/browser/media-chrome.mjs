@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Chrome / WebGPU check of the audio demo: parity with the torch references, ms per decision, memory, captures (desktop 1280,
 // phone 390), no horizontal scroll, no console error. NOT part of `npm test`: it loads gigabytes. Run it under the Mac's heavy-job lock:
-//   node test/browser/media-chrome.mjs audio <weights dir> <lab dir> [--out dir]
-// <weights dir>: holds marimba-audio/ (examples/README.md). <lab dir>: the reference directory (audio: audio/port/ref).
+//   node test/browser/media-chrome.mjs audio <weights dir> <reference dir> [--out dir]
+// <weights dir>: holds marimba-audio/ (examples/README.md). <reference dir>: the reference directory (audio: audio/port/ref).
 // The server lives and dies inside this process; nothing is sent anywhere.
 import fs from "node:fs";
 import path from "node:path";
@@ -16,16 +16,16 @@ const require = createRequire(process.env.PLAYWRIGHT_DIR ? process.env.PLAYWRIGH
 const { chromium } = require("playwright-core");
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-const [what, weights, lab] = process.argv.slice(2);
+const [what, weights, refDir] = process.argv.slice(2);
 const oi = process.argv.indexOf("--out");
 const OUT = oi > 0 ? path.resolve(process.argv[oi + 1]) : path.join(ROOT, ".captures-media");
-if (!["audio"].includes(what) || !weights || !lab) { console.error("usage: media-chrome.mjs audio <weights dir> <lab dir> [--out dir]"); process.exit(2); }
+if (!["audio"].includes(what) || !weights || !refDir) { console.error("usage: media-chrome.mjs audio <weights dir> <reference dir> [--out dir]"); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
 
 const rss = (re = "Google Chrome") => { try { return Number(execSync(`ps -axo rss,command | grep -i '${re}' | grep -v grep | awk '{s+=$1} END{print s/1024}'`).toString().trim().replace(",", ".")); } catch { return NaN; } };   // awk prints a decimal comma in pt_BR
 const gpuRss = () => rss("Google Chrome.*type=gpu-process");
 
-const srv = createMediaServer({ weights: path.resolve(weights), extra: { "/lab/audio/": path.join(lab, "audio/port/ref") } });
+const srv = createMediaServer({ weights: path.resolve(weights), extra: { "/reference/audio/": path.join(refDir, "audio/port/ref") } });
 await new Promise((r) => srv.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${srv.address().port}`;
 
@@ -67,7 +67,7 @@ try {
     // parity through the library, in the page: 56 windows set A (right-aligned, n real samples) and set B (3 clips)
     result.parity = await page.evaluate(async () => {
       const f32 = async (u) => new Float32Array(await (await fetch(u)).arrayBuffer());
-      const ref = await (await fetch("/lab/audio/ref.json")).json(), winA = await f32("/lab/audio/winA.f32"), winB = await f32("/lab/audio/winB.f32"), W = 128000;
+      const ref = await (await fetch("/reference/audio/ref.json")).json(), winA = await f32("/reference/audio/winA.f32"), winB = await f32("/reference/audio/winB.f32"), W = 128000;
       const m = window.s1s2demo.model, md = {}, ag = {}, T = { mel: [], tower: [], readers: [], ms: [], two: [] };
       const up = (k, d) => { md[k] = Math.max(md[k] ?? 0, d); }, ac = (k, ok) => { ag[k] = (ag[k] ?? 0) + (ok ? 1 : 0); };
       await m.decide({ audio: { samples: winA.subarray(W - ref.A[0].n, W), sampleRate: 16000 }, questions: ["voice_activity"] });   // warm-up (shader compilation)
