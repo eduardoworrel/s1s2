@@ -13,9 +13,9 @@ measured in the reference runs on the builds named here; nothing else is claimed
 | Request | `{ input, questions }` | `{ audio, questions }` |
 | Answer | `PredicateAnswer` / `ChoiceAnswer` | the same objects (same `probability`, `confidence`, `margin`, `rawMargin`, `path: "s1"`) plus `modality`, `task`, `decision`, `threshold?` |
 | Margin | `margin = p(1st) - p(2nd)` (predicate: `|2p - 1|`); `rawMargin` = gap in score space | identical definitions. The decision of a predicate uses the reader's own threshold (voice activity: 0.225), `margin` is still relative to 0.5 |
-| Shared work | prefix shared by questions on one input (snapshot + prefillFrom) | ONE tower pass for any number of questions (`encode` once, `read` many times) |
+| Shared work | prefix shared by questions on one input (snapshot + prefillFrom) | ONE tower pass for any number of questions (`encode` once, `read` many times); language and term on a short clip add one more tower pass, on the left-aligned window (section 9) |
 | Escalation | margin policy (`escalation`) | the manifest key is accepted and ignored; no media threshold is measured |
-| Evidence / pointer heads, `generate()` | yes | no |
+| Evidence / pointer heads, `generate()` | yes | no (the `term` question generates text internally, section 9; there is no `generate()` for callers) |
 
 `modalities` is the list of inputs `decide` takes: absent = `["text"]`. `["text", "audio"]` is a regular text
 manifest that also has an `audio` block (free-text questions over media: not built, see limits). The package here
@@ -67,7 +67,7 @@ interface AudioSpec { preprocess: LogMelSpec; tower: AudioTowerSpec; readers: Re
 
 // ---- request and answer ----
 interface MediaDecisionRequest { audio?: { samples: Float32Array; sampleRate: number };
-                                 questions: string[] }
+                                 questions: (string | { task: string; term?: string; options?: string[] })[] }
 type MediaAnswer = (PredicateAnswer | ChoiceAnswer) & { modality; task; decision: string; threshold?: number; available: true }
                  | { name; task; modality; available: false; reason: string };       // e.g. a speaker question on a short window
 interface MediaDecision { answers: MediaAnswer[]; cost: { ms: number; parts: Record<string, number>; passes: number;
@@ -83,7 +83,7 @@ bank is computed, identical to the 25728 values of the reference run's `mel_filt
 window in JS (median 118-128 ms in Node and Chrome).
 
 Tower (`audio.tower`): the frozen Qwen3-ASR-0.6B audio encoder exported for the fixed 800-frame window (one ONNX file, 746 MB,
-float32), outputs `h9`, `h12`, `h18` (104 frames x 896, after layers 9, 12, 18) and the final projection (104 x 1024, unused here).
+float32), outputs `h9`, `h12`, `h18` (104 frames x 896, after layers 9, 12, 18) and the final projection `audio_features` (104 x 1024), which the readers do not use and the decoder (section 9) reads.
 
 Readers (`audio.readers`, task name -> reader):
 

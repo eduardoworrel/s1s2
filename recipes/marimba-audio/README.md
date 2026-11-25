@@ -18,7 +18,7 @@ Decoder (language and spoken term; spec section 9):
 | text decoder | `Qwen/Qwen3-ASR-0.6B` @ `5eb144179a02acc5e5ba31e748d22b0cf3e303b0`, `model.safetensors` (sha256 `79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea`) | `s1s2-convert asr-decoder`: plain Qwen3 checkpoint, ONNX Runtime GenAI 0.19.0 build that reads `inputs_embeds`: `--ep webgpu` (the WebGPU build) and `--ep cpu` (Node CPU and browser WASM), both int4; float16 table of the token embeddings; the byte-level pieces; the prompt and language-name token ids |
 | references | `marimba-audio` 0.1.2 on torch float32 CPU | `decoder_refs.py`: left-aligned windows (what Marimba's decoder lane feeds), `audio_features`, 30 language scores, five hypotheses, probe terms; `decoder_text_fixtures.py`: text fixtures from the Python originals (`test/fixtures/media/decoder-text.json`) |
 
-`decoder-parity.mjs` (Node CPU) and `../../test/browser/media-chrome-decoder.mjs` (Chrome) compare the library with those references.
+`check_decoder_rename.py` checks that the plain Qwen3 checkpoint computes what the thinker computes. `decoder-parity.mjs` (Node CPU) and `../../test/browser/media-chrome-decoder.mjs` (Chrome) compare the library with those references.
 Run the third-party code (`marimba-audio`, the builder) in an isolated sandbox with the pinned versions; only the converter's output is loaded by the library.
 
 Layout of the weights directory the demos and tests read (`<weights>/marimba-audio/`):

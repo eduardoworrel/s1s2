@@ -111,7 +111,7 @@ const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions:
 ```
 
 - Áudio, Chrome WebGPU, 56 janelas FLEURS pt-BR: probabilidades a até 3,82e-5 do pacote Marimba em torch e a mesma decisão em 56 de 56; cerca de 0,2 s por janela (log-mel em JavaScript 116 ms, codificador 71 ms, cinco leituras 10 ms).
-- Fora do pacote: perguntas de idioma e de palavra dita em áudio (precisam do decodificador de ASR), perguntas de áudio em texto livre, política de margem para mídia. [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) traz o desenho, as tolerâncias e todos os limites; o mesmo arquivo lista os pontos em aberto e as licenças lidas nas fontes.
+- Idioma (30 línguas) e palavra dita em áudio usam o decodificador do Qwen3-ASR quando o manifest o lista (cerca de 0,7 GB a mais; medido só em português). Fora do pacote: perguntas de áudio em texto livre, política de margem para mídia. [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) traz o desenho, as tolerâncias e todos os limites; o mesmo arquivo lista os pontos em aberto e as licenças lidas nas fontes.
 - Os pesos **não estão publicados**: o manifest é `revision: "local"` e a demo aponta para uma pasta local. Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <pasta>`); como o pacote é feito: [`recipes/`](recipes).
 
 ## Estrutura

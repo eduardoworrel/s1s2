@@ -5,6 +5,7 @@
 - New entry point `@s1s2/web/media` (`loadMedia`, `AudioModel`, `validateMediaManifest`, ...): audio in, same answers (`predicate`, `choice`) with probability and margin. The text bundle carries none of it.
 - Manifest keys `modalities` (default `["text"]`) and `audio` (log-mel preprocess, ONNX tower, readers); `s1s2 validate` checks them. Text manifests are unchanged.
 - The safetensors reader accepts `F64` tensors (the audio readers store float64 coefficients).
+- Audio packages: `loadMedia` answers voice activity, end of turn, same speaker, speaker change and speaker count, and with the decoder block `language` (closed set, 30 languages) and `term` (a word said, as the fraction of five hypotheses). `s1s2-convert asr-decoder` builds the Qwen3-ASR decoder for it. Measured on Portuguese only; `spec/MULTIMODAL.md` section 9 has the tolerances, the numbers and the limits.
 
 ## 0.1.3
 
