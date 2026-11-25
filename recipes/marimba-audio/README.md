@@ -11,12 +11,24 @@ Sources (all read from the pinned revisions in the manifest):
 | turn end, same speaker, speaker change, speaker count | the same Marimba repo, `turn_end/readout.safetensors`, `diarization/*.safetensors` | used unchanged (read in JavaScript); their sha256 equal those in Marimba's `config.json` |
 | references | `marimba-audio` 0.1.2 on torch float32 CPU | `refs.py` writes `ref.json` and the windows / mel features of 56 FLEURS pt-BR clips; `e2e_py.py` is the Python end-to-end check |
 
+Decoder (language and spoken term; spec section 9):
+
+| piece | source | what was done |
+|---|---|---|
+| text decoder | `Qwen/Qwen3-ASR-0.6B` @ `5eb144179a02acc5e5ba31e748d22b0cf3e303b0`, `model.safetensors` (sha256 `79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea`) | `s1s2-convert asr-decoder`: plain Qwen3 checkpoint, ONNX Runtime GenAI 0.19.0 build that reads `inputs_embeds`: `--ep webgpu` (the WebGPU build) and `--ep cpu` (Node CPU and browser WASM), both int4; float16 table of the token embeddings; the byte-level pieces; the prompt and language-name token ids |
+| references | `marimba-audio` 0.1.2 on torch float32 CPU | `decoder_refs.py`: left-aligned windows (what Marimba's decoder lane feeds), `audio_features`, 30 language scores, five hypotheses, probe terms; `decoder_text_fixtures.py`: text fixtures from the Python originals (`test/fixtures/media/decoder-text.json`) |
+
+`decoder-parity.mjs` (Node CPU) and `../../test/browser/media-chrome-decoder.mjs` (Chrome) compare the library with those references.
+Run the third-party code (`marimba-audio`, the builder) in an isolated sandbox with the pinned versions; only the converter's output is loaded by the library.
+
 Layout of the weights directory the demos and tests read (`<weights>/marimba-audio/`):
 
 ```
 audio_tower.onnx   vad_head.onnx   vad_question.f32
 turn_end/readout.safetensors
 diarization/same_speaker.safetensors   diarization/speaker_change.safetensors   diarization/speaker_count.safetensors
+decoder/model.onnx   decoder/model.onnx.data   decoder/embed_tokens.fp16.bin   decoder/decoder_tokens.json   (the WebGPU build; optional)
+decoder/cpu/model.onnx   decoder/cpu/model.onnx.data                                                             (the CPU build; optional)
 ```
 
 `vad_question.f32` is `base64-decode(weights.json.vad.qpool.b64)` of the `export_head.py` output (256 float32, little-endian).

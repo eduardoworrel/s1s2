@@ -94,6 +94,8 @@ Readers (`audio.readers`, task name -> reader):
 | `same_speaker` | `pooled-linear` | `h12` | `pair` 0-4 s / 4-8 s | standardise -> linear -> Platt |
 | `speaker_change` | `pooled-mlp` (3584 -> 256 -> 1) | `h12` | `pair-split` at 6 s | sigmoid -> logit -> Platt |
 | `speaker_count` | `pooled-linear`, 4 rows, labels 0 / 1 / 2 / 3+ | `h12` | `mean-std` | softmax with a fitted temperature |
+| `language` | `decoder-language` (section 9) | `audio_features` | none (decoder reads the 104 vectors) | softmax of summed log-probabilities |
+| `term` | `decoder-term` (section 9) | `audio_features` | none | none (fraction of five hypotheses) |
 
 Readers run in float64 over float16-rounded features (the readers were fit on float16-stored features). Speaker tasks need a full
 window (8 s of real audio) and answer `available: false` otherwise; `turn_end` needs at least one frame of real audio in the last 2 s.
@@ -110,6 +112,8 @@ const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions:
 // d.answers[i]: { task, probability, margin, rawMargin, decision, threshold, available } ; d.cost: { ms, parts: { mel, tower, readers }, passes: 1 }
 const enc = await audio.encode({ samples, sampleRate: 16000 });          // one tower pass ...
 const more = await audio.read(enc, ["same_speaker", "speaker_count"]);   // ... any number of readers (the five together: 8-11 ms, no tower pass)
+// with audio.decoder in the manifest (section 9); ask language and term in one call to share the decoder's prompt pass
+const w = await audio.read(enc, ["language", { task: "term", term: "obrigado" }]);   // w[0].choice, w[1].probability (n/5), w[1].hypotheses
 ```
 
 `@s1s2/web/media` exports its own `ManifestError` (thrown by `validateMediaManifest`). Each entry point is a separate bundle, so it is not `instanceof` the `ManifestError` of `@s1s2/web` or `@s1s2/web/manifest`: compare `e.name === "ManifestError"` across entry points.
