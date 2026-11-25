@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { compare, rowFromAnswers } from "./decoder-metrics.mjs";
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
-const { loadMedia } = await import(path.join(ROOT, "dist/index.js"));
+const { loadMedia } = await import(path.join(ROOT, "dist/media.js"));
 const args = process.argv.slice(2);
 const opt = (k, d = null) => { const i = args.indexOf(k); return i < 0 ? d : args[i + 1]; };
 const refDir = path.resolve(opt("--ref")), wdir = path.resolve(opt("--weights"));

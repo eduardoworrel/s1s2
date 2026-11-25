@@ -4,10 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { validateMediaManifest, ManifestError, FIX } from "./media-helpers.mjs";
+import { validateMediaManifest, FIX } from "./media-helpers.mjs";
 import { clone } from "./helpers.mjs";
 import { schemaProblems } from "../dist/package.js";
-import { normalizeTerm, termFraction, detectAndFixRepetitions, parseAsrText, decodeIds, f32ToF16Bits, DecoderEngine, AudioModel } from "../dist/index.js";
+import { normalizeTerm, termFraction, detectAndFixRepetitions, parseAsrText, decodeIds, f32ToF16Bits, DecoderEngine, AudioModel } from "../dist/media.js";
 import path from "node:path";
 
 const FX = JSON.parse(readFileSync(path.join(FIX, "decoder-text.json"), "utf8"));
@@ -139,7 +139,7 @@ test("hypotheses: greedy first, then four beams, decoded and parsed", async () =
 
 // ---- manifest ---------------------------------------------------------------------------------------------------------------------------
 
-const problems = (m) => { try { validateMediaManifest(m); return []; } catch (e) { assert.ok(e instanceof ManifestError); return e.problems; } };
+const problems = (m) => { try { validateMediaManifest(m); return []; } catch (e) { assert.equal(e.name, "ManifestError"); return e.problems; } };
 
 test("the manifest lists the decoder, validates, and its rules catch broken blocks", async () => {
   assert.ok(MANIFEST.audio.decoder, "decoder block");
