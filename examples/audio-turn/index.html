@@ -48,6 +48,7 @@
       <label class="muted"><input id="dec" type="checkbox" checked> <span data-t="dec"></span></label>
       <span id="status" class="muted" role="status"></span>
     </div>
+    <div id="warn" class="muted" role="status" hidden></div>
   </section>
 
   <section>
@@ -75,6 +76,7 @@
     <div class="card" data-task="term" hidden><h2 data-t="word"></h2><div class="row"><input id="term" type="text" autocomplete="off" spellcheck="false"><button id="ask" data-t="ask"></button></div><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div><div class="hyp" id="hyp"></div></div>
   </section>
   <div class="muted" id="cost"></div>
+  <p class="muted" id="langnote" data-t="langnote" hidden></p>
 
   <footer>
     <span data-t="foot"></span>
@@ -93,13 +95,13 @@ const T = {
     voice: "Voice", turn: "End of turn", same: "Same speaker", change: "Speaker change", count: "Speakers",
     yes: "yes", no: "no", margin: "margin", needs: "needs 8 s of audio", threshold: "decides at", ready: "Model ready", loading: "Loading",
     windowOf: (s, w) => `${s.toFixed(1)} s of audio, the last ${Math.min(s, w).toFixed(1)} s are read`, ms: "ms", pass: "one pass for all five",
-    foot: "Nothing leaves this page. Example clips:", mic: "Microphone not available", rec1: "Recording…" },
+    langnote: "Language and word were checked on Portuguese audio only. The language code matched the reference on all 72 test windows, but its probability differs from the reference by up to 0.09 on noise (int4 weights; the tolerance of 0.02 is not met there) and by 0.0001 more than 0.02 on one speech window.", decWarn: "Language and word are unavailable, the decoder did not load", foot: "Nothing leaves this page. Example clips:", mic: "Microphone not available", rec1: "Recording…" },
   pt: { title: "Troca de turno por áudio", lead: "Alguém fala, o turno acabou, quem é, em que idioma, uma palavra foi dita? Um codificador de fala congelado e seu decodificador, nesta aba.",
     load: "Carregar modelo", dec: "Idioma e palavra (+0,7 GB)", lang: "Idioma", word: "Palavra dita", ask: "Verificar", ph: "uma palavra", file: "Arquivo de áudio", rec: "Gravar (8 s)", examples: "Exemplos", noise: "ruído", two: "1 + 2 (8 s)",
     voice: "Voz", turn: "Fim de turno", same: "Mesmo locutor", change: "Troca de locutor", count: "Locutores",
     yes: "sim", no: "não", margin: "margem", needs: "precisa de 8 s de áudio", threshold: "decide em", ready: "Modelo pronto", loading: "Carregando",
     windowOf: (s, w) => `${s.toFixed(1)} s de áudio, os últimos ${Math.min(s, w).toFixed(1)} s são lidos`, ms: "ms", pass: "uma passada para as cinco",
-    foot: "Nada sai desta página. Clipes de exemplo:", mic: "Microfone indisponível", rec1: "Gravando…" },
+    langnote: "Idioma e palavra foram verificados só em áudio em português. O código do idioma coincidiu com a referência nas 72 janelas de teste, mas sua probabilidade difere da referência em até 0,09 no ruído (pesos int4; a tolerância de 0,02 não é cumprida ali) e em 0,0001 além de 0,02 em uma janela de fala.", decWarn: "Idioma e palavra indisponíveis, o decodificador não carregou", foot: "Nada sai desta página. Clipes de exemplo:", mic: "Microfone indisponível", rec1: "Gravando…" },
 }[L];
 document.documentElement.lang = L;
 for (const e of document.querySelectorAll("[data-t]")) e.textContent = T[e.dataset.t];
@@ -121,13 +123,16 @@ async function load() {
   try {
     const t0 = performance.now();
     model = await loadMedia({
-      manifest: MANIFEST, modules: { ort }, allowUnverified: true, decoder: $("#dec").checked, device: q.get("device") ?? "auto",     // the demo server checked the sha256 of what it serves
+      manifest: MANIFEST, modules: { ort }, allowUnverified: true, decoder: $("#dec").checked ? "auto" : false, device: q.get("device") ?? "auto",     // the demo server checked the sha256 of what it serves
       baseUrls: { "local/marimba-audio-web": WEIGHTS + "marimba-audio/" },
       onStatus: (m) => setStatus(`${T.loading}: ${m}`),
     });
     setStatus(`${T.ready} (${model.device}, ${((performance.now() - t0) / 1000).toFixed(1)} s)`);
     window.s1s2demo.loadMs = performance.now() - t0;
     for (const c of document.querySelectorAll('[data-task="language"],[data-task="term"]')) c.hidden = !model.tasks.includes(c.dataset.task);
+    $("#langnote").hidden = !model.decoder?.loaded;
+    const miss = model.decoder && !model.decoder.loaded && model.decoder.reason !== "off";
+    $("#warn").hidden = !miss; $("#warn").textContent = miss ? `${T.decWarn}: ${model.decoder.reason}` : "";
     if (samples) run();
   } catch (e) { setStatus(String(e?.message ?? e)); $("#load").disabled = false; console.error(e); throw e; }
 }
@@ -183,17 +188,20 @@ function show(card, a) {
   bar.style.width = `${(a.margin ?? 0) * 100}%`;
 }
 
-let enc = null, costBase = "";
+let enc = null, costBase = "", clip = 0;      // clip: which clip the answers on screen belong to
 async function run() {
   if (!model || !samples) return;
-  const five = ["voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count"], t0 = performance.now();
-  enc = await model.encode({ samples, sampleRate: 16000 });
-  const t1 = performance.now(), answers = await model.read(enc, five), t2 = performance.now();
+  const mine = ++clip, five = ["voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count"], t0 = performance.now();
+  const e = await model.encode({ samples, sampleRate: 16000 });
+  if (mine !== clip) return;
+  enc = e;
+  const t1 = performance.now(), answers = await model.read(e, five), t2 = performance.now();
   const parts = { mel: enc.ms.mel, tower: enc.ms.tower, readers: t2 - t1 };
   if (model.tasks.includes("language")) {
-    const tm = {}, a = await model.read(enc, ["language"], tm);
+    const tm = {}, a = await model.read(e, ["language"], tm);
     answers.push(...a); Object.assign(parts, tm);
   }
+  if (mine !== clip) return;
   const d = { answers, cost: { ms: performance.now() - t0, parts, device: model.device } };
   $("#out").hidden = false;
   for (const a of d.answers) show(a.task, a);
@@ -208,9 +216,10 @@ async function run() {
 async function ask() {
   const term = $("#term").value.trim();
   if (!model || !enc || !term) return;
-  $("#ask").disabled = true; const t0 = performance.now();
+  $("#ask").disabled = true; const t0 = performance.now(), mine = clip;
   try {
     const tm = {}, a = (await model.read(enc, [{ task: "term", term }], tm))[0];
+    if (mine !== clip) return;                      // another clip was loaded while this ran: the answer is for the old one
     show("term", a);
     $("#cost").textContent = `${costBase} · ${T.word.toLowerCase()} ${((performance.now() - t0) / 1000).toFixed(1)} s`;
     window.s1s2demo.term = a;
