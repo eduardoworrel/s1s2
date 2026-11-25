@@ -28,25 +28,52 @@ export function createMediaServer({ weights, extra = {} }) {
   for (const [r, d] of Object.entries(extra)) routes[r] = path.resolve(d);          // tests only: reference data served next to the pages
   if (weights) for (const pkg of ["marimba-audio"]) if (fs.existsSync(path.join(weights, pkg))) routes[`/weights/${pkg}/`] = path.resolve(weights, pkg);
   return http.createServer((req, res) => {
-    const url = decodeURIComponent(new URL(req.url, "http://x").pathname);
-    const head = { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp", "Cross-Origin-Resource-Policy": "same-origin" };
-    const pre = Object.keys(routes).sort((a, b) => b.length - a.length).find((p) => url.startsWith(p));
-    const root = routes[pre];
-    let file = path.resolve(root, "." + url.slice(pre.length - 1));
-    if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }
-    if (fs.statSync(file, { throwIfNoEntry: false })?.isDirectory()) file = path.join(file, "index.html");
-    const st = fs.statSync(file, { throwIfNoEntry: false });
-    if (!st?.isFile()) { res.writeHead(404, head); return res.end(); }
-    const h = { ...head, "Content-Type": TYPES[path.extname(file)] ?? "application/octet-stream", "Cache-Control": "no-cache", "Accept-Ranges": "bytes" };
-    const m = /bytes=(\d+)-(\d+)?/.exec(req.headers.range ?? "");
-    if (m) {
-      const a = Number(m[1]), b = m[2] ? Math.min(Number(m[2]), st.size - 1) : st.size - 1;
-      res.writeHead(206, { ...h, "Content-Range": `bytes ${a}-${b}/${st.size}`, "Content-Length": b - a + 1 });
-      return fs.createReadStream(file, { start: a, end: b }).pipe(res);
-    }
-    res.writeHead(200, { ...h, "Content-Length": st.size });
-    fs.createReadStream(file).pipe(res);
+    try { handle(routes, req, res); }
+    catch { if (!res.headersSent) res.writeHead(500); res.end(); }
   });
+}
+
+const HEAD = { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp", "Cross-Origin-Resource-Policy": "same-origin" };
+const fail = (res, code, extra = {}) => { res.writeHead(code, { ...HEAD, ...extra }); res.end(); };
+
+/** A path inside `root` (never the root's prefix-sharing siblings, e.g. dist-x next to dist). */
+const inside = (root, file) => { const rel = path.relative(root, file); return rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel); };
+
+/** "bytes=a-b", "bytes=a-", "bytes=-n" -> [start, end] clamped to the file, or null when it cannot be satisfied. */
+function parseRange(header, size) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!m || (m[1] === "" && m[2] === "")) return null;
+  let a, b;
+  if (m[1] === "") { const n = Number(m[2]); if (!(n > 0) || size === 0) return null; a = Math.max(0, size - n); b = size - 1; }
+  else { a = Number(m[1]); b = m[2] === "" ? size - 1 : Math.min(Number(m[2]), size - 1); }
+  return Number.isFinite(a) && Number.isFinite(b) && a <= b && a < size ? [a, b] : null;
+}
+
+function handle(routes, req, res) {
+  let url;
+  try { url = decodeURIComponent(new URL(req.url, "http://x").pathname); } catch { return fail(res, 400); }
+  if (url.includes("\0")) return fail(res, 400);
+  const pre = Object.keys(routes).sort((a, b) => b.length - a.length).find((p) => url.startsWith(p));
+  if (pre === undefined) return fail(res, 404);
+  const root = routes[pre];
+  let file = path.resolve(root, "." + url.slice(pre.length - 1));
+  if (!inside(root, file)) return fail(res, 403);
+  if (fs.statSync(file, { throwIfNoEntry: false })?.isDirectory()) file = path.join(file, "index.html");
+  const st = fs.statSync(file, { throwIfNoEntry: false });
+  if (!st?.isFile()) return fail(res, 404);
+  const h = { ...HEAD, "Content-Type": TYPES[path.extname(file)] ?? "application/octet-stream", "Cache-Control": "no-cache", "Accept-Ranges": "bytes" };
+  let opts, status = 200, length = st.size;
+  if (req.headers.range !== undefined) {
+    const r = parseRange(req.headers.range, st.size);
+    if (!r) return fail(res, 416, { "Content-Range": `bytes */${st.size}` });
+    const [a, b] = r;
+    opts = { start: a, end: b }; status = 206; length = b - a + 1; h["Content-Range"] = `bytes ${a}-${b}/${st.size}`;
+  }
+  const stream = fs.createReadStream(file, opts);
+  stream.on("error", () => res.destroy());
+  res.on("close", () => stream.destroy());
+  res.writeHead(status, { ...h, "Content-Length": length });
+  stream.pipe(res);
 }
 
 /** sha256 + size check of every pinned file of the media manifests against the weights directory. Returns {checked, problems}. */
