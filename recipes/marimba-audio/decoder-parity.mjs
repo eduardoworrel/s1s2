@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Node CPU parity of the decoder questions (language, term) against the torch references of decoder_refs.py.
 //   node recipes/marimba-audio/decoder-parity.mjs --ref <dir with dec_ref.jsonl and af/> --weights <dir holding marimba-audio/>
-//        [--mode features|e2e] [--limit N] [--only id,id] [--out result.json] [--device cpu]
+//        [--mode features|e2e] [--manifest file] [--limit N] [--only id,id] [--out result.json] [--device cpu]
 // mode features: the decoder reads torch's `audio_features` (isolates the decoder build and the JS search).
 // mode e2e:      the JS mel and the ONNX tower make the features from the left-aligned window (adds the tower's difference).
 // Tolerances are those of spec/MULTIMODAL.md section 9.4; the summary says which hold. Heavy: tower 0.75 GB + decoder 0.4-0.7 GB.
@@ -17,7 +17,7 @@ const mode = opt("--mode", "features"), limit = Number(opt("--limit", 1e9)), onl
 const rows = fs.readFileSync(path.join(refDir, "dec_ref.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !only || only.includes(r.id)).slice(0, limit);
 const f32 = (f) => { const b = fs.readFileSync(f); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 
-const model = await loadMedia({ manifest: path.join(ROOT, "manifests/marimba-audio.json"), device: opt("--device", "cpu"), localDirs: { "local/marimba-audio-web": path.join(wdir, "marimba-audio") }, onStatus: (m) => console.log("[load]", m) });
+const model = await loadMedia({ manifest: path.resolve(opt("--manifest", path.join(ROOT, "manifests/marimba-audio.json"))), device: opt("--device", "cpu"), localDirs: { "local/marimba-audio-web": path.join(wdir, "marimba-audio") }, onStatus: (m) => console.log("[load]", m) });
 console.log("loaded; windows", rows.length, "| mode", mode);
 const results = [];
 for (const r of rows) {

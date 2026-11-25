@@ -47,8 +47,9 @@ async function lastRow(L: any): Promise<Float32Array> {
   const d = typeof L.getData === "function" ? await L.getData(true) : L.data;
   const off = (S - 1) * V, out = new Float32Array(V);
   if (d instanceof Float32Array) { out.set(d.subarray(off, off + V)); return out; }
-  if (L.type === "float16" || d instanceof Uint16Array) { const t = halfTable(); for (let i = 0; i < V; i++) out[i] = t[(d as any)[off + i]]; return out; }
-  for (let i = 0; i < V; i++) out[i] = Number((d as any)[off + i]);   // Float16Array
+  // float16 logits arrive as raw bits (Uint16Array: Node, older browsers) or as a Float16Array (recent browsers), whose elements are numbers
+  if (d instanceof Uint16Array) { const t = halfTable(); for (let i = 0; i < V; i++) out[i] = t[d[off + i]]; return out; }
+  for (let i = 0; i < V; i++) out[i] = Number((d as any)[off + i]);
   return out;
 }
 
