@@ -83,6 +83,16 @@ async function pin(dir, rel) {
       audio.decoder.cpuBuild = { graph: await P("decoder/cpu/model.onnx"), data: await P("decoder/cpu/model.onnx.data") };
       audio.decoder.devices = ["webgpu", "wasm", "cpu"];
     }
+    audio.fidelity = {
+      ...audio.fidelity,
+      decoder: {
+        reference: "marimba-audio 0.1.2 (torch float32 CPU); 72 windows with the audio at index 0: 56 FLEURS pt-BR clips, 3 demo clips, 12 joined 8 s windows; 952 (window, term) pairs",
+        nodeCpuInt4: { build: "cpuBuild", languageArgmax: "72/72", maxAbsDiffTopProbability: 0.090, speechOnlyMaxAbsDiffTopProbability: 0.020, termFractionIdentical: 0.943, termFractionWithin02: 0.981, termDecisionEqual: 0.986, greedyTextEqual: 0.51, beamTextEqual: 0.26 },
+        chromeWebGPUInt4: { build: "graph", languageArgmax: "72/72", maxAbsDiffTopProbability: 0.035, speechOnlyMaxAbsDiffTopProbability: 0.015, termFractionIdentical: 0.943, termFractionWithin02: 0.982, termDecisionEqual: 0.985, greedyTextEqual: 0.47, beamTextEqual: 0.25 },
+        nodeCpuFloat32: { windows: 12, languageArgmax: "12/12", maxAbsDiffProbability: 7.5e-8, termFractionIdentical: 1, greedyTextEqual: 1, beamTextEqual: 1 },
+        note: "The largest probability difference is the synthetic noise clip (not speech); the tolerance of spec section 9.4 (0.02) is not met there. Float32 and torch agree to 1e-7, so the differences are int4.",
+      },
+    };
     audio.readers.language = { kind: "decoder-language", type: "choice", tap: "audio_features" };
     audio.readers.term = { kind: "decoder-term", type: "predicate", tap: "audio_features" };
     audio.notes = audio.notes.replace(" Language and spoken-word questions of Marimba need the Qwen3-ASR decoder and are not part of this package.", " language and term are answered by the Qwen3-ASR decoder over the tower's final vectors (spec section 9): language is the closed-set score over 30 languages, term the fraction of five hypotheses (greedy + beam 4) that contain the word, uncalibrated.");

@@ -164,6 +164,7 @@ itself differs from torch by <= 1.8e-4 on any hidden value, which moves a probab
 Read on the model and dataset cards (and the `LICENSE` file where the repository has one), November 2026. This is a record of what the
 sources state, not legal advice, and nothing here distributes weights.
 
+- The decoder build (section 9.3) is a derivative of `Qwen/Qwen3-ASR-0.6B` (Apache-2.0): a published copy needs that licence text, a notice that the weights were converted (renamed, int4-quantised, embedding table written as float16), and the source revision. The language and term logic is a port of `marimba-audio` 0.1.2 (Apache-2.0; no code is copied, behaviour is) and should be credited as such.
 - Apache-2.0 is declared by `Qwen/Qwen3-ASR-0.6B`, `charcot-ai/marimba` (head and readout weights; its code repository has an Apache-2.0
   `LICENSE`). Some of
   these Hugging Face repositories have no `LICENSE` file, only the card field.
@@ -256,15 +257,57 @@ cannot be tested at this sample size and is not claimed.
 
 ### 9.5 Measured
 
-(filled in after the runs)
+Reference windows: 72 (56 FLEURS pt-BR clips, 3 demo clips including a synthetic noise clip, 12 full windows of three joined clips); 952 (window, term) pairs
+(terms from the window's own transcript, from other clips, from the hypotheses, and "marimba"). Hardware: Apple M2 Pro, 16 GB, Chrome 158, onnxruntime-web 1.31.1, onnxruntime-node 1.30.0.
+
+Builds (int4, ONNX Runtime GenAI 0.19.0): WebGPU graph 0.35 GB (`model.onnx.data` 352,149,504 B) and CPU graph 0.41 GB (406,306,816 B), each with the shared
+float16 embedding table 311,164,928 B and 1.8 MB of token pieces. The package grows from 0.75 GB to 1.41 GB on WebGPU (+ 0.41 GB if the CPU build is shipped too).
+
+Equivalence of the rewrite (float32): the plain Qwen3 checkpoint and the original thinker give logits that differ by at most 5.2e-4 (logit magnitude up to 34), same arg max
+at every position (3 windows). The float32 ONNX build, read by the library on Node CPU, against torch (12 windows): language probability within 7.5e-8, greedy and
+beam texts identical on every window, term fractions identical on every pair. The JavaScript beam search is therefore the Hugging Face one; every difference below comes from int4.
+
+| run (int4) | windows | language code | top probability, largest abs diff | term fraction identical / within 0.2 | term decision | greedy / beam text equal |
+|---|---|---|---|---|---|---|
+| Node CPU, CPU build, torch `audio_features` in | 72 | 72 / 72 | 0.090 (noise clip; speech only: 0.020) | 94.3 % / 98.1 % | 98.6 % | 51 % / 26 % |
+| Node CPU, CPU build, end to end (JS mel, ONNX tower) | 72 | 72 / 72 | 0.092 (noise clip; speech only: 0.018) | 94.3 % / 97.7 % | 98.3 % | 54 % / 25 % |
+| Chrome WebGPU, WebGPU build, torch `audio_features` in | 72 | 72 / 72 | 0.035 (noise clip; speech only: 0.015) | 94.3 % / 98.2 % | 98.5 % | 47 % / 25 % |
+| Chrome WebGPU against Node CPU (two builds) | 72 | 72 / 72 | 0.055 | 98.1 % / 99.7 % | 99.7 % | 72 % / 50 % |
+
+The `audio_features` of the left-aligned window from the JavaScript mel and the ONNX tower differ from torch's by at most 3.2e-5 (tolerance 2e-3).
+Language and term in Chrome WASM (CPU build; 6 windows): language code 6 / 6, all term gates met on those windows.
+
+Against the tolerances of 9.4: every row is met **except** "probability of the most probable code <= 0.02": it holds on every speech window of the WebGPU build (largest 0.015)
+and of the end-to-end CPU run (0.018), fails by 0.0001 on one speech window of the CPU run with torch features (0.0201), and fails on the noise clip in every int4 run
+(torch gives English 0.76 there, a spread-out distribution; int4 gives 0.85). The tolerance was not changed. Equality of text is low for int4 (greedy about half, beams a quarter):
+the differences are spelling and a word here and there, which is why the term gates are on the fraction and the decision.
+
+Cost (Chrome, WebGPU, median of 8 windows each; the tower is warm):
+
+| step | joined 8 s window | short clip (4-8 s of audio) |
+|---|---|---|
+| log-mel (JavaScript) | 156 ms | 149 ms |
+| tower | 72 ms | 72 ms (+ 214 ms for the left-aligned pass) |
+| decoder prompt (open) | 1 ms | 215 ms (first prefix) |
+| language (prefill + two extra steps) | 126 ms | 126 ms |
+| term: greedy (25-29 tokens) | 355 ms | 322 ms |
+| term: four beams | 1.36 s | 1.10 s |
+| term (greedy + beams) | 1.66 s | 1.41 s |
+| mel + tower + language + term | 2.03 s | 1.97 s |
+
+Node CPU (CPU build): language 0.17 s, term 1.2-1.3 s per window. Chrome WASM (CPU build, 2 short clips): tower 0.51 s (+ 0.58 s left-aligned), language 1.9 s,
+term 36.7 s (greedy 8.2 s, beams 28.7 s). Memory: Chrome with the tower and the decoder loaded, 3.3 GB resident in all processes (4.7 GB right after loading; GPU process 0.4-0.5 GB);
+the page took 4.3 s to load 1.4 GB from local files.
 
 ### 9.6 Limits of the decoder questions
 
-- Only Portuguese audio was run (the clips available). The other 29 languages are the reference's behaviour, not checked here, and the two-token
+- Only Portuguese audio was run (the clips available), plus one synthetic noise clip. The other 29 languages are the reference's behaviour, not checked here, and the two-token
   names (Cantonese, Macedonian) go through one extra decoding step that was not checked on their own audio.
 - Rare words, names and numbers: the hypotheses come from a 0.6B model; a term the model spells another way is "no". Not validated beyond the
   probe terms of 9.4.
 - Beam search was re-written (the reference uses the Hugging Face generation code); the hypotheses can differ in ties and spelling without a quality
   difference. The int4 graph and the float16 audio rows can reorder the beams. Equality of text is reported, not promised.
 - 8 s windows; Marimba itself calls longer context unvalidated.
+- int4 changes the text: about half of the greedy transcripts and a quarter of the beam transcripts differ from float32 torch (a word or a spelling), and the probability of the most probable language moved by up to 0.09 on a non-speech clip. A float32 build (2.4 GB) reproduces torch exactly (12 windows) and is the fallback if that matters.
+- The term takes 1.4-1.7 s per window on WebGPU and about 37 s on browser WASM: ask it on demand, not on every window.
 - `probability` of `term` is a fraction of five hypotheses, not a calibrated probability.
