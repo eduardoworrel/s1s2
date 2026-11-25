@@ -53,13 +53,16 @@ alias3-web (https://huggingface.co/aliasrobotics/alias3-web, revision 2ab2e601)
 Marimba (https://huggingface.co/charcot-ai/marimba, code https://github.com/Charcot-AI/marimba-api, revision ad374b4e)
   Copyright Charcot. Apache License 2.0 (license field of the model card).
   Ported behaviour: the audio readers (float16 rounding of the taps, pooling, Platt calibration, speech-head question and
-  mask) in src/media/ follow its reference implementation (the log-mel extractor reproduces the Qwen3-ASR one, tested against torch); the readout safetensors named in
+  mask; the language and spoken-term questions: language scores, hypotheses, term matching) in src/media/ follow its reference implementation (the log-mel extractor reproduces the Qwen3-ASR one, tested against torch); the readout safetensors named in
   manifests/marimba-audio.json are its files, used unchanged. Modified: reimplemented in JavaScript; nothing is copied verbatim.
+  The beam search of the term question follows the generation code of Hugging Face transformers 4.57.6 (Apache License 2.0), reimplemented in JavaScript.
 
 Qwen3-ASR-0.6B (https://huggingface.co/Qwen/Qwen3-ASR-0.6B, revision 5eb14417)
   Copyright Qwen Team, Alibaba Cloud. Apache License 2.0 (license field of the model card).
   The frozen audio encoder of the audio package, exported to ONNX by recipes/marimba-audio/export_tower.py (the weights are not
   in this repository).
+  Its text decoder is converted by `s1s2-convert asr-decoder` (converter/s1s2_convert/asr_decoder.py) into an ONNX Runtime GenAI build that
+  reads embeddings; the tensors are the checkpoint's, only renamed and quantized (the weights are not in this repository).
 
 The full Apache License 2.0 text is in converters/heads/s1s2_heads/refs/vendor/SGLANG_LICENSE
 and applies to the entries of this section. Model weights and heads keep the license of their source.
