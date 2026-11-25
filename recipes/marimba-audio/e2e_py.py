@@ -1,11 +1,11 @@
-"""Paridade de ponta a ponta em Python: mel do torch -> torre ONNX -> cabeça ONNX + leituras em numpy (mesma lógica do JS) vs decisões do torch."""
+"""End-to-end parity in Python: torch mel -> ONNX tower -> ONNX head + numpy readers (same logic as the JS) vs the torch decisions."""
 import json,numpy as np,onnxruntime as ort,time
 from marimba.readout import pool_layer,predict_readout
 from marimba._diarization import task_features,DiarizationReadout
 from safetensors.numpy import load_file
 from pathlib import Path
 S=sorted(Path.home().glob(".cache/huggingface/hub/models--charcot-ai--marimba/snapshots/*"))[0]
-ref=json.load(open("ref/ref.json")); W=json.load(open("../web/pesos.json"))
+ref=json.load(open("ref/ref.json")); W=json.load(open("../web/weights.json"))
 import base64; qpool=np.frombuffer(base64.b64decode(W["vad"]["qpool"]["b64"]),dtype=np.float32)[None]
 tower=ort.InferenceSession("audio_tower.onnx",providers=["CPUExecutionProvider"]); head=ort.InferenceSession("vad_head.onnx",providers=["CPUExecutionProvider"])
 M=128*800; melA=np.fromfile("ref/melA.f32",dtype=np.float32).reshape(56,128,800); melB=np.fromfile("ref/melB.f32",dtype=np.float32).reshape(56,128,800)
@@ -24,4 +24,4 @@ for i in range(56):
     rB.append((abs(same-r["same_p"]),abs(ch-r["change_p"]),float(np.abs(co-np.array(r["count_p"])).max())))
 a=np.array(rA);b=np.array(rB)
 res=dict(vad_p_maxdiff=a[:,0].max(),turn_p_maxdiff=a[:,1].max(),vad_score_maxdiff=a[:,2].max(),same_maxdiff=b[:,0].max(),change_maxdiff=b[:,1].max(),count_maxdiff=b[:,2].max(),tower_cpu_s_median=float(np.median(tt)))
-print(json.dumps(res,indent=1)); json.dump(res,open("../paridade_py_e2e.json","w"),indent=1)
+print(json.dumps(res,indent=1)); json.dump(res,open("../parity_py_e2e.json","w"),indent=1)

@@ -1,5 +1,5 @@
-"""Referências do torch: mel, janelas e decisões (voz ativa, turno, locutor) nos 56 clips.
-Conjunto A: janela de 8 s alinhada à direita (preenchida com zeros) do clip. Conjunto B: janelas cheias de 8 s feitas concatenando clips consecutivos (para os leitores de locutor, que só rodam com janela cheia)."""
+"""Torch references: mel, windows and decisions (voice activity, turn end, speaker) on the 56 clips.
+Set A: the clip as an 8 s window, right-aligned (zero-padded). Set B: full 8 s windows made by concatenating consecutive clips (for the speaker readers, which only run on a full window)."""
 import json,numpy as np,time
 from marimba import Marimba
 from marimba.audio import decode_audio,right_aligned_window

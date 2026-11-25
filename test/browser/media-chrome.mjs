@@ -2,7 +2,7 @@
 // Chrome / WebGPU check of the audio demo: parity with the torch references, ms per decision, memory, captures (desktop 1280,
 // phone 390), no horizontal scroll, no console error. NOT part of `npm test`: it loads gigabytes. Run it under the Mac's heavy-job lock:
 //   node test/browser/media-chrome.mjs audio <weights dir> <lab dir> [--out dir]
-// <weights dir>: holds marimba-audio/ (examples/README.md). <lab dir>: the reference directory (audio: porte/ref).
+// <weights dir>: holds marimba-audio/ (examples/README.md). <lab dir>: the reference directory (audio: audio/port/ref).
 // The server lives and dies inside this process; nothing is sent anywhere.
 import fs from "node:fs";
 import path from "node:path";
@@ -25,7 +25,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const rss = (re = "Google Chrome") => { try { return Number(execSync(`ps -axo rss,command | grep -i '${re}' | grep -v grep | awk '{s+=$1} END{print s/1024}'`).toString().trim().replace(",", ".")); } catch { return NaN; } };   // awk prints a decimal comma in pt_BR
 const gpuRss = () => rss("Google Chrome.*type=gpu-process");
 
-const srv = createMediaServer({ weights: path.resolve(weights), extra: { "/lab/audio/": path.join(lab, "audio/porte/ref") } });
+const srv = createMediaServer({ weights: path.resolve(weights), extra: { "/lab/audio/": path.join(lab, "audio/port/ref") } });
 await new Promise((r) => srv.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${srv.address().port}`;
 

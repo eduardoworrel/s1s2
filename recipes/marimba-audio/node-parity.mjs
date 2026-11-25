@@ -2,7 +2,7 @@
 // Node CPU parity of the s1s2 audio model against the torch Marimba references of the lab that made the weights (56 FLEURS pt-BR clips).
 // Heavy (loads the 746 MB tower, several GB of memory). Usage:
 //   node recipes/marimba-audio/node-parity.mjs <reference dir> [--write-fixtures <dir>] [--out result.json]
-// <reference dir> holds porte/ref/{ref.json,winA.f32,winB.f32,melA.f32,melB.f32} and resultado.json (see README.md).
+// <reference dir> holds port/ref/{ref.json,winA.f32,winB.f32,melA.f32,melB.f32} and result.json (layout in README.md).
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -13,10 +13,10 @@ const args = process.argv.slice(2);
 const lab = path.resolve(args[0]);
 const opt = (k) => { const i = args.indexOf(k); return i < 0 ? null : args[i + 1]; };
 const fixDir = opt("--write-fixtures"), outFile = opt("--out");
-const R = path.join(lab, "porte/ref");
+const R = path.join(lab, "port/ref");
 const f32 = (n) => { const b = fs.readFileSync(path.join(R, n)); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); };
 const ref = JSON.parse(fs.readFileSync(path.join(R, "ref.json")));
-const resultado = JSON.parse(fs.readFileSync(path.join(lab, "resultado.json")));
+const labRows = JSON.parse(fs.readFileSync(path.join(lab, "result.json")));
 const winA = f32("winA.f32"), winB = f32("winB.f32"), melA = f32("melA.f32"), melB = f32("melB.f32");
 const WIN = 128000, MEL = 128 * 800;
 
@@ -50,8 +50,8 @@ for (let i = 0; i < 56; i++) {
   ag("same_speaker@0.5", (g(dB, "same_speaker").decision === "yes") === (b.same_p >= 0.5));
   ag("speaker_change@0.5", (g(dB, "speaker_change").decision === "yes") === (b.change_p >= 0.5));
   ag("speaker_count argmax", cnt.indexOf(Math.max(...cnt)) === b.count_p.indexOf(Math.max(...b.count_p)));
-  const rr = resultado.find((x) => x.fn === a.fn);
-  if (rr) upd("voice_activity_p vs resultado.json", Math.abs(g(dA, "voice_activity").probability - rr.vad));
+  const rr = labRows.find((x) => x.fn === a.fn);
+  if (rr) upd("voice_activity_p vs result.json", Math.abs(g(dA, "voice_activity").probability - rr.vad));
   const m = mel(wa); let md = 0; for (let k = 0; k < MEL; k++) md = Math.max(md, Math.abs(m[k] - melA[i * MEL + k])); melMax = Math.max(melMax, md);
   for (const d of [dA, dB]) { timing.mel.push(d.cost.parts.mel); timing.tower.push(d.cost.parts.tower); timing.readers.push(d.cost.parts.readers); timing.ms.push(d.cost.ms); }
   if (i % 8 === 0) console.log(i, "vad", g(dA, "voice_activity").probability.toFixed(5), "ref", a.vad_p.toFixed(5), "turn", g(dA, "turn_end").probability.toFixed(5), "ref", a.turn_p.toFixed(5));

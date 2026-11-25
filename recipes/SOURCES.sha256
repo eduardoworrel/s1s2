@@ -1,10 +1,10 @@
-# sha256 of files copied verbatim from the reference runs (lab-run_browser.mjs and drive_browser.mjs were edited to read their paths from environment variables and are not listed)
+# sha256 of the recipe files as committed here: copied from the reference runs, then renamed (port/, weights.json, result.json, browser-*) and their comments and messages translated to English. browser-run.mjs and drive_browser.mjs also read their paths from environment variables and are not listed
 dc0def2eea54d95d3689ef5809052be482582cf1c843b202b597ecd7ac2b0f47  marimba-audio/e2e_py.py
 2f49bde6a3419d7c7f86b5d5a1584b27c42081aba53c3187ec59d327fe3b9d6a  marimba-audio/export_head.py
 cb63b035f13e4afb6e7941af54092aad5cd59bc295a7e5854c5131c355c86b11  marimba-audio/export_tower.py
-e96ee7452d89d1299913a304080613b604cd2f26c75a080c34c3558ab6cc6ee1  marimba-audio/lab-index.html
-a48fadeee473f746e1bb7eed1fa2fa97bee92b11a1729be539858b161e9a0932  marimba-audio/lab-marimba.js
-4eb184ce5f230f52a862cc8652688f45ee97a467850639d832aa304d4f50cc1a  marimba-audio/lab-mel.js
+e96ee7452d89d1299913a304080613b604cd2f26c75a080c34c3558ab6cc6ee1  marimba-audio/browser-index.html
+a48fadeee473f746e1bb7eed1fa2fa97bee92b11a1729be539858b161e9a0932  marimba-audio/browser-readers.js
+4eb184ce5f230f52a862cc8652688f45ee97a467850639d832aa304d4f50cc1a  marimba-audio/browser-mel.js
 ac49ade2da9a6f9e73a563ef15acae76e9d6411339891920243c47b1235bfbdc  marimba-audio/prep.py
 f6448108fb5a990fc03cc3fba17228ea91798b1e11f3426e2b6494ed0201e27c  marimba-audio/refs.py
 ebd8264518eee6e9dad5c0ceac933b319f1b3a2bf97fed3232c074bb1e539433  marimba-audio/run.py
