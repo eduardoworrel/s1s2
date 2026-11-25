@@ -18,6 +18,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = (f) => pathToFileURL(path.join(here, "..", "dist", f)).href;
 
+/** cmd.exe and PowerShell pass "dir/*.json" through as typed; expand the last path segment here. */
+function expand(a) {
+  if (!a.includes("*") || fs.existsSync(a)) return [a];
+  const dir = path.dirname(a), parts = path.basename(a).split("*");
+  const match = (f) => {
+    if (!f.startsWith(parts[0]) || !f.endsWith(parts.at(-1))) return false;
+    let i = parts[0].length;
+    for (const s of parts.slice(1)) { const j = f.indexOf(s, i); if (j < 0) return false; i = j + s.length; }
+    return true;
+  };
+  const hit = fs.existsSync(dir) ? fs.readdirSync(dir).filter(match).sort().map((f) => path.join(dir, f)) : [];
+  return hit.length ? hit : [a];
+}
+
 function usage(code = 2) {
   console.error(`usage:
   s1s2 validate <manifest.json | dir>... [--strict] [--manifest-only] [--root repo=dir]... [--json]
@@ -35,7 +49,7 @@ async function validate(args) {
     else if (a === "--json") json = true;
     else if (a === "--root") { const [k, v] = String(args[++i] ?? "").split("="); if (!k || !v) usage(); roots[k] = path.resolve(v); }
     else if (a.startsWith("--")) usage();
-    else paths.push(a);
+    else paths.push(...expand(a));
   }
   if (!paths.length) usage();
   const { validateManifestFile, findManifests, PACKAGE_SPEC_VERSION } = await import(dist("package.js"));
