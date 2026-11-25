@@ -4,7 +4,8 @@ import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-export { validateManifest, validateMediaManifest, ManifestError } from "../dist/index.js";
+export { validateManifest, ManifestError } from "../dist/index.js";
+export { validateMediaManifest, mediaProblems } from "../dist/media.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.join(HERE, "..");

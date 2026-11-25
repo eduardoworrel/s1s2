@@ -6,7 +6,8 @@
 // the manifest's, genai_config.json hidden/head sizes are compared with the manifest. A pinned file that is not present
 // is reported as "not present" (warning), or as an error with `strict`.
 
-import { validateManifest, validateMediaManifest, ManifestError, type Manifest, type PinnedFile } from "./manifest.js";
+import { validateManifest, ManifestError, type Manifest, type PinnedFile } from "./manifest.js";
+import { validateMediaManifest, mediaProblems } from "./media/manifest.js";
 import type { MediaManifest } from "./media/types.js";
 import { headScaleSource } from "./readout.js";
 import { loadAnyHead } from "./heads/index.js";
@@ -92,6 +93,7 @@ export async function validateManifestFile(file: string, o: ValidateOptions = {}
   const isMedia = Array.isArray(m?.modalities) && !m.modalities.includes("text");
   try { if (isMedia) media = validateMediaManifest(m); else man = validateManifest(m); }
   catch (e) { if (e instanceof ManifestError) r.errors.push(...e.problems.map((x) => `manifest: ${x}`)); else throw e; }
+  if (man && (m.modalities !== undefined || m.audio !== undefined)) r.errors.push(...mediaProblems(m, false).map((x) => `manifest: ${x}`));   // the media blocks of a text + audio manifest
   if (man && !o.manifestOnly) await checkFiles(man, path.dirname(path.resolve(file)), o, r);
   if (media && !o.manifestOnly) await checkMediaFiles(media, path.dirname(path.resolve(file)), o, r);
   r.ok = r.errors.length === 0;

@@ -103,7 +103,7 @@ Outros projetos já fazem decisão tipada numa passada, entre eles o open-jev, o
 Além de texto, a biblioteca lê um **pacote de áudio** (codificador Qwen3-ASR-0.6B congelado com leituras do Marimba). As respostas são as mesmas (`probability`, `margin`, `rawMargin`), com uma passada para qualquer número de perguntas de áudio.
 
 ```js
-import { loadMedia } from "@s1s2/web";
+import { loadMedia } from "@s1s2/web/media";
 
 const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
 const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });

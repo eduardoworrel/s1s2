@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { schemaProblems, validateManifestFile, findManifests } from "../dist/package.js";
-import { validateManifest, validateMediaManifest } from "../dist/index.js";
+import { validateManifest } from "../dist/index.js";
+import { validateMediaManifest } from "../dist/media.js";
 import { CT0, clone, toyManifest } from "./helpers.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));

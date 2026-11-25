@@ -3,13 +3,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { validateManifest, validateMediaManifest, ManifestError } from "./media-helpers.mjs";
+import { validateManifest, validateMediaManifest, mediaProblems, ManifestError } from "./media-helpers.mjs";
 import { clone, CT0 } from "./helpers.mjs";
 import { schemaProblems } from "../dist/package.js";
 
 const load = (n) => JSON.parse(readFileSync(new URL(`../manifests/${n}`, import.meta.url), "utf8"));
 const AUDIO = load("marimba-audio.json");
-const problems = (m) => { try { validateMediaManifest(m); return []; } catch (e) { assert.ok(e instanceof ManifestError); return e.problems; } };
+const problems = (m) => { try { validateMediaManifest(m); return []; } catch (e) { assert.equal(e.name, "ManifestError"); return e.problems; } };   // dist/media.js is its own bundle, like dist/manifest.js: its ManifestError is not the root's class, so compare the name
 
 test("the media manifest validates (schema and rules)", async () => {
   assert.deepEqual(problems(AUDIO), []);
@@ -34,6 +34,15 @@ test("text + audio: a text manifest with an audio block is valid text and media;
   assert.doesNotThrow(() => validateManifest(m));
   const bad = { ...clone(CT0), audio: clone(AUDIO.audio) };
   assert.throws(() => validateManifest(bad), (e) => e.problems.some((x) => /audio: present, but modalities/.test(x)));
+});
+
+test("text + audio: the blocks of the audio part are checked in full by mediaProblems / `s1s2 validate`, not by the text path", async () => {
+  const m = { ...clone(CT0), modalities: ["text", "audio"], audio: clone(AUDIO.audio) };
+  assert.deepEqual(mediaProblems(m, false), []);
+  m.audio.readers.turn_end.tap = "h99";
+  assert.ok(mediaProblems(m, false).some((x) => /tap/.test(x)));
+  assert.throws(() => validateManifest({ ...clone(CT0), modalities: ["text", "video"] }), (e) => e.problems.some((x) => /modalities/.test(x)));
+  assert.throws(() => validateManifest({ ...clone(CT0), modalities: ["text"], audio: clone(AUDIO.audio) }), (e) => e.problems.some((x) => /audio: present/.test(x)));
 });
 
 test("a media manifest is refused by the text path with a pointer to the media path", () => {

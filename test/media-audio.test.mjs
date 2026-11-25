@@ -12,10 +12,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import {
-  createLogMel, melFilters, f16round, f16roundSoft, frameCenter, pooledFeature, createPooledReader, rightAlign, frameMask,
-  parseSafetensors, AudioModel, validateMediaManifest, Files, f16ToF32,
-} from "../dist/index.js";
+import { createLogMel, melFilters, f16round, f16roundSoft, frameCenter, pooledFeature, createPooledReader, rightAlign, frameMask, AudioModel, validateMediaManifest } from "../dist/media.js";
+import { parseSafetensors, Files, f16ToF32 } from "../dist/index.js";
 import { safetensors, fixtureF32, audioMeta, audioWeightsDir, ROOT } from "./media-helpers.mjs";
 
 const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, "manifests/marimba-audio.json"), "utf8"));
@@ -290,4 +288,15 @@ test("all 56 windows through the real tower on Node CPU (opt-in: S1S2_AUDIO_FULL
   const r = JSON.parse(readFileSync(out, "utf8"));
   for (const [k, v] of Object.entries(r.maxAbsDiff)) assert.ok(v <= (k.startsWith("log-mel") ? TOL_MEL : TOL_P), `${k}: ${v}`);
   for (const v of Object.values(r.agreement)) assert.equal(v, 56);
+});
+
+test("the media code is its own entry point: the text API (root, bundle) does not carry it", async () => {
+  const root = await import("../dist/index.js"), media = await import("../dist/media.js");
+  for (const n of ["loadMedia", "AudioModel", "createLogMel", "createPooledReader", "f16round", "rightAlign", "frameMask", "pinnedProblems", "mediaProblems", "validateMediaManifest"])
+    assert.equal(n in root, false, `${n} leaked into the root API`);
+  for (const n of ["loadMedia", "AudioModel", "loadAudio", "validateMediaManifest"]) assert.equal(typeof media[n], "function", n);
+  const bundle = readFileSync(path.join(ROOT, "dist/index.js"), "utf8");
+  for (const code of ["createLogMel", "createPooledReader", "f16roundSoft"]) assert.equal(bundle.includes(code), false, `${code} is bundled into dist/index.js`);
+  const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  assert.equal(pkg.exports["./media"].default, "./dist/media.js");
 });

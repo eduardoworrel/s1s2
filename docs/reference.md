@@ -382,7 +382,7 @@ checks `device === "wasm"` on `ort-wasm-simd-threaded.wasm` plus one decision.
 
 ## Media (audio; experimental)
 
-`loadMedia({ manifest, baseUrls | localDirs, modules, device, allowUnverified })` loads a media package (a manifest whose
+From `@s1s2/web/media` (its own entry point: the text API does not carry the media code), `loadMedia({ manifest, baseUrls | localDirs, modules, device, allowUnverified })` loads a media package (a manifest whose
 `modalities` has no `"text"`) and returns an `AudioModel`.
 
 - `model.decide({ audio, questions })` returns `{ answers, cost }`. An answer is a `PredicateAnswer` or a `ChoiceAnswer`

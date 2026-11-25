@@ -1,7 +1,7 @@
 // loadMedia: read a media manifest (modalities ["audio"]), check its pinned files and return the model.
 
 import { Files, type FilesOptions } from "../files.js";
-import { validateMediaManifest } from "../manifest.js";
+import { validateMediaManifest } from "./manifest.js";
 import type { MediaManifest } from "./types.js";
 import { detectPlatform } from "../runtime.js";
 import { loadAudio, AudioModel } from "./audio.js";

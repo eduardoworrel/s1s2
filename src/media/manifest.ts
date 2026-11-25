@@ -2,7 +2,8 @@
 // say (a reader's tap exists, spans fit the window, tensor names are given) live here; the structure is in
 // spec/s1s2-manifest.schema.json. validateMediaManifest / validateManifest (src/manifest.ts) call mediaProblems.
 
-import { MODALITIES } from "./types.js";
+import { MODALITIES, type MediaManifest } from "./types.js";
+import { ManifestError, MANIFEST_SCHEMA, provenanceProblems } from "../manifest.js";
 
 const HEX64 = /^[0-9a-f]{64}$/, SHA1 = /^[0-9a-f]{40}$/;
 const isObj = (x: any) => !!x && typeof x === "object" && !Array.isArray(x);
@@ -106,4 +107,16 @@ function audioProblems(a: any, p: string[]): void {
     else if (g.kind !== "mean-std") p.push(`${at}.pooling.kind: "tail-mean" | "pair" | "pair-split" | "mean-std"`);
     if (r.kind === "pooled-mlp" && g.kind === "mean-std") p.push(`${at}: the MLP reader is specified for pair features`);
   }
+}
+
+/** Validate a media package manifest (no text sections; `modalities` lists "audio"). Throws ManifestError. */
+export function validateMediaManifest(m: any): MediaManifest {
+  const p: string[] = [];
+  if (!m || typeof m !== "object" || Array.isArray(m)) throw new ManifestError(["manifest: expected an object"]);
+  if (m.schema !== MANIFEST_SCHEMA) p.push(`schema: unsupported schema id ${JSON.stringify(m.schema)}; expected "${MANIFEST_SCHEMA}"`);
+  if (typeof m.id !== "string" || !m.id) p.push("id: non-empty string");
+  p.push(...mediaProblems(m, true));
+  if (m.provenance !== undefined) provenanceProblems(m.provenance, p);
+  if (p.length) throw new ManifestError(p);
+  return m as MediaManifest;
 }

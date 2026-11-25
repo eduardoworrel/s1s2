@@ -2,8 +2,7 @@
 // file sha256s, hidden size, prompt template, marker token ids + strings, readout tokens,
 // head files, per-build fidelity numbers). Validated at load; mismatches fail loudly.
 
-import { mediaProblems } from "./media/manifest.js";
-import type { MediaManifest } from "./media/types.js";
+import { MODALITIES } from "./media/types.js";
 
 export const MANIFEST_SCHEMA = "s1s2.manifest/1";
 
@@ -315,7 +314,7 @@ export function validateManifest(m: any): Manifest {
   // Media packages (spec/MULTIMODAL.md): a manifest without "text" in `modalities` has no text sections and goes to
   // validateMediaManifest / loadMedia. With "text" it is a text manifest and its media blocks are checked below.
   if (m.modalities !== undefined && Array.isArray(m.modalities) && !m.modalities.includes("text"))
-    throw new ManifestError(["modalities: this manifest has no \"text\"; it is a media package: use loadMedia() / validateMediaManifest() (spec/MULTIMODAL.md)"]);
+    throw new ManifestError(["modalities: this manifest has no \"text\"; it is a media package: use loadMedia() / validateMediaManifest() from \"@s1s2/web/media\" (spec/MULTIMODAL.md)"]);
   need(m.schema === MANIFEST_SCHEMA, `schema: unsupported schema id ${JSON.stringify(m.schema)}; expected "${MANIFEST_SCHEMA}"`);
   need(str(m.id), "id: non-empty string");
   need(isObj(m.base) && str(m.base?.repo), "base.repo: string");
@@ -480,7 +479,11 @@ export function validateManifest(m: any): Manifest {
   }
   if (m.license !== undefined) need(str(m.license) && m.license.trim().length > 0, "license: non-empty SPDX expression");
   if (m.provenance !== undefined) provenanceProblems(m.provenance, p);
-  if (m.modalities !== undefined || m.audio !== undefined) p.push(...mediaProblems(m, false));
+  // Only the cheap rules here, so the text entry points carry no media code; the audio block of a text + audio manifest is
+  // checked in full by `s1s2 validate` and by validateMediaManifest ("@s1s2/web/media").
+  if (m.modalities !== undefined) need(Array.isArray(m.modalities) && m.modalities.length > 0 && m.modalities.every((x: any) => MODALITIES.includes(x)) && new Set(m.modalities).size === m.modalities.length, `modalities: a non-empty list of distinct values among ${MODALITIES.join(", ")}`);
+  if (m.audio !== undefined) need(Array.isArray(m.modalities) && m.modalities.includes("audio"), 'audio: present, but modalities does not list "audio"');
+  if (Array.isArray(m.modalities) && m.modalities.includes("audio")) need(m.audio !== undefined, 'audio: required by modalities "audio"');
   if (m.confidence !== undefined) need(isObj(m.confidence) && ["C1", "C3", "C4", "C5", "C6", "C7", "tbd-007"].includes(m.confidence.definition), 'confidence.definition: "C1" | "C3" | "C4" | "C5" | "C6" | "C7" | "tbd-007" (spec 5.1)');
   if (m.tasks !== undefined) {
     if (!isObj(m.tasks)) p.push("tasks: object of named tasks");
@@ -604,16 +607,4 @@ export function fileUrl(repo: string, revision: string, path: string, baseUrl?: 
   if (/^https:\/\//.test(path)) return path;
   if (baseUrl) return new URL(path, baseUrl.endsWith("/") ? baseUrl : baseUrl + "/").href;
   return `https://huggingface.co/${repo}/resolve/${revision}/${path}`;
-}
-
-/** Validate a media package manifest (no text sections; `modalities` lists "audio"). Throws ManifestError. */
-export function validateMediaManifest(m: any): MediaManifest {
-  const p: string[] = [];
-  if (!m || typeof m !== "object" || Array.isArray(m)) throw new ManifestError(["manifest: expected an object"]);
-  if (m.schema !== MANIFEST_SCHEMA) p.push(`schema: unsupported schema id ${JSON.stringify(m.schema)}; expected "${MANIFEST_SCHEMA}"`);
-  if (typeof m.id !== "string" || !m.id) p.push("id: non-empty string");
-  p.push(...mediaProblems(m, true));
-  if (m.provenance !== undefined) provenanceProblems(m.provenance, p);
-  if (p.length) throw new ManifestError(p);
-  return m as MediaManifest;
 }

@@ -8,7 +8,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
-const { loadMedia, createLogMel } = await import(path.join(ROOT, "dist/index.js"));
+const { loadMedia, createLogMel } = await import(path.join(ROOT, "dist/media.js"));
 const args = process.argv.slice(2);
 const lab = path.resolve(args[0]);
 const opt = (k) => { const i = args.indexOf(k); return i < 0 ? null : args[i + 1]; };

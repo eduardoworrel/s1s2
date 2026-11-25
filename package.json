@@ -27,6 +27,10 @@
       "types": "./dist/types/fidelity.d.ts",
       "default": "./dist/fidelity.js"
     },
+    "./media": {
+      "types": "./dist/types/media/index.d.ts",
+      "default": "./dist/media.js"
+    },
     "./manifest": {
       "types": "./dist/types/manifest.d.ts",
       "default": "./dist/manifest.js"

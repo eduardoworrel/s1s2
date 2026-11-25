@@ -103,7 +103,7 @@ Other projects already run typed decisions in one pass, including open-jev, the 
 Besides text, the library reads an **audio package** (a frozen Qwen3-ASR-0.6B encoder with Marimba readouts). Same answers (`probability`, `margin`, `rawMargin`), one pass for any number of audio questions.
 
 ```js
-import { loadMedia } from "@s1s2/web";
+import { loadMedia } from "@s1s2/web/media";
 
 const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
 const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
