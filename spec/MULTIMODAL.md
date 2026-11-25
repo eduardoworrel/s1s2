@@ -245,7 +245,11 @@ clips (absent) and from the hypotheses.
 | term decision at 0.5 | torch | identical on >= 95 % of pairs |
 | greedy hypothesis text, beam hypotheses text | torch | **reported**, not required |
 | end to end (JS mel -> tower -> decoder), same quantities | torch | the same as the three rows above |
-| Chrome WebGPU against Node CPU, same graph | Node CPU | language code identical on every window; probability abs <= 0.02; term decision identical on >= 95 % of pairs |
+| Chrome WebGPU against Node CPU (two builds of the same weights, see below) | Node CPU | language code identical on every window; probability abs <= 0.02; term decision identical on >= 95 % of pairs |
+
+The last row first said "same graph". That could not be: the WebGPU build fuses the per-head query/key norm into its attention node and only the
+WebGPU kernel runs it, so Node CPU and browser WASM run a second int4 build of the same weights (`cpuBuild`), quantised by the same builder for another
+provider. The numbers in the row were not changed; its wording was, after the first runs. Every run below says which build it used.
 
 Not a gate: time and memory (reported in 9.5). Marimba's own acceptance rule (change of AUROC at most 0.005, unchanged language accuracy against float32)
 cannot be tested at this sample size and is not claimed.

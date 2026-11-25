@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Chrome check of the decoder questions (language, term) through the audio demo page: parity with the torch references and with the Node CPU
 // run, ms per question, memory. NOT part of `npm test`: it loads gigabytes. Run it under the Mac's heavy-job lock:
-//   node test/browser/media-chrome-decoder.mjs <weights dir> <reference dir> [--device webgpu|wasm] [--limit N] [--node-results file.json] [--out dir]
+//   node test/browser/media-chrome-decoder.mjs <weights dir> <reference dir> [--device webgpu|wasm] [--limit N] [--node-results file.json] [--cost N] [--out dir]
 // <reference dir>: dec_ref.jsonl and af/ written by recipes/marimba-audio/decoder_refs.py. The server lives and dies inside this process.
 import fs from "node:fs";
 import path from "node:path";
@@ -70,6 +70,29 @@ try {
     result.vsNode = compare(asRef, rows, { mode: "features", baseline: "node-cpu" });
     console.log(JSON.stringify(result.vsNode.summary, null, 1));
   }
+  // cost of a window of audio: mel + tower (+ the left-aligned tower pass of a short clip) + language + term, split into the parts, N joined 8 s windows and N short clips
+  const costN = Number(opt("--cost", 0));
+  if (costN) result.cost = await page.evaluate(async ({ ref, N }) => {
+    const m = window.s1s2demo.model, dec = m.parts.decoder, f32 = async (u) => new Float32Array(await (await fetch(u)).arrayBuffer()), med = (x) => [...x].sort((a, b) => a - b)[x.length >> 1];
+    const pick = (re) => ref.filter((r) => re.test(r.id)).slice(0, N), out = {};
+    for (const [name, rows] of [["full8s", pick(/^j/)], ["short", pick(/^c/)]]) {
+      const T = { mel: [], tower: [], leftTower: [], open: [], language: [], greedy: [], beam: [], term: [], greedyTokens: [], total: [] };
+      for (const r of rows) {
+        const win = await f32(`/lab/dec/af/${r.id}.win.f32`), t0 = performance.now();
+        const enc = await m.encode({ samples: win.subarray(0, r.n).slice(), sampleRate: 16000 });
+        const tl = {}; await m.read(enc, ["language"], tl);
+        const tt = {}; await m.read(enc, [{ task: "term", term: "palavra" }], tt);
+        T.total.push(performance.now() - t0); T.mel.push(enc.ms.mel); T.tower.push(enc.ms.tower); T.leftTower.push(tl.leftTower ?? 0);
+        T.open.push(tl.decoderOpen); T.language.push(tl.language); T.term.push(tt.term);
+        const af = r.n >= 128000 ? enc.taps.audio_features : (await enc.left).audio_features, w = await dec.open(af);
+        let a = performance.now(); const g = await w.greedy(); T.greedy.push(performance.now() - a); T.greedyTokens.push(g.length);
+        a = performance.now(); await w.beam(); T.beam.push(performance.now() - a); await w.close();
+      }
+      out[name] = Object.fromEntries(Object.entries(T).map(([k, v]) => [k, med(v)])); out[name].n = rows.length;
+    }
+    return out;
+  }, { ref: refRows, N: costN });
+  if (result.cost) console.log(JSON.stringify(result.cost));
   // one full 8 s window through the page: mel + tower + (left tower) + language + term
   await page.click('button.ex[data-src="clips/clip-1.wav,clips/clip-2.wav"]');
   await page.waitForFunction(() => /ms/.test(document.querySelector("#cost")?.textContent ?? ""), null, { timeout: 5 * 60 * 1000 });
