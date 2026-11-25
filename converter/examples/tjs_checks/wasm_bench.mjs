@@ -3,7 +3,7 @@
 //   PLAYWRIGHT_DIR=<.../node_modules/playwright> node wasm_bench.mjs --mode wasm|webgpu --dir <pack folder> --items items.jsonl --ref ref.json --out out.json
 // wasm: WebGPU hidden (navigator.gpu undefined), cross-origin isolated (ORT default threads), ORT from transformers.js's
 // own onnxruntime-web. Numbers behind the cards' browser CPU line (tjs_card_checks.json, wasm). Memory: peak RSS of Chrome's processes (sampled every 0.5 s) and measureUserAgentSpecificMemory().
-import fs from "node:fs"; import http from "node:http"; import path from "node:path"; import { execFileSync } from "node:child_process";
+import fs from "node:fs"; import http from "node:http"; import path from "node:path"; import { execFile, execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = process.env.S1S2_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
@@ -62,19 +62,29 @@ const srv = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 await new Promise((ok) => srv.listen(0, "127.0.0.1", ok));
-// Peak RSS of this process's Chrome descendants.
+// Peak RSS of this process's Chrome descendants. Rows: pid, ppid, rss in KiB, name.
+const WIN = process.platform === "win32";
 const peak = { renderer: 0, total: 0 };
+const tally = (text) => {
+  const ps = text.trim().split(/\r?\n/).map((l) => l.trim().split(/\s+/));
+  const kids = new Set([process.pid]); let grew = true;
+  while (grew) { grew = false; for (const [p, pp] of ps) if (kids.has(+pp) && !kids.has(+p)) { kids.add(+p); grew = true; } }
+  let tot = 0, ren = 0;
+  for (const [p, , rss, ...c] of ps) if (kids.has(+p) && +p !== process.pid) { tot += +rss; if (/Renderer/.test(c.join(" "))) ren = Math.max(ren, +rss); }
+  peak.total = Math.max(peak.total, tot * 1024); peak.renderer = Math.max(peak.renderer, ren * 1024);
+};
+// Windows has no ps: the same rows come from CIM (working set). That call takes about a second, so it runs in the
+// background and less often, and never blocks the local server.
+const WIN_PS = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | ForEach-Object { '{0} {1} {2} {3}' -f $_.ProcessId,$_.ParentProcessId,[int64]($_.WorkingSetSize/1024),$(if ($_.CommandLine -match '--type=renderer') { 'Renderer' } else { 'chrome' }) }";
+let busy = false;
 const sample = () => {
   try {
-    const ps = execFileSync("ps", ["-axo", "pid=,ppid=,rss=,comm="], { encoding: "utf8" }).trim().split("\n").map((l) => l.trim().split(/\s+/));
-    const kids = new Set([process.pid]); let grew = true;
-    while (grew) { grew = false; for (const [p, pp] of ps) if (kids.has(+pp) && !kids.has(+p)) { kids.add(+p); grew = true; } }
-    let tot = 0, ren = 0;
-    for (const [p, , rss, ...c] of ps) if (kids.has(+p) && +p !== process.pid) { tot += +rss; if (/Renderer/.test(c.join(" "))) ren = Math.max(ren, +rss); }
-    peak.total = Math.max(peak.total, tot * 1024); peak.renderer = Math.max(peak.renderer, ren * 1024);
+    if (!WIN) return tally(execFileSync("ps", ["-axo", "pid=,ppid=,rss=,comm="], { encoding: "utf8" }));
+    if (busy) return; busy = true;
+    execFile("powershell", ["-NoProfile", "-NonInteractive", "-Command", WIN_PS], { encoding: "utf8", windowsHide: true }, (e, out) => { busy = false; if (!e) tally(out); });
   } catch { /* ignore */ }
 };
-const timer = setInterval(sample, 500);
+const timer = setInterval(sample, WIN ? 2000 : 500);
 const PW = process.env.PLAYWRIGHT_DIR;
 const pw = PW ? await import(pathToFileURL(path.join(PW, "index.mjs")).href) : await import("playwright");
 const args = MODE === "wasm" ? ["--disable-features=WebGPU", "--disable-gpu"] : ["--enable-unsafe-webgpu", "--enable-features=WebGPU", "--ignore-gpu-blocklist"];

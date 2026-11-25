@@ -2,8 +2,8 @@
 // usage: node snippet_test.mjs <tjs dist module> <models root> <repo> <items.jsonl> <ref.json> [tokonly]
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-const SC = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath, pathToFileURL } from "node:url";
+const SC = path.dirname(fileURLToPath(import.meta.url));
 const [tjsMod, root, repo, itemsPath, refPath, tokonly] = process.argv.slice(2);
 const T = await import(pathToFileURL(tjsMod).href);
 T.env.allowRemoteModels = false; T.env.localModelPath = root + "/";

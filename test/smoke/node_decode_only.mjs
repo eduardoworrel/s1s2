@@ -3,12 +3,13 @@
 import { S1S2 } from "../../dist/index.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const t0 = Date.now(), dt = () => ((Date.now() - t0) / 1000).toFixed(1) + "s";
 const repo = "eduardoworrel/alias3-micro-1026-ONNX-decode-only";
 const localDir = process.env.CT0_DECODE_ONLY_DIR ?? join(homedir(), ".cache/ct0-edge/huggingface.co", repo, "resolve/main");
 const lib = await S1S2.load({
-  manifest: new URL("../../manifests/ct0-alias3-micro-1026.json", import.meta.url).pathname,
+  manifest: fileURLToPath(new URL("../../manifests/ct0-alias3-micro-1026.json", import.meta.url)),
   build: "decode-only-q4", localDirs: { [repo]: localDir },
   onStatus: (m) => console.log(`[${dt()}] ${m}`),
 });

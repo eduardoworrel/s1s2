@@ -4,13 +4,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { schemaProblems, validateManifestFile, findManifests } from "../dist/package.js";
 import { validateManifest } from "../dist/index.js";
 import { CT0, clone, toyManifest } from "./helpers.mjs";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const repoManifests = readdirSync(join(ROOT, "manifests")).filter((f) => f.endsWith(".json")).map((f) => join(ROOT, "manifests", f));
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 
