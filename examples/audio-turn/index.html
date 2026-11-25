@@ -156,7 +156,7 @@ function drawWave(x) {
 const pct = (v) => `${(v * 100).toFixed(1)} %`;
 function show(card, a) {
   const el = $(`[data-task="${card}"]`), big = el.querySelector(".big"), bar = el.querySelector(".bar i"), note = el.querySelector(".muted");
-  if (!a || !a.available) { big.textContent = "-"; big.className = "big na"; bar.style.width = "0"; note.textContent = a?.reason ? T.needs : ""; return; }
+  if (!a || !a.available) { big.textContent = "-"; big.className = "big na"; bar.style.width = "0"; note.textContent = a?.reason ? (/^needs a full window/.test(a.reason) ? T.needs : a.reason) : "";   // only a short window gives "needs 8 s"; any other reason is shown as the library states it return; }
   if (a.type === "choice") {
     big.textContent = a.choice; big.className = "big";
     note.textContent = `${T.margin} ${a.margin.toFixed(2)} · ${a.probabilities.map((p) => `${p.value}: ${pct(p.probability)}`).join(" · ")}`;
