@@ -88,13 +88,13 @@ import { loadMedia } from "../lib/media.js";
 
 const L = (new URLSearchParams(location.search).get("lang") ?? navigator.language).startsWith("pt") ? "pt" : "en";
 const T = {
-  en: { title: "Turn taking from audio", lead: "Is someone speaking, has the turn ended, who is it? One pass of a frozen speech encoder, in this tab.",
+  en: { title: "Turn taking from audio", lead: "Is someone speaking, has the turn ended, who is it, which language, was a word said? A frozen speech encoder and its decoder, in this tab.",
     load: "Load model", dec: "Language and word (+0.7 GB)", lang: "Language", word: "Spoken word", ask: "Check", ph: "a word", file: "Audio file", rec: "Record (8 s)", examples: "Examples", noise: "noise", two: "1 + 2 (8 s)",
     voice: "Voice", turn: "End of turn", same: "Same speaker", change: "Speaker change", count: "Speakers",
     yes: "yes", no: "no", margin: "margin", needs: "needs 8 s of audio", threshold: "decides at", ready: "Model ready", loading: "Loading",
     windowOf: (s, w) => `${s.toFixed(1)} s of audio, the last ${Math.min(s, w).toFixed(1)} s are read`, ms: "ms", pass: "one pass for all five",
     foot: "Nothing leaves this page. Example clips:", mic: "Microphone not available", rec1: "Recording…" },
-  pt: { title: "Troca de turno por áudio", lead: "Alguém fala, o turno acabou, quem é? Uma passada de um codificador de fala congelado, nesta aba.",
+  pt: { title: "Troca de turno por áudio", lead: "Alguém fala, o turno acabou, quem é, em que idioma, uma palavra foi dita? Um codificador de fala congelado e seu decodificador, nesta aba.",
     load: "Carregar modelo", dec: "Idioma e palavra (+0,7 GB)", lang: "Idioma", word: "Palavra dita", ask: "Verificar", ph: "uma palavra", file: "Arquivo de áudio", rec: "Gravar (8 s)", examples: "Exemplos", noise: "ruído", two: "1 + 2 (8 s)",
     voice: "Voz", turn: "Fim de turno", same: "Mesmo locutor", change: "Troca de locutor", count: "Locutores",
     yes: "sim", no: "não", margin: "margem", needs: "precisa de 8 s de áudio", threshold: "decide em", ready: "Modelo pronto", loading: "Carregando",
@@ -183,7 +183,7 @@ function show(card, a) {
   bar.style.width = `${(a.margin ?? 0) * 100}%`;
 }
 
-let enc = null;
+let enc = null, costBase = "";
 async function run() {
   if (!model || !samples) return;
   const five = ["voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count"], t0 = performance.now();
@@ -198,8 +198,9 @@ async function run() {
   $("#out").hidden = false;
   for (const a of d.answers) show(a.task, a);
   $("#term").disabled = $("#ask").disabled = false; $("[data-task=term] .big").textContent = ""; $("#hyp").textContent = "";
-  $("#cost").textContent = `${d.cost.device} · mel ${parts.mel.toFixed(0)} ${T.ms} + tower ${parts.tower.toFixed(0)} ${T.ms} + readers ${parts.readers.toFixed(1)} ${T.ms}`
+  costBase = `${d.cost.device} · mel ${parts.mel.toFixed(0)} ${T.ms} + tower ${parts.tower.toFixed(0)} ${T.ms} + readers ${parts.readers.toFixed(1)} ${T.ms}`
     + (parts.language !== undefined ? ` · ${(parts.leftTower ? `tower (left) ${parts.leftTower.toFixed(0)} ${T.ms} + ` : "")}${T.lang.toLowerCase()} ${(parts.decoderOpen + parts.language).toFixed(0)} ${T.ms}` : "");
+  $("#cost").textContent = costBase;
   window.s1s2demo.last = d;
   return d;
 }
@@ -211,7 +212,7 @@ async function ask() {
   try {
     const tm = {}, a = (await model.read(enc, [{ task: "term", term }], tm))[0];
     show("term", a);
-    $("#cost").textContent += ` · ${T.word.toLowerCase()} ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+    $("#cost").textContent = `${costBase} · ${T.word.toLowerCase()} ${((performance.now() - t0) / 1000).toFixed(1)} s`;
     window.s1s2demo.term = a;
     return a;
   } catch (e) { setStatus(String(e?.message ?? e)); } finally { $("#ask").disabled = false; }

@@ -97,6 +97,17 @@ try {
   await page.click('button.ex[data-src="clips/clip-1.wav,clips/clip-2.wav"]');
   await page.waitForFunction(() => /ms/.test(document.querySelector("#cost")?.textContent ?? ""), null, { timeout: 5 * 60 * 1000 });
   result.ui = await page.evaluate(() => ({ cost: document.querySelector("#cost").textContent, cards: [...document.querySelectorAll(".card")].map((c) => (c.dataset.task ?? "") + ": " + c.querySelector(".big")?.textContent + " | " + c.querySelector(".muted")?.textContent) }));
+  // the word box: a word that is not there, then a word of the first transcript
+  const askUi = async (w) => { await page.fill("#term", w); const t = Date.now(); await page.click("#ask"); await page.waitForFunction((x) => window.s1s2demo.term && window.s1s2demo.term.__w === x, w, { timeout: 5 * 60 * 1000 }).catch(() => {}); return Date.now() - t; };
+  await page.evaluate(() => { const a = window.s1s2demo.ask; window.s1s2demo.ask = async () => { const w = document.querySelector("#term").value.trim(), r = await a(); if (r) r.__w = w; return r; }; document.querySelector("#ask").onclick = () => window.s1s2demo.ask(); });
+  result.ui.askMissing = { ms: await askUi("zzzxq"), card: await page.evaluate(() => document.querySelector('[data-task="term"] .big').textContent + " | " + document.querySelector('[data-task="term"] .muted').textContent + " | " + document.querySelector("#hyp").textContent) };
+  const hyp = await page.evaluate(() => window.s1s2demo.term.hypotheses[0]);
+  const word = (hyp.normalize("NFKD").replace(/[^\p{L}]+/gu, " ").split(" ").filter((x) => x.length >= 4)[0]) ?? "";
+  result.ui.askPresent = { word, ms: await askUi(word), card: await page.evaluate(() => document.querySelector('[data-task="term"] .big').textContent + " | " + document.querySelector('[data-task="term"] .muted').textContent + " | " + document.querySelector("#hyp").textContent) };
+  await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(500);
+  result.phone = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
+  await page.screenshot({ path: path.join(OUT, `decoder-${device}-390.png`), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
   result.rss.peakAfterMB = rss(); result.rss.gpuProcessMB = rss("Google Chrome.*type=gpu-process");
   await page.screenshot({ path: path.join(OUT, `decoder-${device}-1280.png`), fullPage: true });
   await page.close();
