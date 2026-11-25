@@ -5,3 +5,10 @@ dist/
 __pycache__/
 *.egg-info/
 .venv/
+.weights/
+.capturas-multimodal/
+.capturas-multimodal-node-parity.json
+.capt-tmp/
+*.onnx
+*.onnx_data
+*.f32

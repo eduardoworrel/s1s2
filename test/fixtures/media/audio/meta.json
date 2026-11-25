@@ -1,0 +1,38 @@
+{
+ "note": "Windows of FLEURS pt-BR dev clips (google/fleurs, CC-BY-4.0; see ATTRIBUTION.md), the torch Marimba references (ref.json entries) and the tower outputs of the s1s2 JS mel + ONNX tower on CPU. h12/h18 are stored float16-rounded (the readers round to float16 first); h9 is exact float32.",
+ "windows": [
+  {
+   "key": "A0",
+   "set": "A",
+   "nValid": 106560,
+   "ref": {
+    "vad_score": 2.6113054752349854,
+    "vad_p": 0.9818799979092346,
+    "turn_score": 0.48759419091223055,
+    "turn_p": 0.46909271598436697,
+    "fn": "10165966771567591302.wav",
+    "n": 106560
+   }
+  },
+  {
+   "key": "B0",
+   "set": "B",
+   "nValid": 128000,
+   "ref": {
+    "vad_score": 3.5059292316436768,
+    "vad_p": 0.9953222645248735,
+    "turn_score": 0.9763184880836391,
+    "turn_p": 0.9783145296268803,
+    "same_p": 0.25087853440479324,
+    "change_p": 0.22952565550804138,
+    "count_p": [
+     0.26231159305565604,
+     0.19014037128684969,
+     0.5207337803158468,
+     0.02681425534164739
+    ],
+    "fn": "10165966771567591302.wav"
+   }
+  }
+ ]
+}

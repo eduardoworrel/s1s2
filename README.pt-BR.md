@@ -98,6 +98,22 @@ Referência da API e do manifesto: [`docs/reference.md`](docs/reference.md). Pad
 
 Outros projetos já fazem decisão tipada numa passada, entre eles o open-jev, o exemplo de decisão do wllama, o `tasks-decision` do MediaPipe e o `NonGenerativeSession` do ONNX Runtime GenAI. Mandar entradas de margem baixa para mais precisão já aparece na literatura, por exemplo em arXiv [2609.24322](https://arxiv.org/abs/2609.24322) e [2611.14418](https://arxiv.org/abs/2611.14418).
 
+## Áudio (experimental)
+
+Além de texto, a biblioteca lê um **pacote de áudio** (codificador Qwen3-ASR-0.6B congelado com leituras do Marimba). As respostas são as mesmas (`probability`, `margin`, `rawMargin`), com uma passada para qualquer número de perguntas de áudio.
+
+```js
+import { loadMedia } from "@s1s2/web";
+
+const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": "/weights/marimba-audio/" }, modules: { ort }, allowUnverified: true });
+const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
+// d.answers[i].decision / .probability / .margin ; d.cost: { ms, parts: { mel, tower, readers } }
+```
+
+- Áudio, Chrome WebGPU, 56 janelas FLEURS pt-BR: probabilidades a até 3,4e-5 do pacote Marimba em torch e a mesma decisão em 56 de 56; cerca de 0,2 s por janela (log-mel em JavaScript 116 ms, codificador 71 ms, cinco leituras 10 ms).
+- Fora do pacote: perguntas de idioma e de palavra dita em áudio (precisam do decodificador de ASR), perguntas de áudio em texto livre, política de margem para mídia. [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) traz o desenho, as tolerâncias e todos os limites; o mesmo arquivo lista os pontos em aberto e as licenças lidas nas fontes.
+- Os pesos **não estão publicados**: o manifest é `revision: "local"` e a demo aponta para uma pasta local. Demo: [`examples/audio-turno`](examples/audio-turno) (`node examples/serve-media.mjs --weights <pasta>`); como o pacote é feito: [`recipes/`](recipes).
+
 ## Estrutura
 
 - [`src/`](src): a biblioteca. `npm test` roda typecheck, build e testes de unidade. Os testes usam mocks e não baixam modelo. Ainda não há CI hospedado: rode `npm test` (e `python -m pytest` em `converter/`) antes de cada versão.

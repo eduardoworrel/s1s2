@@ -61,6 +61,7 @@ manifest's, `norm.bin` parses, and `genai_config.json` agrees with `hiddenSize` 
 | `tasks`, `escalation`, `evidence` | no | Sections 4.3, 8, 6.7. |
 | `confidence` | no | Section 5.1 (reserved hook). |
 | `license`, `provenance` | no | Section 9. |
+| `modalities`, `audio` | no | Inputs `decide` takes (default `["text"]`) and the audio block of a media package; a manifest without `"text"` has none of the text sections above. [`MULTIMODAL.md`](MULTIMODAL.md) (experimental). |
 | `lab`, `x-*` | no | Free notes / vendor extensions, ignored by the runtime. Converters keep source-format facts that have no field yet under `x-<format>`. |
 
 ## 3. Prompt layout and read positions

@@ -1,0 +1,19 @@
+# sha256 of files copied verbatim from the reference runs (lab-run_browser.mjs and drive_browser.mjs were edited to read their paths from environment variables and are not listed)
+dc0def2eea54d95d3689ef5809052be482582cf1c843b202b597ecd7ac2b0f47  marimba-audio/e2e_py.py
+2f49bde6a3419d7c7f86b5d5a1584b27c42081aba53c3187ec59d327fe3b9d6a  marimba-audio/export_head.py
+cb63b035f13e4afb6e7941af54092aad5cd59bc295a7e5854c5131c355c86b11  marimba-audio/export_tower.py
+e96ee7452d89d1299913a304080613b604cd2f26c75a080c34c3558ab6cc6ee1  marimba-audio/lab-index.html
+a48fadeee473f746e1bb7eed1fa2fa97bee92b11a1729be539858b161e9a0932  marimba-audio/lab-marimba.js
+4eb184ce5f230f52a862cc8652688f45ee97a467850639d832aa304d4f50cc1a  marimba-audio/lab-mel.js
+ac49ade2da9a6f9e73a563ef15acae76e9d6411339891920243c47b1235bfbdc  marimba-audio/prep.py
+f6448108fb5a990fc03cc3fba17228ea91798b1e11f3426e2b6494ed0201e27c  marimba-audio/refs.py
+ebd8264518eee6e9dad5c0ceac933b319f1b3a2bf97fed3232c074bb1e539433  marimba-audio/run.py
+
+# weight files pinned by the manifests (not in the repository): sha256  size  package/path
+d0ff159793d5ee691b3113223c776727a69c85f216a8fbe8f2ee2190095aa5bd  745697054  marimba-audio/audio_tower.onnx
+17bf8e53d57ee7f203ee93017a183ece4954f8b75787dee383fd07206f50a63e  9670121  marimba-audio/vad_head.onnx
+ff19dab1417afb106f21f5abe6f617023dae5c7bf83a8f2126f1030eb4ed191e  1024  marimba-audio/vad_question.f32
+908a2a1a6fd9770d031684aa47f2eb5f5cb748e5a8a4f3e5ca2c10c4988c2ee9  18348  marimba-audio/turn_end/readout.safetensors
+47a77387c8cee820b7174040a4b7cad8b5dc3f23ba6ff82e0cd2148b9b5b7ea6  22196  marimba-audio/diarization/same_speaker.safetensors
+e18ec6e25ba5c30b92de338808681aaf6ac9032250ab639b82ef5c7b6221a1d7  3672796  marimba-audio/diarization/speaker_change.safetensors
+a93128ba279ba2e0d13421bb00c6c0a62372cad2edb5f2a95cab2536645d3e8b  43644  marimba-audio/diarization/speaker_count.safetensors

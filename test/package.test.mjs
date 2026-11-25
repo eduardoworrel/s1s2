@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { schemaProblems, validateManifestFile, findManifests } from "../dist/package.js";
-import { validateManifest } from "../dist/index.js";
+import { validateManifest, validateMediaManifest } from "../dist/index.js";
 import { CT0, clone, toyManifest } from "./helpers.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -28,7 +28,7 @@ test("schema and validateManifest accept every manifest shipped in the repo", as
   for (const f of repoManifests) {
     const m = JSON.parse(readFileSync(f, "utf8"));
     assert.deepEqual(await schemaProblems(m), [], f);
-    validateManifest(m);
+    if (Array.isArray(m.modalities) && !m.modalities.includes("text")) validateMediaManifest(m); else validateManifest(m);   // media packages: spec/MULTIMODAL.md
   }
   assert.deepEqual(await schemaProblems(toyManifest()), []);
 });

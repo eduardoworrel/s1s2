@@ -367,7 +367,7 @@ checks `device === "wasm"` on `ort-wasm-simd-threaded.wasm` plus one decision.
 - Margin thresholds are per model, build, readout and task; none ships; measure one on your own build.
 - `to: "generate"` returns text; it does not turn that text into a decision.
 
-- Text input only (no images). Messages are flattened to `role: text` lines into the state slot.
+- `S1S2.load` / `decide()` take text only (no images, no audio): audio packages load with `loadMedia` (see [`spec/MULTIMODAL.md`](../spec/MULTIMODAL.md)). Messages are flattened to `role: text` lines into the state slot.
 - The tagged encoding reads fixed prompt structure; a manifest for a new model must state its markers, and the
   heads are trained for one template (CT0's choice/score heads expect CT0's question wording, hence the defaults).
 - A score head gives a scalar, not a distribution (`probabilities: null`, `confidence: null`).
@@ -379,3 +379,15 @@ checks `device === "wasm"` on `ort-wasm-simd-threaded.wasm` plus one decision.
 - Browser large-file checks trust Hub metadata (paths-info) rather than hashing gigabytes in the page.
 - Order inversion is measured on choice questions only (predicate and score have no option order in the tagged
   encoding).
+
+## Media (audio; experimental)
+
+`loadMedia({ manifest, baseUrls | localDirs, modules, device, allowUnverified })` loads a media package (a manifest whose
+`modalities` has no `"text"`) and returns an `AudioModel`.
+
+- `model.decide({ audio, questions })` returns `{ answers, cost }`. An answer is a `PredicateAnswer` or a `ChoiceAnswer`
+  (same `probability`, `confidence`, `margin`, `rawMargin`) plus `modality`, `task`, `decision` (by the reader's own threshold) and
+  `threshold`; a question the input cannot answer is `{ available: false, reason }`. `cost` = `{ ms, parts, passes, backend, device }`.
+- Audio: `questions` are task names (`voice_activity`, `turn_end`, `same_speaker`, `speaker_change`, `speaker_count`); `audio` is
+  mono float32 at 16 kHz (other rates are refused). `model.encode(audio)` runs the tower once, `model.read(encoding, tasks)` runs readers on it.
+- `validateMediaManifest`, `mediaProblems`; `s1s2 validate` checks media manifests too (schema, rules, pinned files).

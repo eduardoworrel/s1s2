@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en" data-weights="../weights/" data-manifest="../manifests/marimba-audio.json">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Turn taking from audio</title>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --line: #e7e5e4; --card: #fff; --yes: #166534; --yesbg: #dcfce7; --no: #9a3412; --nobg: #ffedd5; --accent: #1d4ed8; --bar: #d6d3d1; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --card: #292524; --yes: #86efac; --yesbg: #14532d; --no: #fdba74; --nobg: #431407; --accent: #93c5fd; --bar: #57534e; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 18px; }
+  section { margin: 0 0 18px; }
+  button, .btn { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  canvas { width: 100%; height: 84px; display: block; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .card h2 { font-size: .85rem; font-weight: 600; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .big { font-size: 1.6rem; font-weight: 700; }
+  .yes { color: var(--yes); } .no { color: var(--no); }
+  .bar { height: 8px; background: var(--bar); border-radius: 4px; margin: 8px 0 4px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  .na { color: var(--muted); }
+  #status { min-height: 1.4em; }
+  progress { width: 100%; }
+  input[type=file] { max-width: 100%; }
+  footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1 data-t="title"></h1>
+  <p class="lead" data-t="lead"></p>
+
+  <section>
+    <div class="row">
+      <button id="load" class="primary" data-t="load"></button>
+      <span id="status" class="muted" role="status"></span>
+    </div>
+  </section>
+
+  <section>
+    <div class="row">
+      <label class="btn"><span data-t="file"></span> <input id="file" type="file" accept="audio/*" hidden></label>
+      <button id="rec" data-t="rec"></button>
+      <span class="muted" data-t="examples"></span>
+      <button class="ex" data-src="clips/clip-1.wav">1</button>
+      <button class="ex" data-src="clips/clip-2.wav">2</button>
+      <button class="ex" data-src="clips/clip-3.wav">3</button>
+      <button class="ex" data-src="clips/noise.wav" data-t="noise"></button>
+      <button class="ex" data-src="clips/clip-1.wav,clips/clip-2.wav" data-t="two"></button>
+    </div>
+    <canvas id="wave" width="1400" height="168" aria-label="waveform"></canvas>
+    <div class="muted" id="what"></div>
+  </section>
+
+  <section id="out" class="grid" hidden>
+    <div class="card" data-task="voice_activity"><h2 data-t="voice"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
+    <div class="card" data-task="turn_end"><h2 data-t="turn"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
+    <div class="card" data-task="same_speaker"><h2 data-t="same"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
+    <div class="card" data-task="speaker_change"><h2 data-t="change"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
+    <div class="card" data-task="speaker_count"><h2 data-t="count"></h2><div class="big"></div><div class="bar"><i></i></div><div class="muted"></div></div>
+  </section>
+  <div class="muted" id="cost"></div>
+
+  <footer>
+    <span data-t="foot"></span>
+    <a href="clips/ATTRIBUTION.md">FLEURS, CC BY 4.0</a>
+  </footer>
+</main>
+
+<script type="module">
+import * as ort from "../vendor/ort/ort.webgpu.min.mjs";
+import { loadMedia } from "../lib/index.js";
+
+const L = (new URLSearchParams(location.search).get("lang") ?? navigator.language).startsWith("pt") ? "pt" : "en";
+const T = {
+  en: { title: "Turn taking from audio", lead: "Is someone speaking, has the turn ended, who is it? One pass of a frozen speech encoder, in this tab.",
+    load: "Load model (746 MB)", file: "Audio file", rec: "Record (8 s)", examples: "Examples", noise: "noise", two: "1 + 2 (8 s)",
+    voice: "Voice", turn: "End of turn", same: "Same speaker", change: "Speaker change", count: "Speakers",
+    yes: "yes", no: "no", margin: "margin", needs: "needs 8 s of audio", threshold: "decides at", ready: "Model ready", loading: "Loading",
+    windowOf: (s, w) => `${s.toFixed(1)} s of audio, the last ${Math.min(s, w).toFixed(1)} s are read`, ms: "ms", pass: "one pass for all five",
+    foot: "Nothing leaves this page. Example clips:", mic: "Microphone not available", rec1: "Recording…" },
+  pt: { title: "Troca de turno por áudio", lead: "Alguém fala, o turno acabou, quem é? Uma passada de um codificador de fala congelado, nesta aba.",
+    load: "Carregar modelo (746 MB)", file: "Arquivo de áudio", rec: "Gravar (8 s)", examples: "Exemplos", noise: "ruído", two: "1 + 2 (8 s)",
+    voice: "Voz", turn: "Fim de turno", same: "Mesmo locutor", change: "Troca de locutor", count: "Locutores",
+    yes: "sim", no: "não", margin: "margem", needs: "precisa de 8 s de áudio", threshold: "decide em", ready: "Modelo pronto", loading: "Carregando",
+    windowOf: (s, w) => `${s.toFixed(1)} s de áudio, os últimos ${Math.min(s, w).toFixed(1)} s são lidos`, ms: "ms", pass: "uma passada para as cinco",
+    foot: "Nada sai desta página. Clipes de exemplo:", mic: "Microfone indisponível", rec1: "Gravando…" },
+}[L];
+document.documentElement.lang = L;
+for (const e of document.querySelectorAll("[data-t]")) e.textContent = T[e.dataset.t];
+
+const $ = (s) => document.querySelector(s);
+const root = document.documentElement;
+const q = new URLSearchParams(location.search);
+const WEIGHTS = new URL((q.get("weights") ?? root.dataset.weights).replace(/\/?$/, "/"), location.href).href;     // where marimba-audio/ is served
+const MANIFEST = new URL(q.get("manifest") ?? root.dataset.manifest, location.href).href;
+const setStatus = (s) => { $("#status").textContent = s; };
+let model = null, samples = null;
+
+ort.env.wasm.wasmPaths = new URL("../vendor/ort/", location.href).href;
+ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency ?? 2);
+
+async function load() {
+  $("#load").disabled = true;
+  try {
+    const t0 = performance.now();
+    model = await loadMedia({
+      manifest: MANIFEST, modules: { ort }, allowUnverified: true,     // the demo server checked the sha256 of what it serves
+      baseUrls: { "local/marimba-audio-web": WEIGHTS + "marimba-audio/" },
+      onStatus: (m) => setStatus(`${T.loading}: ${m}`),
+    });
+    setStatus(`${T.ready} (${model.device}, ${((performance.now() - t0) / 1000).toFixed(1)} s)`);
+    window.s1s2demo.loadMs = performance.now() - t0;
+    if (samples) run();
+  } catch (e) { setStatus(String(e?.message ?? e)); $("#load").disabled = false; console.error(e); throw e; }
+}
+
+async function decodeMono16k(buf) {
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  try {
+    const a = await ctx.decodeAudioData(buf.slice(0));
+    const out = new Float32Array(a.length);
+    for (let c = 0; c < a.numberOfChannels; c++) { const d = a.getChannelData(c); for (let i = 0; i < out.length; i++) out[i] += d[i] / a.numberOfChannels; }
+    return out;
+  } finally { ctx.close(); }
+}
+
+function drawWave(x) {
+  const c = $("#wave"), g = c.getContext("2d"), W = c.width, H = c.height, win = 8 * 16000;
+  const cs = getComputedStyle(document.body);
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = cs.getPropertyValue("--accent");
+  const step = Math.max(1, Math.floor(x.length / W));
+  for (let px = 0; px < W; px++) {
+    let lo = 0, hi = 0;
+    for (let i = px * step; i < Math.min(x.length, (px + 1) * step); i++) { if (x[i] < lo) lo = x[i]; if (x[i] > hi) hi = x[i]; }
+    const y0 = H / 2 - hi * H * 0.9, y1 = H / 2 - lo * H * 0.9;
+    g.fillRect(px, y0, 1, Math.max(1, y1 - y0));
+  }
+  if (x.length > win) {          // dim what is not read: the model reads the last 8 s
+    g.fillStyle = cs.getPropertyValue("--bg"); g.globalAlpha = 0.7;
+    g.fillRect(0, 0, ((x.length - win) / x.length) * W, H); g.globalAlpha = 1;
+  }
+}
+
+const pct = (v) => `${(v * 100).toFixed(1)} %`;
+function show(card, a) {
+  const el = $(`[data-task="${card}"]`), big = el.querySelector(".big"), bar = el.querySelector(".bar i"), note = el.querySelector(".muted");
+  if (!a || !a.available) { big.textContent = "-"; big.className = "big na"; bar.style.width = "0"; note.textContent = a?.reason ? T.needs : ""; return; }
+  if (a.type === "choice") {
+    big.textContent = a.choice; big.className = "big";
+    note.textContent = `${T.margin} ${a.margin.toFixed(2)} · ${a.probabilities.map((p) => `${p.value}: ${pct(p.probability)}`).join(" · ")}`;
+  } else {
+    big.textContent = a.decision === "yes" ? T.yes : T.no; big.className = "big " + a.decision;
+    note.textContent = `p ${pct(a.probability)} · ${T.margin} ${a.margin.toFixed(2)}${a.threshold && a.threshold !== 0.5 ? ` · ${T.threshold} ${a.threshold}` : ""}`;
+  }
+  bar.style.width = `${(a.margin ?? 0) * 100}%`;
+}
+
+async function run() {
+  if (!model || !samples) return;
+  const d = await model.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count"] });
+  $("#out").hidden = false;
+  for (const a of d.answers) show(a.task, a);
+  const p = d.cost.parts;
+  $("#cost").textContent = `${d.cost.device} · mel ${p.mel.toFixed(0)} ${T.ms} + tower ${p.tower.toFixed(0)} ${T.ms} + readers ${p.readers.toFixed(1)} ${T.ms} · ${T.pass}`;
+  window.s1s2demo.last = d;
+  return d;
+}
+
+async function setSamples(x, label) {
+  samples = x; drawWave(x);
+  $("#what").textContent = `${label}: ${T.windowOf(x.length / 16000, 8)}`;
+  window.s1s2demo.samples = x;
+  return run();
+}
+async function fromUrls(list) {
+  const parts = [];
+  for (const u of list) parts.push(await decodeMono16k(await (await fetch(u)).arrayBuffer()));
+  const n = parts.reduce((s, p) => s + p.length, 0), x = new Float32Array(n); let o = 0;
+  for (const p of parts) { x.set(p, o); o += p.length; }
+  return setSamples(x, list.map((u) => u.split("/").pop()).join(" + "));
+}
+
+$("#load").onclick = load;
+$("#file").onchange = async (e) => { const f = e.target.files[0]; if (f) await setSamples(await decodeMono16k(await f.arrayBuffer()), f.name); };
+for (const b of document.querySelectorAll(".ex")) b.onclick = () => fromUrls(b.dataset.src.split(","));
+$("#rec").onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const rec = new MediaRecorder(stream), chunks = [];
+    rec.ondataavailable = (e) => chunks.push(e.data);
+    rec.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); $("#rec").disabled = false; await setSamples(await decodeMono16k(await new Blob(chunks).arrayBuffer()), "mic"); };
+    $("#rec").disabled = true; setStatus(T.rec1); rec.start(); setTimeout(() => rec.state === "recording" && rec.stop(), 8000);
+  } catch { setStatus(T.mic); }
+};
+
+window.s1s2demo = { load, fromUrls, setSamples, run, get model() { return model; } };
+window.dispatchEvent(new Event("s1s2demo-ready"));
+</script>
+</body>
+</html>

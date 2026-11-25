@@ -1,0 +1,62 @@
+<!doctype html><meta charset="utf-8"><title>Marimba na borda</title><pre id="log"></pre>
+<script type="module">
+import * as ort from "./node_modules/onnxruntime-web/dist/ort.all.min.mjs";
+import { carregarFiltros, logMel } from "./mel.js";
+import { carregarPesos, maskQuadros, turnEnd, locutor, vadProb } from "./marimba.js";
+const q = new URLSearchParams(location.search), ep = q.get("ep") || "wasm", N = +(q.get("n") || 56), TOWER = q.get("tower") || "../porte/audio_tower.onnx";
+const log = (...a) => { const s = a.join(" "); document.getElementById("log").textContent += s + "\n"; console.log(s); };
+ort.env.wasm.wasmPaths = new URL("./node_modules/onnxruntime-web/dist/", location.href).href; ort.env.wasm.numThreads = +(q.get("threads") || 4);
+const f32 = async (u) => new Float32Array(await (await fetch(u)).arrayBuffer());
+const stat = (a) => { const s = [...a].sort((x, y) => x - y); return { med: s[s.length >> 1], min: s[0], max: s[s.length - 1], mean: a.reduce((x, y) => x + y, 0) / a.length }; };
+async function main() {
+  const t00 = performance.now();
+  const [filt, pes, ref, winA, winB] = await Promise.all([fetch("mel_filters.json").then(r => r.json()), fetch("pesos.json").then(r => r.json()), fetch("../porte/ref/ref.json").then(r => r.json()), f32("../porte/ref/winA.f32"), f32("../porte/ref/winB.f32")]);
+  const F = carregarFiltros(filt), W = carregarPesos(pes);
+  const opts = { executionProviders: [ep], graphOptimizationLevel: "all" };
+  let t0 = performance.now(); const tower = await ort.InferenceSession.create(TOWER, opts); const tLoadTower = performance.now() - t0;
+  t0 = performance.now(); const head = await ort.InferenceSession.create("../porte/vad_head.onnx", opts); const tLoadHead = performance.now() - t0;
+  log("ep", ep, "carga torre ms", tLoadTower.toFixed(0), "cabeça ms", tLoadHead.toFixed(0));
+  const qpool = new ort.Tensor("float32", W.vad.qpool, [1, 256]);
+  const rowsA = [], rowsB = []; const WIN = 128000;
+  const encode = async (win) => { // mel + torre
+    let t = performance.now(); const mel = logMel(win, F); const tm = performance.now() - t;
+    t = performance.now(); const o = await tower.run({ mel: new ort.Tensor("float32", mel, [128, 800]) }); const tt = performance.now() - t;
+    return { o, tm, tt, mel };
+  };
+  // aquecimento (compilação de shaders / primeira inferência), fora da medição
+  const w0 = winA.subarray(0, WIN); t0 = performance.now(); { const e = await encode(w0); await head.run({ h9: e.o.h9, fmask: new ort.Tensor("float32", maskQuadros(WIN), [1, 100]), qpool }); } const tWarm = performance.now() - t0; log("primeira inferência (aquecimento) ms", tWarm.toFixed(0));
+  for (let i = 0; i < N; i++) {
+    const win = winA.subarray(i * WIN, (i + 1) * WIN), r = ref.A[i], n = r.n;
+    const e = await encode(win);
+    let t = performance.now(); const hs = await head.run({ h9: e.o.h9, fmask: new ort.Tensor("float32", maskQuadros(n), [1, 100]), qpool }); const th = performance.now() - t;
+    const score = hs.score.data[0]; t = performance.now();
+    const turn = turnEnd(e.o.h18.data, 104, n, W); const tr = performance.now() - t;
+    let mdif = 0; // paridade do mel contra o torch (conjunto A, 800 quadros)
+    rowsA.push({ fn: r.fn, vad_score: score, vad_p: vadProb(score, W), turn_p: turn.p, turn_score: turn.score, t_mel: e.tm, t_tower: e.tt, t_head: th, t_turn: tr, melSample: Array.from(e.mel.subarray(0, 0)) });
+    if (i % 10 === 0) log("A", i, r.fn, "vad", rowsA[i].vad_p.toFixed(4), "ref", r.vad_p.toFixed(4), "turno", turn.p.toFixed(4), "ref", r.turn_p.toFixed(4), "torre ms", e.tt.toFixed(0));
+  }
+  for (let i = 0; i < Math.min(N, +(q.get("nb") || N)); i++) {
+    const win = winB.subarray(i * WIN, (i + 1) * WIN); const e = await encode(win);
+    const t = performance.now(); const L = locutor(e.o.h12.data, 104, W); const tl = performance.now() - t;
+    const hs = await head.run({ h9: e.o.h9, fmask: new ort.Tensor("float32", maskQuadros(WIN), [1, 100]), qpool });
+    rowsB.push({ fn: ref.B[i].fn, same: L.same, change: L.change, count: L.count, t_loc: tl, t_tower: e.tt, vad_score: hs.score.data[0], turn_p: turnEnd(e.o.h18.data, 104, WIN, W).p });
+  }
+  // comparações
+  const cmp = (rows, key, rkey, R) => { let m = 0; rows.forEach((r, i) => { m = Math.max(m, Math.abs(r[key] - R[i][rkey])); }); return m; };
+  const A = ref.A.slice(0, rowsA.length), B = ref.B.slice(0, rowsB.length);
+  const agree = (rows, key, R, rk, th) => rows.filter((r, i) => (r[key] >= th) === (R[i][rk] >= th)).length;
+  const res = {
+    ep, ua: navigator.userAgent, n: rowsA.length, loadTowerMs: tLoadTower, loadHeadMs: tLoadHead, warmMs: tWarm,
+    vad_maxdiff_p: cmp(rowsA, "vad_p", "vad_p", A), vad_maxdiff_score: cmp(rowsA, "vad_score", "vad_score", A), vad_agree_0225: agree(rowsA, "vad_p", A, "vad_p", 0.225),
+    turn_maxdiff_p: cmp(rowsA, "turn_p", "turn_p", A), turn_agree_05: agree(rowsA, "turn_p", A, "turn_p", 0.5),
+    tMel: stat(rowsA.map(r => r.t_mel)), tTower: stat(rowsA.map(r => r.t_tower)), tHead: stat(rowsA.map(r => r.t_head)), tTurn: stat(rowsA.map(r => r.t_turn)),
+    perQ_vad_ms: stat(rowsA.map(r => r.t_mel + r.t_tower + r.t_head)), perQ_turn_ms: stat(rowsA.map(r => r.t_mel + r.t_tower + r.t_turn)),
+    perBoth_ms: stat(rowsA.map(r => r.t_mel + r.t_tower + r.t_head + r.t_turn)),
+    nB: rowsB.length,
+  };
+  if (rowsB.length) { res.same_maxdiff = cmp(rowsB, "same", "same_p", B); res.change_maxdiff = cmp(rowsB, "change", "change_p", B); res.count_maxdiff = Math.max(...rowsB.map((r, i) => Math.max(...r.count.map((v, k) => Math.abs(v - B[i].count_p[k]))))); res.count_argmax_agree = rowsB.filter((r, i) => r.count.indexOf(Math.max(...r.count)) === B[i].count_p.indexOf(Math.max(...B[i].count_p))).length; res.same_agree = agree(rowsB, "same", B, "same_p", 0.5); res.change_agree = agree(rowsB, "change", B, "change_p", 0.5); res.tLoc = stat(rowsB.map(r => r.t_loc)); }
+  res.totalMs = performance.now() - t00; res.rowsA = rowsA.map(r => ({ ...r, melSample: undefined })); res.rowsB = rowsB;
+  return res;
+}
+main().then(r => { window.__result = r; log("FIM"); }).catch(e => { window.__result = { erro: String(e && e.stack || e) }; log("ERRO", e && e.stack || e); });
+</script>
