@@ -50,5 +50,26 @@ alias3-web (https://huggingface.co/aliasrobotics/alias3-web, revision 2ab2e601)
   Vendored as a test reference: test/reference/alias3web-2ab2e60.mjs (head reader and norm from
   aliasweb.mjs). Modified: `export` keywords added and `norm` lifted out of its class; no arithmetic changed.
 
+Marimba (https://huggingface.co/charcot-ai/marimba, code https://github.com/Charcot-AI/marimba-api, revision ad374b4e)
+  Copyright Charcot. Apache License 2.0 (license field of the model card).
+  Ported behaviour: the audio readers (float16 rounding of the taps, pooling, Platt calibration, speech-head question and
+  mask) in src/media/ follow its reference implementation (the log-mel extractor reproduces the Qwen3-ASR one, tested against torch); the readout safetensors named in
+  manifests/marimba-audio.json are its files, used unchanged. Modified: reimplemented in JavaScript; nothing is copied verbatim.
+
+Qwen3-ASR-0.6B (https://huggingface.co/Qwen/Qwen3-ASR-0.6B, revision 5eb14417)
+  Copyright Qwen Team, Alibaba Cloud. Apache License 2.0 (license field of the model card).
+  The frozen audio encoder of the audio package, exported to ONNX by recipes/marimba-audio/export_tower.py (the weights are not
+  in this repository).
+
 The full Apache License 2.0 text is in converters/heads/s1s2_heads/refs/vendor/SGLANG_LICENSE
-and applies to the three entries above. Model weights and heads keep the license of their source.
+and applies to the entries of this section. Model weights and heads keep the license of their source.
+
+== Data under Creative Commons Attribution 4.0 (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/) ==
+
+FLEURS (https://huggingface.co/datasets/google/fleurs, arXiv:2205.12446)
+  Copyright Google. CC BY 4.0. Audio of the pt_br dev split is in examples/audio-turno/clips/ and
+  test/fixtures/media/audio/; the clips, the changes made and the attribution per file are in the ATTRIBUTION.md next to each.
+
+Smart Turn v3.2 training data (https://huggingface.co/datasets/pipecat-ai/smart-turn-data-v3.2-train)
+  Pipecat. CC BY 4.0 (license field of the dataset card). The turn-end readout of Marimba was trained on it. No data file is in
+  this repository; it is named because the readout weights used by the audio package derive from it (spec/MULTIMODAL.md, section 8).
