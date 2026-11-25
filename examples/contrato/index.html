@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contrato · Contract check</title>
+<script type="importmap">
+{ "imports": {
+  "onnxruntime-web/webgpu": "../vendor/ort/ort.webgpu.min.mjs",
+  "onnxruntime-web": "../vendor/ort/ort.webgpu.min.mjs",
+  "onnxruntime-common": "../vendor/ortc/index.js",
+  "@huggingface/transformers": "../vendor/tjs/transformers.web.js"
+} }
+</script>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --line: #e7e5e4; --card: #fff; --ok: #166534; --okbg: #dcfce7;
+          --no: #9a3412; --nobg: #ffedd5; --warnbg: #fef3c7; --warn: #78350f; --accent: #1d4ed8; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --card: #292524;
+          --ok: #86efac; --okbg: #14532d; --no: #fdba74; --nobg: #431407; --warnbg: #451a03; --warn: #fde68a; --accent: #93c5fd; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { font-weight: 600; font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  textarea { width: 100%; min-height: 150px; resize: vertical; font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+             padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .grow { flex: 1; }
+  button.primary { padding: 9px 18px; border-radius: 8px; border: 0; background: var(--accent); color: #fff; font-weight: 650; cursor: pointer; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.ghost { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; font-size: 13px; }
+  button.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 13px; }
+  input[type=range] { width: 160px; }
+  #status { color: var(--muted); font-size: 13px; margin-top: 10px; min-height: 1.5em; overflow-wrap: anywhere; }
+  .summary { display: flex; gap: 24px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+  .big { font-size: 34px; font-weight: 750; letter-spacing: -0.02em; }
+  .item { border-top: 1px solid var(--line); padding: 12px 0; }
+  .item:first-of-type { border-top: 0; }
+  .msg { overflow-wrap: anywhere; }
+  .meta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .pill { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+  .yes { background: var(--okbg); color: var(--ok); } .no { background: var(--nobg); color: var(--no); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; width: 110px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .cands { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 150px) 1fr 48px; gap: 4px 10px; align-items: center; font-size: 13px; }
+  .cands .bar { width: 100%; display: block; margin: 0; }
+  pre { margin: 8px 0 0; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+  .cmp > div { border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-width: 0; }
+  .cmp b { font-size: 24px; letter-spacing: -0.01em; }
+  textarea.nda { min-height: 220px; }
+  .gray { background: var(--line); color: var(--fg); } .amber { background: var(--warnbg); color: var(--warn); }
+  .quote { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0 0; color: var(--fg); font-size: 13px; overflow-wrap: anywhere; }
+  .quote.bad { border-left-color: var(--no); color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+  @media (max-width: 640px) { .big { font-size: 28px; } .cmp { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1 data-i="title"></h1>
+      <p class="sub" data-i="sub"></p>
+    </div>
+    <button class="ghost" id="lang" aria-label="language">EN</button>
+  </div>
+
+  <section class="card">
+    <label for="nda" data-i="input"></label>
+    <textarea id="nda" class="nda" spellcheck="false"></textarea>
+    <div class="row">
+      <input id="custom" type="text" class="grow" style="min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)" data-ph="custom">
+    </div>
+    <div class="row">
+      <label class="grow" style="margin:0"><span data-i="abstain"></span> <b id="thv">0.20</b>
+        <input type="range" id="th" min="0" max="0.9" step="0.05" value="0.2"></label>
+      <button class="primary" id="run" disabled data-i="loading"></button>
+    </div>
+    <div id="status"></div>
+  </section>
+
+  <section class="card" id="results" hidden></section>
+  <footer data-i="foot"></footer>
+</main>
+<script type="module">
+import * as ort from "onnxruntime-web/webgpu";
+import * as tjs from "@huggingface/transformers";
+import { S1S2 } from "../lib/index.js";
+
+const REPO = "eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2";
+const REV = "ac7e5cfa31b46e29c06842945fe69163b81fca5f"; // published revision; manifest.cnli.json declares the Entailment / Contradiction / Not mentioned choice head
+const params = new URLSearchParams(location.search);
+const MANIFEST = params.get("manifest") ?? `https://huggingface.co/${REPO}/resolve/${REV}/manifest.cnli.json`;
+const MAX_TOKENS = 2048; // the card: NDAs up to 2,048 tokens only
+
+// The head was trained on English NDAs and English hypotheses; the label is what the page shows, `h` is what the model reads.
+const CLAIMS = [
+  { pt: "Pode compartilhar com terceiros?", en: "May it be shared with third parties?", h: "Receiving Party may share some Confidential Information with third parties." },
+  { pt: "Pode compartilhar com funcionários?", en: "May it be shared with employees?", h: "Receiving Party may share some Confidential Information with its employees." },
+  { pt: "Deve devolver ou destruir ao fim?", en: "Must it be returned or destroyed at the end?", h: "Receiving Party shall destroy or return some Confidential Information upon the termination of Agreement." },
+  { pt: "Pode guardar cópia depois?", en: "May a copy be kept afterwards?", h: "Receiving Party may retain some Confidential Information even after the return or destruction of Confidential Information." },
+  { pt: "Proíbe engenharia reversa?", en: "Does it forbid reverse engineering?", h: "Receiving Party shall not reverse engineer any objects which embody Disclosing Party's Confidential Information." },
+  { pt: "Avisar se a lei obrigar a revelar?", en: "Notify if the law forces disclosure?", h: "Receiving Party shall notify Disclosing Party if it is required by law to disclose any Confidential Information." },
+  { pt: "Cobre informação dita de viva voz?", en: "Does it cover spoken information?", h: "Confidential Information may include verbally conveyed information." },
+  { pt: "Alguma obrigação continua após o fim?", en: "Does any duty survive the end?", h: "Some obligations of Agreement may survive termination of Agreement." },
+];
+const SAMPLE = `MUTUAL CONFIDENTIALITY AGREEMENT
+
+This Agreement is made between Alder Labs Ltd. ("Disclosing Party") and Birch Systems Inc. ("Receiving Party") for the purpose of evaluating a possible software partnership (the "Purpose").
+
+1. Confidential Information. "Confidential Information" means all technical and business information disclosed by the Disclosing Party in writing and marked "Confidential". Information disclosed orally is not Confidential Information unless it is confirmed in writing within thirty days.
+
+2. Use. The Receiving Party shall use the Confidential Information only for the Purpose and shall not use it for any other reason.
+
+3. Disclosure to personnel. The Receiving Party may disclose Confidential Information to its employees who need to know it for the Purpose and who are bound by confidentiality duties at least as strict as this Agreement.
+
+4. Third parties. The Receiving Party shall not disclose Confidential Information to any third party without the prior written consent of the Disclosing Party.
+
+5. Compelled disclosure. If the Receiving Party is required by law or court order to disclose Confidential Information, it shall give the Disclosing Party prompt written notice so that a protective order may be sought.
+
+6. Exclusions. Confidential Information does not include information that is public through no fault of the Receiving Party, that was already known to the Receiving Party, or that the Receiving Party develops independently without using the Confidential Information.
+
+7. Return of information. Within ten days after the Disclosing Party's written request, or after this Agreement ends, the Receiving Party shall return or destroy all Confidential Information. The Receiving Party may keep one archival copy solely to prove compliance with this Agreement.
+
+8. Reverse engineering. The Receiving Party shall not reverse engineer, decompile or disassemble any prototype or software supplied by the Disclosing Party.
+
+9. Term. This Agreement lasts two years from the date of signature. The duties in sections 2 and 4 survive for three years after it ends.
+
+10. Governing law. This Agreement is governed by the laws of the State of New York.`;
+
+const I18N = {
+  pt: { title: "Contrato", sub: "Cole um NDA em inglês: o modelo diz sim, não ou não menciona, com a margem.",
+    input: "Texto do contrato (inglês, até 2.048 tokens)", custom: "Sua afirmação, em inglês (opcional)", abstain: "Abster abaixo da margem",
+    loading: "Carregando modelo…", ready: "Verificar", nowebgpu: "Precisa de WebGPU (Chrome ou Edge recentes).", ready_s: "Modelo pronto. O texto não sai deste aparelho.",
+    err_load: "Não foi possível carregar o modelo: ", empty: "Cole o texto do contrato.", toolong: "Contrato longo demais: ",
+    Entailment: "Sim", Contradiction: "Não (diz o contrário)", "Not mentioned": "Não menciona", abstains: "abstém",
+    margin: "margem", see: "ver o que o modelo escolheu", hide: "esconder", quote: "mostrar o trecho", quoting: "buscando…",
+    q_ok: "Trecho (conferido no texto)", q_bad: "Não achei esse trecho no texto; não confie", seen_q: "Pergunta", seen_opts: "Opções", seen_pick: "Escolha",
+    seen_how: "Leitura", seen_how_v: "cabeça treinada (uma passada, sem gerar)", rawm: "margem bruta", tokens: "tokens", total: "total", per: "por afirmação",
+    foot: "Modelo: S5-nano ContractNLI + CLINC150 + SIB-200 (int4, 2,4 GB, baixa uma vez). Cartão: 78,1% de acerto balanceado no teste do ContractNLI, medido fora do navegador. O trecho é gerado pelo modelo e conferido contra o texto; a cabeça de evidência ainda não é usada. Não é parecer jurídico." },
+  en: { title: "Contract check", sub: "Paste an NDA: the model answers yes, no or not mentioned, with the margin.",
+    input: "Contract text (English, up to 2,048 tokens)", custom: "Your own claim, in English (optional)", abstain: "Abstain below margin",
+    loading: "Loading model…", ready: "Check", nowebgpu: "Needs WebGPU (recent Chrome or Edge).", ready_s: "Model ready. The text never leaves this device.",
+    err_load: "Could not load the model: ", empty: "Paste the contract text.", toolong: "Contract too long: ",
+    Entailment: "Yes", Contradiction: "No (says the opposite)", "Not mentioned": "Not mentioned", abstains: "abstains",
+    margin: "margin", see: "see what the model chose", hide: "hide", quote: "show the passage", quoting: "looking…",
+    q_ok: "Passage (checked against the text)", q_bad: "Could not find this passage in the text; do not trust it", seen_q: "Question", seen_opts: "Options", seen_pick: "Choice",
+    seen_how: "Reading", seen_how_v: "trained head (one pass, no generation)", rawm: "raw margin", tokens: "tokens", total: "total", per: "per claim",
+    foot: "Model: S5-nano ContractNLI + CLINC150 + SIB-200 (int4, 2.4 GB, downloaded once). Card: 78.1% balanced accuracy on the ContractNLI test, measured outside the browser. The passage is generated by the model and checked against the text; the evidence head is not used yet. Not legal advice." },
+};
+let L = params.get("lang") ?? (navigator.language?.toLowerCase().startsWith("pt") ? "pt" : "en");
+const t = (k) => I18N[L][k];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const setStatus = (m) => { $("status").textContent = m; };
+let lib = null, manifest = null, last = null, loadMs = 0, session = null;
+
+function applyLang() {
+  document.documentElement.lang = L === "pt" ? "pt-BR" : "en";
+  document.querySelectorAll("[data-i]").forEach((n) => { if (!(n.id === "run" && lib)) n.textContent = t(n.dataset.i); });
+  document.querySelectorAll("[data-ph]").forEach((n) => { n.placeholder = t(n.dataset.ph); });
+  $("lang").textContent = L === "pt" ? "EN" : "PT";
+  if (lib) $("run").textContent = t("ready");
+  if (last) render(last);
+}
+
+const question = (h) => ({ type: "choice", choices: manifest.lab.options, instructions: manifest.lab.question.replace("{hipotese}", h) });
+const stateOf = (nda) => manifest.lab.state.replace("{nda}", nda);
+
+async function loadModel() {
+  manifest = await (await fetch(MANIFEST)).json();
+  let mirrors = {};
+  try { mirrors = await (await fetch("../models.json")).json(); } catch {}
+  const baseUrls = {};
+  for (const repo of [manifest.tokenizer.repo, ...Object.values(manifest.builds).map((b) => b.repo)])
+    if (mirrors[repo]) baseUrls[repo] = new URL(mirrors[repo], location.href).href;
+  ort.env.wasm.numThreads = 1;
+  ort.env.wasm.wasmPaths = new URL("../vendor/ort/", location.href).href;
+  const t0 = performance.now();
+  lib = await S1S2.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs }, baseUrls, allowUnverified: Object.keys(baseUrls).length > 0, // a local mirror: its big weights are not Hub-verified
+    genai: { verifyEp: true }, onStatus: (m) => setStatus(m) });
+  const s = await lib.decide({ input: stateOf("Warm up."), questions: [{ name: "w", ...question("Warm up.") }] }, { keepState: false }); // compile the kernels once
+  await s.dispose();
+  loadMs = performance.now() - t0;
+}
+
+async function run() {
+  const nda = $("nda").value.trim();
+  if (!nda) { setStatus(t("empty")); return; }
+  const n = lib.countTokens(stateOf(nda));
+  if (n > MAX_TOKENS) { setStatus(`${t("toolong")}${n} / ${MAX_TOKENS} ${t("tokens")}`); return; }
+  const claims = CLAIMS.map((c) => ({ label: c[L], h: c.h }));
+  const custom = $("custom").value.trim();
+  if (custom) claims.unshift({ label: custom, h: custom, custom: true });
+  $("run").disabled = true;
+  try {
+    if (session) { await session.dispose(); session = null; }
+    setStatus("…");
+    const t0 = performance.now();
+    // All claims in one call: the contract is read once and shared by the questions.
+    session = await lib.decide({ input: stateOf(nda), questions: claims.map((c, i) => ({ name: "c" + i, ...question(c.h) })) }, { keepState: true });
+    const ms = performance.now() - t0;
+    const rows = claims.map((c, i) => { const a = session.answers[i];
+      return { ...c, nda, name: "c" + i, a: { choice: a.choice, margin: a.margin, rawMargin: a.rawMargin, method: a.method,
+        cands: [...a.probabilities].sort((x, y) => y.probability - x.probability) } }; });
+    last = { rows, ms, tokens: n };
+    render(last);
+    setStatus("");
+  } catch (e) { setStatus(`Error: ${e?.message ?? e}`); console.error(e); }
+  finally { $("run").disabled = false; }
+}
+
+const abstains = (r) => r.a.margin < Number($("th").value);
+const norm = (s) => s.replace(/\s+/g, " ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").trim().toLowerCase();
+
+function render(st) {
+  const el = $("results");
+  el.hidden = false;
+  el.innerHTML = `<div class="summary"><div><span class="big">${(st.ms / 1000).toFixed(1)} s</span> ${t("total")}</div>
+    <div><small style="color:var(--muted)">${Math.round(st.ms / st.rows.length)} ms ${t("per")} · ${st.tokens} ${t("tokens")}</small></div></div>` +
+    st.rows.map((r, i) => { const ab = abstains(r), cls = ab ? "amber" : r.a.choice === "Entailment" ? "yes" : r.a.choice === "Contradiction" ? "no" : "gray";
+      return `<div class="item"><div class="msg"><b>${esc(r.label)}</b></div>
+      <div class="meta"><span class="pill ${cls}">${ab ? t("abstains") : t(r.a.choice)}</span>
+        <span><span class="bar"><i style="width:${Math.round(100 * r.a.margin)}%"></i></span>${t("margin")} ${r.a.margin.toFixed(2)}</span>
+        <button class="link" data-see="${i}">${t("see")}</button>
+        ${!ab && r.a.choice !== "Not mentioned" ? `<button class="link" data-quote="${i}">${t("quote")}</button>` : ""}</div>
+      <div id="see${i}"></div><div id="q${i}">${r.quote ?? ""}</div></div>`; }).join("");
+  el.querySelectorAll("[data-see]").forEach((b) => b.addEventListener("click", () => {
+    const i = Number(b.dataset.see), box = $("see" + i), r = st.rows[i];
+    if (box.innerHTML) { box.innerHTML = ""; b.textContent = t("see"); return; }
+    b.textContent = t("hide");
+    const letters = "ABCDEFGHIJ";
+    box.innerHTML = `<pre>${esc(`${t("seen_q")}: ${question(r.h).instructions}\n${t("seen_opts")}:\n` +
+      manifest.lab.options.map((o, k) => `  ${letters[k]}) ${o}`).join("\n") +
+      `\n\n${t("seen_pick")}: ${letters[manifest.lab.options.indexOf(r.a.choice)]}) ${r.a.choice}\n${t("seen_how")}: ${t("seen_how_v")}\n` +
+      r.a.cands.map((c) => `  ${c.value.padEnd(16)} ${c.probability.toFixed(4)}`).join("\n") +
+      `\n${t("margin")} ${r.a.margin.toFixed(4)} · ${t("rawm")} ${r.a.rawMargin?.toFixed(3)} · ${r.a.method}`)}</pre>`;
+  }));
+  el.querySelectorAll("[data-quote]").forEach((b) => b.addEventListener("click", async () => {
+    const i = Number(b.dataset.quote), r = st.rows[i];
+    b.disabled = true; b.textContent = t("quoting");
+    try {
+      const g = await session.generate(`Quote, word for word, the sentence of the contract that supports your answer to this hypothesis: "${r.h}". Reply with the sentence only.`,
+        { question: r.name, maxNewTokens: 90, temperature: 0 });
+      const q = g.text.trim().replace(/^["“]|["”]$/g, "");
+      const ok = q.length > 8 && norm(r.nda).includes(norm(q));
+      r.quote = `<div class="quote ${ok ? "" : "bad"}"><small>${ok ? t("q_ok") : t("q_bad")}</small><br>${esc(q)}</div>`;
+      $("q" + i).innerHTML = r.quote;
+    } catch (e) { $("q" + i).textContent = `Error: ${e?.message ?? e}`; }
+    b.remove();
+  }));
+}
+
+async function main() {
+  $("nda").value = SAMPLE;
+  $("th").addEventListener("input", () => { $("thv").textContent = Number($("th").value).toFixed(2); if (last) render(last); });
+  $("lang").addEventListener("click", () => { L = L === "pt" ? "en" : "pt"; applyLang(); });
+  $("run").addEventListener("click", run);
+  applyLang();
+  if (!navigator.gpu) { setStatus(t("nowebgpu")); $("run").textContent = t("nowebgpu"); return; }
+  try {
+    await loadModel();
+    $("run").textContent = t("ready"); $("run").disabled = false;
+    setStatus(`${t("ready_s")} (${(loadMs / 1000).toFixed(1)} s)`);
+    window.__demoReady = { loadMs };
+  } catch (e) { setStatus(t("err_load") + (e?.message ?? e)); console.error(e); window.__demoError = String(e?.message ?? e); }
+}
+main();
+</script>
+</body>
+</html>
