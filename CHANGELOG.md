@@ -5,7 +5,7 @@
 - New entry point `@s1s2/web/media` (`loadMedia`, `AudioModel`, `validateMediaManifest`, ...): audio in, same answers (`predicate`, `choice`) with probability and margin. The text bundle carries none of it.
 - Manifest keys `modalities` (default `["text"]`) and `audio` (log-mel preprocess, ONNX tower, readers); `s1s2 validate` checks them. Text manifests are unchanged.
 - The safetensors reader accepts `F64` tensors (the audio readers store float64 coefficients).
-- Audio packages: `loadMedia` answers voice activity, end of turn, same speaker, speaker change and speaker count, and with the decoder block `language` (closed set, 30 languages) and `term` (a word said, as the fraction of five hypotheses). `s1s2-convert asr-decoder` builds the Qwen3-ASR decoder for it. Measured on Portuguese only; `spec/MULTIMODAL.md` section 9 has the tolerances, the numbers and the limits.
+- Audio packages: `loadMedia` answers voice activity, end of turn, same speaker, speaker change and speaker count, and with the decoder block `language` (closed set, 30 languages) and `term` (a word said, as the fraction of five hypotheses). `s1s2-convert asr-decoder` builds the Qwen3-ASR decoder for it. `loadMedia({ decoder })` is `"auto"` by default: the decoder loads, and if it cannot the model goes on without it (`model.decoder` and `onStatus` say why; only `language` and `term` throw); `false` loads none, `true` fails. `dispose()` waits for questions in flight. Measured on Portuguese only; the 0.02 tolerance on the language probability is not met on a noise clip (0.09 on Node CPU, 0.035 on WebGPU) nor, by 0.0001, on one speech window; `spec/MULTIMODAL.md` section 9 has the tolerances, the numbers and the limits.
 
 ## 0.1.3
 

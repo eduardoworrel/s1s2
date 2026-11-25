@@ -19,6 +19,7 @@ Decoder (language and spoken term; spec section 9):
 | references | `marimba-audio` 0.1.2 on torch float32 CPU | `decoder_refs.py`: left-aligned windows (what Marimba's decoder lane feeds), `audio_features`, 30 language scores, five hypotheses, probe terms; `decoder_text_fixtures.py`: text fixtures from the Python originals (`test/fixtures/media/decoder-text.json`) |
 
 `check_decoder_rename.py` checks that the plain Qwen3 checkpoint computes what the thinker computes. `decoder-parity.mjs` (Node CPU) and `../../test/browser/media-chrome-decoder.mjs` (Chrome) compare the library with those references.
+To rebuild the decoder: `s1s2-convert asr-decoder --model <checkpoint dir> --revision 5eb144179a02acc5e5ba31e748d22b0cf3e303b0 --expect-sha256 79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea --work <work> --out <out> --ep webgpu`, then the same command with `--ep cpu` into the same `--out`; `decoder/decoder.json` records the hashes, build arguments and tool versions, and `make-manifests.mjs` reads the term settings from it.
 Run the third-party code (`marimba-audio`, the builder) in an isolated sandbox with the pinned versions; only the converter's output is loaded by the library.
 
 Layout of the weights directory the demos and tests read (`<weights>/marimba-audio/`):

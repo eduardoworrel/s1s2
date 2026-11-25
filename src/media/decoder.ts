@@ -1,5 +1,5 @@
 // Qwen3-ASR decoder questions: closed-set language scores and the five hypotheses (greedy + beam 4) a term is looked for in.
-// Behaviour ported from marimba-audio 0.1.2 (_qwen.py: language_scores, hypotheses) and from the Hugging Face generation code
+// Behaviour translated from marimba-audio 0.1.2 (Apache-2.0, see NOTICE) (_qwen.py: language_scores, hypotheses) and from the Hugging Face generation code
 // it runs on (transformers 4.57.6, `_beam_search` after the 2025 refactor, early_stopping=False, length_penalty=1). Design: spec/MULTIMODAL.md, section 9.
 //
 // The graph takes `inputs_embeds` (ONNX Runtime GenAI build, exclude_embeds): rows of the token table for the prompt text, the tower's 104 final

@@ -19,7 +19,7 @@ hash gigabytes), and serves them under `/weights/<package>/`. Where a page looks
 language. Needs a recent Chrome or Edge with WebGPU (the audio demo falls back to WASM). Opening the
 HTML from `file://` cannot load the models (the browser blocks the fetches); use the server.
 
-Sizes: audio 746 MB (encoder) + 10 MB; language and word add the decoder (0.66 GB on WebGPU: 0.35 GB graph + 0.31 GB embeddings; the CPU build adds 0.41 GB). The page has a checkbox to leave it out.
+Sizes: audio 746 MB (encoder) + 10 MB; language and word add the decoder (0.66 GB on WebGPU: 0.35 GB graph + 0.31 GB embeddings; the CPU build adds 0.41 GB). The page has a checkbox to leave it out; with it checked the page loads the decoder in `"auto"` mode, so if the decoder cannot load the page says so and the other five questions still work. Language and word were checked on Portuguese only, and the language probability is not within the 0.02 tolerance of the reference on noise (spec section 9.5).
 Example clips of the audio demo: FLEURS (CC BY 4.0), attribution in [`audio-turn/clips/ATTRIBUTION.md`](audio-turn/clips/ATTRIBUTION.md).
 
 Design, tolerances and limits: [`../spec/MULTIMODAL.md`](../spec/MULTIMODAL.md). Measurements, open points and licences: the same file, sections 5 to 8.

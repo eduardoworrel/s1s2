@@ -204,14 +204,15 @@ tokens of a fixed prompt. The package has two more readers over that decoder and
 ```ts
 interface DecoderSpec {
   runtime: "onnx-genai";
-  graph: PinnedFile; data: PinnedFile;          // model.onnx + model.onnx.data (ONNX Runtime GenAI int4 build, built with inputs_embeds)
+  graph: PinnedFile; data: PinnedFile;          // model.onnx + model.onnx.data (ONNX Runtime GenAI int4 build, built with inputs_embeds): the WebGPU build
+  cpuBuild?: { graph: PinnedFile; data: PinnedFile };   // the same weights built for CPU kernels (Node CPU, browser WASM); without it the decoder is WebGPU only
   embeddings: PinnedFile;                       // float16 little-endian [vocab, hidden]: the token-embedding rows of the prompt
-  tokens: PinnedFile;                           // JSON {tokens: string[vocab] (byte-level BPE pieces), special: number[]}, to decode hypotheses
-  model: { layers: 28; kvHeads: 8; headDim: 128; hidden: 1024; vocab: 151936 };
+  tokens: PinnedFile;                           // JSON {tokens: string[vocab] (byte-level BPE pieces), added: number[], special: number[]}, to decode hypotheses
+  model: { layers: 28; kvHeads: 8; headDim: 128; hidden: 1024; vocab: 151936 };   // layers and kvHeads are checked against the graph's cache inputs
   prompt: { before: number[]; after: number[]; audioFrames: 104; languageToken: number };
-  eos: number[]; asrTextToken: number;
-  languages: Record<string, { name: string; ids: number[] }>;   // code -> the token ids of " Name"
-  term: { beams: 4; maxNewTokens: 256; lengthPenalty: 1; repetitionThreshold: 20 };
+  eos: number[];
+  languages: Record<string, { name: string; ids: number[] }>;   // code -> the token ids of " Name" (one or two tokens)
+  term: { beams: 4; maxNewTokens: 256; lengthPenalty: 1; repetitionThreshold: 20 };   // all four are read by the library
   devices: ("webgpu" | "wasm" | "cpu")[];
 }
 // readers: { language: { kind: "decoder-language", type: "choice", tap: "audio_features" },
@@ -220,15 +221,34 @@ interface DecoderSpec {
 
 Request: `questions: ["language", { task: "term", term: "obrigado" }]`, and `{ task: "language", options: ["pt", "en", "es"] }` for a closed set.
 Answers: `language` is a `ChoiceAnswer` (labels = codes, `probabilities`), `term` a `PredicateAnswer` with `threshold` 0.5 and `hypotheses`.
-Both are answered from one prefill of one encoding (`read` many times); `cost.parts` names `decoderPrefill`, `language`, `term`.
+Both are answered from one prefill of one encoding (`read` many times); `cost.parts` names `decoderOpen` (the prompt rows built from the tower vectors), `language`, `term` and, when the window was short, `leftTower` (the second tower pass).
+`options` of `language` must be at least two distinct codes of `audio.decoder.languages`; anything else is refused before the tower runs.
+
+**Loading.** The decoder is 0.66 GB on top of the 0.75 GB package, so loading it can fail where the rest works (WebGPU out of memory, a server without Range requests, a manifest with no build for the device). `loadMedia({ decoder })` says what then happens:
+
+| `decoder` | loads the decoder | if loading fails |
+|---|---|---|
+| `"auto"` (default) | yes, when the manifest has one | the model works **without** it: the five other questions answer as before, `onStatus` gets "decoder not loaded, language and term are unavailable: <reason>", `model.decoder` is `{ loaded: false, reason }` and `model.tasks` leaves out `language` and `term`; asking for either throws "needs the decoder, which failed to load: <reason>" |
+| `true` | yes | `loadMedia` throws and releases what it opened |
+| `false` | no, nothing of it is fetched | not applicable; `model.decoder` is `{ loaded: false, reason: "off" }`; asking for `language` or `term` throws "needs the decoder, which was not loaded" |
+
+A manifest of the audio package without `audio.decoder` is unchanged by all of this (`model.decoder` is `undefined`). `model.dispose()` waits for the language and term questions in flight before it releases the decoder session.
 
 ### 9.3 Build of the decoder
 
 Exported from the `Qwen/Qwen3-ASR-0.6B` checkpoint (revision `5eb144179a02acc5e5ba31e748d22b0cf3e303b0`, safetensors) by `s1s2-convert asr-decoder`:
 the `thinker.model.*` tensors become a plain Qwen3 causal LM (`lm_head` is byte-identical to the embedding, so the head is tied), the audio tower is dropped,
 and the ONNX Runtime GenAI 0.19.0 builder writes an int4 graph that takes `inputs_embeds` (no embedding in the graph) plus the float16 table. For audio-only
-input the three rotary positions of the original are equal, so the plain rotary embedding is the same computation; the converter checks it
-against the original thinker on real audio embeddings and records the largest logit difference.
+input the three rotary positions of the original are equal, so the plain rotary embedding is the same computation. That is checked by a separate script,
+`recipes/marimba-audio/check_decoder_rename.py`, against the original thinker on real audio embeddings (largest logit difference in 9.5); the converter does not run it
+and `decoder.json` does not record it.
+
+Reproducing the build: `s1s2-convert asr-decoder` takes the checkpoint directory, its revision and the sha256 of `model.safetensors` (both required: the revision is checked
+against a Hugging Face snapshot directory name, the hash against the file), and is run twice into the same `--out`, `--ep webgpu` first and then `--ep cpu`. It writes the
+layout the manifest lists (`decoder/model.onnx`, `decoder/cpu/model.onnx`, `decoder/embed_tokens.fp16.bin`, `decoder/decoder_tokens.json`, ...) and `decoder/decoder.json` with
+every file's sha256 and size, the build arguments of each run, the versions of torch, transformers and the builder tools, and the settings of the term question
+that `recipes/make-manifests.mjs` copies into the manifest. The second run checks that the shared files are byte-identical. The builder is the patched one of `s1s2-convert build`;
+the int4 files are reproducible only with the same builder and onnxruntime versions, which is why the manifest pins the hashes of the files and not of the recipe.
 
 ### 9.4 Tolerances (fixed before the tests that use them)
 
@@ -265,7 +285,7 @@ float16 embedding table 311,164,928 B and 1.8 MB of token pieces. The package gr
 
 Equivalence of the rewrite (float32): the plain Qwen3 checkpoint and the original thinker give logits that differ by at most 5.2e-4 (logit magnitude up to 34), same arg max
 at every position (3 windows). The float32 ONNX build, read by the library on Node CPU, against torch (12 windows): language probability within 7.5e-8, greedy and
-beam texts identical on every window, term fractions identical on every pair. The JavaScript beam search is therefore the Hugging Face one; every difference below comes from int4.
+beam texts identical on every window, term fractions identical on every pair. The JavaScript beam search gave the Hugging Face results on those 12 windows (and its logic was read against `_beam_search` of transformers 4.57.6); every difference below comes from int4.
 
 | run (int4) | windows | language code | top probability, largest abs diff | term fraction identical / within 0.2 | term decision | greedy / beam text equal |
 |---|---|---|---|---|---|---|
@@ -279,7 +299,8 @@ Language and term in Chrome WASM (CPU build; 6 windows): language code 6 / 6, al
 
 Against the tolerances of 9.4: every row is met **except** "probability of the most probable code <= 0.02": it holds on every speech window of the WebGPU build (largest 0.015)
 and of the end-to-end CPU run (0.018), fails by 0.0001 on one speech window of the CPU run with torch features (0.0201), and fails on the noise clip in every int4 run
-(torch gives English 0.76 there, a spread-out distribution; int4 gives 0.85). The tolerance was not changed. Equality of text is low for int4 (greedy about half, beams a quarter):
+(torch gives English 0.76 there, a spread-out distribution; int4 gives 0.85: 0.090 on Node CPU, 0.092 end to end, 0.035 on WebGPU). **The 0.02 tolerance is therefore not met** on the noise clip in any int4 run
+and by 0.0001 on one speech window of one run; the language code is right on all 72 windows, and the probability of the language is not within 0.02 of torch's on non-speech audio. The tolerance was not changed. Equality of text is low for int4 (greedy about half, beams a quarter):
 the differences are spelling and a word here and there, which is why the term gates are on the fraction and the decision.
 
 Cost (Chrome, WebGPU, median of 8 windows each; the tower is warm):
@@ -306,7 +327,9 @@ the page took 4.3 s to load 1.4 GB from local files.
 - Rare words, names and numbers: the hypotheses come from a 0.6B model; a term the model spells another way is "no". Not validated beyond the
   probe terms of 9.4.
 - Beam search was re-written (the reference uses the Hugging Face generation code); the hypotheses can differ in ties and spelling without a quality
-  difference. The int4 graph and the float16 audio rows can reorder the beams. Equality of text is reported, not promised.
+  difference. Scores are summed in float64 where Hugging Face uses float32, which can turn a near tie in rare cases. The int4 graph and the float16 audio rows can reorder the beams. Equality of text is reported, not promised.
+- A term in Chinese, Japanese or Thai (scripts written without spaces) never matches inside a sentence: whole words are found by spaces, as in the reference (`termFraction("你好", ["你好世界"])` is 0).
+- Normalisation uses the Unicode version of the JavaScript engine (the fixtures come from Python 3.11, Unicode 14): letters added since may be treated differently from one browser to another. The fixture lists the code points it covers.
 - 8 s windows; Marimba itself calls longer context unvalidated.
 - int4 changes the text: about half of the greedy transcripts and a quarter of the beam transcripts differ from float32 torch (a word or a spelling), and the probability of the most probable language moved by up to 0.09 on a non-speech clip. A float32 build (2.4 GB) reproduces torch exactly (12 windows) and is the fallback if that matters.
 - The term takes 1.4-1.7 s per window on WebGPU and about 37 s on browser WASM: ask it on demand, not on every window.
