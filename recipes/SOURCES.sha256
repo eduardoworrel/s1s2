@@ -1,13 +1,15 @@
-# sha256 of the recipe files as committed here: copied from the reference runs, then renamed (port/, weights.json, result.json, browser-*) and their comments and messages translated to English. browser-run.mjs and drive_browser.mjs also read their paths from environment variables and are not listed
-dc0def2eea54d95d3689ef5809052be482582cf1c843b202b597ecd7ac2b0f47  marimba-audio/e2e_py.py
-2f49bde6a3419d7c7f86b5d5a1584b27c42081aba53c3187ec59d327fe3b9d6a  marimba-audio/export_head.py
-cb63b035f13e4afb6e7941af54092aad5cd59bc295a7e5854c5131c355c86b11  marimba-audio/export_tower.py
-e96ee7452d89d1299913a304080613b604cd2f26c75a080c34c3558ab6cc6ee1  marimba-audio/browser-index.html
-a48fadeee473f746e1bb7eed1fa2fa97bee92b11a1729be539858b161e9a0932  marimba-audio/browser-readers.js
-4eb184ce5f230f52a862cc8652688f45ee97a467850639d832aa304d4f50cc1a  marimba-audio/browser-mel.js
+# sha256 of every file in marimba-audio/ except its README.md, as committed in this repository (taken from the reference runs, then renamed and their comments and messages translated). The test in test/recipes-sources.test.mjs checks them
+ede2ed2cd0137e7683cdc814d6cdb1a10ec1328370ea3793b726123aef69360f  marimba-audio/browser-index.html
+8012fdd8703f8bd79a139c96eb588339581cd1e453a511bfed135477b447c80b  marimba-audio/browser-mel.js
+ac4056e647698969deb77d90bafedebc4054f517b0d8424dddc07c7001e1ca2f  marimba-audio/browser-readers.js
+8440bd45213bb39d1438d3de695fbb63255ff948a57f802ceadda2c0f014be12  marimba-audio/browser-run.mjs
+b88d361876dff2e6cf6e51714379145b89e67bf46640efcc2a814b66169bddb5  marimba-audio/e2e_py.py
+aeb1644ec5e7ff7d1167ec58d14fbf2b3d6fab38a080b8e09ea1b57fdf639fdb  marimba-audio/export_head.py
+71a19b670c820f400515e664f4ee18fca6d401305954117c3ff17b68f7d53c07  marimba-audio/export_tower.py
+3b54c9e9101d0290a37315470369de0f396f88f719f19e7446bfa3f92864f195  marimba-audio/node-parity.mjs
 ac49ade2da9a6f9e73a563ef15acae76e9d6411339891920243c47b1235bfbdc  marimba-audio/prep.py
-f6448108fb5a990fc03cc3fba17228ea91798b1e11f3426e2b6494ed0201e27c  marimba-audio/refs.py
-ebd8264518eee6e9dad5c0ceac933b319f1b3a2bf97fed3232c074bb1e539433  marimba-audio/run.py
+a6abad9e4b13bae5a9669b1e695975f807093d60c3b08cc8ee73299a950b6f32  marimba-audio/refs.py
+5396ba744951b37822e58c37b7323a4d48d2651fcd76ecf85fd29dd2ca9e7357  marimba-audio/run.py
 
 # weight files pinned by the manifests (not in the repository): sha256  size  package/path
 d0ff159793d5ee691b3113223c776727a69c85f216a8fbe8f2ee2190095aa5bd  745697054  marimba-audio/audio_tower.onnx
