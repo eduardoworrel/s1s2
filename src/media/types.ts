@@ -6,8 +6,8 @@ import type { PinnedFile, EscalationSpec, Provenance } from "../manifest.js";
 import type { PredicateAnswer, ChoiceAnswer } from "../readout.js";
 
 /** What `decide` accepts besides the question. "text" alone is the existing manifest; a media package lists its media. */
-export type Modality = "text" | "audio";
-export const MODALITIES: readonly Modality[] = ["text", "audio"];
+export type Modality = "text" | "audio" | "image";
+export const MODALITIES: readonly Modality[] = ["text", "audio", "image"];
 
 // ---- audio: log-mel pre-processor, tower, readers ------------------------------------------------------------------
 
@@ -149,19 +149,98 @@ export interface AudioSpec {
   fidelity?: Record<string, unknown>;
 }
 
+// ---- image: Qwen3-VL decision reader (spec section 10) ------------------------------------------------------------------
+
+/** Pre-processor in JavaScript (src/media/imagePrep.ts): smart_resize, Pillow bicubic, normalise, flat patch layout of the Qwen processors. */
+export interface ImagePreprocessSpec {
+  kind: "qwen-vl-patches";
+  patchSize: number; mergeSize: number; temporalPatchSize: number;
+  mean: number[]; std: number[];
+  resample: "pillow-bicubic";
+  /** Pixel budget of THIS package. The reference ran at native resolution (longest_edge 16,777,216): a budget below that is a documented deviation. */
+  minPixels: number; maxPixels: number;
+  /** The reference processor's own maximum, for the record (16777216). */
+  referenceMaxPixels?: number;
+}
+
+/** The vision tower as an ONNX graph. It must output the merged features AND the DeepStack features (the public build outputs only the first: `vl-graph vision`). */
+export interface ImageVisionSpec {
+  runtime: "onnx";
+  graph: PinnedFile; data?: PinnedFile[];
+  inputs: { pixelValues: string; grid: string };
+  outputs: { features: string; deepstack: string[] };
+  devices: ("webgpu" | "wasm" | "cpu")[];
+}
+
+/** The text decoder as an ONNX graph with a KV cache (public `text.onnx` + LoRA swap + `vl-graph text`): takes embeddings and DeepStack rows, outputs the final-norm hidden state. */
+export interface ImageTextSpec {
+  runtime: "onnx";
+  graph: PinnedFile;
+  /** External-data pieces, at most 2 GB each (the graph names them by file name). */
+  data: PinnedFile[];
+  inputs: { embeds: string; attentionMask: string; positionIds: string; deepstack: string[] };
+  /** Cache names with %d for the layer: past_key_values.%d.key / .value in, present.%d.key / .value out. */
+  cache: { pastKey: string; pastValue: string; presentKey: string; presentValue: string };
+  output: { hidden: string };
+  model: { layers: number; kvHeads: number; headDim: number; hidden: number; vocab: number };
+  /** Element type of embeds / deepstack / hidden / cache. */
+  ioDtype: "float32" | "float16";
+  devices: ("webgpu" | "wasm" | "cpu")[];
+}
+
+/** Token embedding rows, read in JavaScript (no graph): the prompt's tokens are looked up here, the image rows come from the vision tower. */
+export interface ImageEmbeddingSpec {
+  file: PinnedFile;
+  /** "f16": little-endian float16 [vocab, hidden] (exact for bf16 weights). "q4-block128": the public int4 gather table (symmetric, block 128 along hidden): rows are dequantised on demand. */
+  format: "f16" | "q4-block128";
+  /** Required by "q4-block128": the float scales file ([vocab, hidden / 128] float32). */
+  scales?: PinnedFile;
+}
+
+export interface ImageTokenizerSpec { tokenizer: PinnedFile; config: PinnedFile }
+
+/** Ids of the markers of the prompt; the text is fixed by the reader (prefixText / suffixText). */
+export interface ImagePromptSpec { imagePad: number; visionStart: number; visionEnd: number; imStart: number; imEnd: number }
+
+/** "Which option": the LM-head logit of the token of each option letter at the readout position, softmax over the K options supplied. */
+export interface ImageReadoutSpec {
+  kind: "option-letters";
+  /** Token ids of " A", " B", ... (single tokens), one per possible option. */
+  tokenIds: number[];
+  /** Float16 little-endian [tokenIds.length, hidden]: the embedding rows of those tokens (the LM head is tied to the embedding): score = hidden . row. */
+  rows: PinnedFile;
+  minOptions: number; maxOptions: number;
+  /** softmax(logits / temperature); 1 = the raw probabilities of the reference (overconfident: calibrate on your task). */
+  temperature: number;
+}
+
+export interface ImageSpec {
+  preprocess: ImagePreprocessSpec;
+  vision: ImageVisionSpec;
+  text: ImageTextSpec;
+  embeddings: ImageEmbeddingSpec;
+  tokenizer: ImageTokenizerSpec;
+  prompt: ImagePromptSpec;
+  readout: ImageReadoutSpec;
+  notes?: string;
+  /** Measured fidelity against the reference (free-form record). */
+  fidelity?: Record<string, unknown>;
+}
+
 // ---- manifest --------------------------------------------------------------------------------------------------------
 
 /** A media package manifest. Text packages (Manifest) are unchanged; a manifest with text AND media is a Manifest with these keys. */
 export interface MediaManifest {
   schema: "s1s2.manifest/1";
   id: string;
-  /** Inputs `decide` takes. Default ["text"] (absent = a text manifest). A media package lists its media: ["audio"]. */
+  /** Inputs `decide` takes. Default ["text"] (absent = a text manifest). A media package lists its media: ["audio"] or ["image"]. */
   modalities: Modality[];
   /** Where the pinned paths live: a Hub repo id, or any name that `baseUrls` / `localDirs` map (unpublished packages). */
   repo: string;
   /** 40-hex commit sha of `repo`, or "local" for an unpublished package (then nothing is fetched from the Hub). */
   revision: string;
   audio?: AudioSpec;
+  image?: ImageSpec;
   escalation?: EscalationSpec;
   license?: string;
   provenance?: Provenance;

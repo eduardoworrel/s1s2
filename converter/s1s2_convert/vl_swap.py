@@ -14,9 +14,11 @@ separate matrices (no fused qkv); the final norm is `model.layers.36.final_norm_
 `lm_head` is the tied embedding (the LoRA does not touch it).
 
 Oracle. The LoRA never touches `lm_head`, which is the int4 quantization of `embed_tokens`. `--verify` (no LoRA) recomputes every initializer the swap
-would write, plus `lm_head` and the norms, and compares with the template byte for byte. Which cast chain the public build used is not documented: the
-command tries the candidate chains on the first rows of `lm_head`, reports which one is byte-equal (or none), and uses it. If none is, the swap still runs
-with the default chain and the report says `oracle: false`: the fidelity then rests on the logit parity against PyTorch, not on byte equality.
+would write, plus `lm_head` and the norms, and compares with the template byte for byte. The quantizer is `rtn_q4` (ties up; the negative value when +x and -x
+tie for the largest magnitude): measured byte-equal to the public cpu and cuda builds on 4096 rows of `lm_head` and on the whole of layer 0 q_proj, layer 17 v_proj
+and layer 35 down_proj (range reads of the Hub files; the ONNX Runtime 1.31 function differs on 0.03% of the bytes, all at ties). The cast chain (`f32` or `f16` before the
+quantizer) cannot be told apart on bf16 weights, so it matters only for the fused ones; the command probes both on `lm_head`, reports them, and takes the first that is byte-equal.
+If none is, the swap still runs and the report says `oracle: false`: fidelity then rests on the logit parity against PyTorch, not on byte equality.
 
 After the swap, `--split` rewrites the external-data locations into pieces of at most 1.9 GiB (onnxruntime-web reads up to 2 GB per file).
 
@@ -75,30 +77,52 @@ def _quantizer():
     return DefaultWeightOnlyQuantizer(DefaultWeightOnlyQuantConfig(block_size=32, is_symmetric=True, bits=4, quant_format=QuantFormat.QOperator))
 
 
-def quantize_q4(w, chain, scale_dtype):
+def rtn_q4(w, scale_dtype=np.float32, block=32):
+    """Symmetric RTN, block `block` along K, as the public build rounds it: per block the signed value of the largest magnitude (the negative one if +x and -x tie), scale = that / -8, the scale
+    rounded to `scale_dtype` (the dtype the graph stores; q is computed with the stored scale), q = clip(floor(x * (1 / scale) + 8.5), 0, 15) in float32 (ties go up).
+    w: float32 [N, K] -> (packed uint8 [N, K/block, block/2] low nibble first, scales [N, K/block] in scale_dtype).
+    The ONNX Runtime 1.31 quantizer (`quantizer="ort"` below) rounds exact ties the other way: 0.03% of the bytes of the public lm_head differ from it (all at ties, by one step)."""
+    n, k = w.shape
+    b = np.ascontiguousarray(w, dtype=np.float32).reshape(n, k // block, block)
+    lo, hi = b.min(-1), b.max(-1)
+    mx = np.where(np.abs(lo) >= np.abs(hi), lo, hi)   # signed value of the largest magnitude; the negative one when +x and -x tie
+    scale = (mx / np.float32(-8.0)).astype(scale_dtype)
+    s32 = scale.astype(np.float32)
+    rec = np.where(s32 != 0, np.float32(1.0) / np.where(s32 != 0, s32, np.float32(1.0)), np.float32(0.0)).astype(np.float32)
+    q = np.clip(np.floor(b * rec[..., None] + np.float32(8.5)), 0, 15).astype(np.uint8)
+    return (q[..., 0::2] | (q[..., 1::2] << 4)).astype(np.uint8), scale
+
+
+def quantize_q4(w, chain, scale_dtype, quantizer="rtn"):
     """w: float32 torch tensor [N, K] (rows = output features). -> (packed uint8 [N, K/32, 16], scales [N, K/32] in scale_dtype).
 
-    chain "f32": quantize the float32 values, scales in float32. chain "f16": round the weight to float16 first (the cast of an fp16 build), the
-    scales come out in float16. The scales are then cast to the dtype the template stores (cast of a float16 scale to float32 is exact)."""
+    chain "f32": quantize the float32 values. chain "f16": round the weight to float16 first (the cast of an fp16 build). For bf16 base weights the two give
+    the same bytes; they differ only for fused (LoRA) weights. quantizer "rtn": `rtn_q4`, byte-equal to the public build on its lm_head; "ort": the ONNX Runtime
+    function (ties rounded the other way; scales cast to `scale_dtype` after the fact)."""
     import torch
-    q = _quantizer()
-    x = w.to(torch.float16) if chain == "f16" else w.to(torch.float32)
-    packed, scales, _ = q.qbits_block_quant(np.ascontiguousarray(x.numpy().T))
+    x = w.to(torch.float16).to(torch.float32) if chain == "f16" else w.to(torch.float32)
+    if quantizer == "rtn":
+        return rtn_q4(x.numpy(), scale_dtype)
+    packed, scales, _ = _quantizer().qbits_block_quant(np.ascontiguousarray(x.numpy().T))
     return packed, scales.astype(scale_dtype)
 
 
 def reference_q4(w, block=32):
-    """Independent numpy reading of the same quantizer (symmetric, zero point 8): per block of 32 along K, scale = (signed value of the largest
-    magnitude) / -8, q = clip(floor(x / scale + 8.5), 0, 15); two values per byte, the first in the low nibble. Used by the tests as the reference
-    of the ORT function. w: float32 [N, K] -> (packed [N, K/block, block/2], scales [N, K/block])."""
+    """The same rule as `rtn_q4` written as plain loops, one element at a time (the tests' reference). w: float32 [N, K] -> (packed, scales float32)."""
     n, k = w.shape
-    b = w.reshape(n, k // block, block).astype(np.float32)
-    idx = np.abs(b).argmax(-1)
-    mx = np.take_along_axis(b, idx[..., None], -1)[..., 0]
-    scale = mx / np.float32(-8.0)
-    rec = np.where(scale != 0, np.float32(1.0) / np.where(scale != 0, scale, 1), 0).astype(np.float32)
-    q = np.clip(np.floor(b * rec[..., None] + np.float32(8.5)), 0, 15).astype(np.uint8)
-    return (q[..., 0::2] | (q[..., 1::2] << 4)).astype(np.uint8), scale.astype(np.float32)
+    packed = np.zeros((n, k // block, block // 2), np.uint8)
+    scales = np.zeros((n, k // block), np.float32)
+    for i in range(n):
+        for j in range(k // block):
+            blk = w[i, j * block:(j + 1) * block].astype(np.float32)
+            mx = blk.min() if abs(blk.min()) >= abs(blk.max()) else blk.max()
+            sc = np.float32(mx / np.float32(-8.0))
+            rec = np.float32(1.0) / sc if sc != 0 else np.float32(0.0)
+            scales[i, j] = sc
+            q = [int(min(15.0, max(0.0, np.floor(np.float32(v * rec) + np.float32(8.5))))) for v in blk]
+            for t in range(block // 2):
+                packed[i, j, t] = q[2 * t] | (q[2 * t + 1] << 4)
+    return packed, scales
 
 
 def dequant_q4(packed, scales):
@@ -146,7 +170,7 @@ class Source:
         return w
 
 
-def chunked_q4(src, key, chain, scale_dtype, block_rows=16384, only_rows=None):
+def chunked_q4(src, key, chain, scale_dtype, block_rows=8192, only_rows=None):
     n = src.shape(key)[0] if only_rows is None else only_rows
     pk, sc = [], []
     for a in range(0, n, block_rows):
@@ -189,7 +213,7 @@ def norm_bytes(src, key):
     return src._slice(key)[:].float().numpy().astype(np.float32).tobytes()
 
 
-def run(template, base, out=None, adapter=None, verify=False, limit_layers=None, chain=None, report=None, split=False, block_rows=16384):
+def run(template, base, out=None, adapter=None, verify=False, limit_layers=None, chain=None, report=None, split=False, block_rows=8192):
     t0 = time.time()
     template, base = Path(template), Path(base)
     m, ini = load_template(template)
@@ -327,7 +351,7 @@ def main(argv=None):
     ap.add_argument("--limit-layers", type=int)
     ap.add_argument("--chain", choices=["f32", "f16"], help="force the cast chain (default: probe on lm_head)")
     ap.add_argument("--report")
-    ap.add_argument("--block-rows", type=int, default=16384)
+    ap.add_argument("--block-rows", type=int, default=8192)
     a = ap.parse_args(argv)
     if not a.verify and not (a.out and a.adapter):
         ap.error("a swap needs --adapter and --out (or use --verify)")

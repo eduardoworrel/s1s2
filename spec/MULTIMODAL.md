@@ -364,3 +364,122 @@ interface Transcription {
 - **Cost.** Node CPU, CPU build, 12 full windows (median): greedy 0.37 s, beam 1.21 s, the whole `term` question 1.62 s (greedy + beams), on top of the tower and the prompt rows. Other runtimes: 9.5; the browser WASM beam is slow, ask for it on demand.
 - **Real-package check.** `recipes/marimba-audio/transcribe-parity.mjs`, 12 pt-BR windows: the greedy text equals `term`'s first hypothesis on 12 of 12 and the beams equal its other four on 12 of 12; language `pt` on all. Against float32 torch, int4 gave the same greedy text on 5 of 12 windows and the same four beams on 0 of 12 (reported, not required).
 - **Limits.** All of 9.6 applies. int4 changes the text: about half of the greedy transcripts and three quarters of the beam transcripts differ from float32 torch (a word or a spelling); only Portuguese was validated; one 8 s window, no timestamps, no streaming, no punctuation or number guarantees beyond what the 0.6B model writes. Equality with the torch text is asserted only for the float32 build and the text fixtures (the parse and the decoding of given token ids); the int4 text is checked for format and stability, and for equality with `term`'s hypotheses.
+
+## 10. Image: the Visual Jev decision reader (draft, partly built)
+
+Status: specified before the runtime. Built and tested (no model weights needed): the manifest block `image` (types, schema, rules), the pure parts in `src/media/imagePrep.ts`
+(smart resize, Pillow bicubic resize, patch layout, prompt text, M-RoPE positions, option readout) and the converter commands `vl-swap` and `vl-graph`
+(`converter/s1s2_convert/`). Not built: the browser runtime (`loadMedia` refuses an image manifest with that message), the weights package, every number that needs the 4B model.
+Numbers called "reference" are the authors' (arXiv 2609.25845); none was reproduced here.
+
+### 10.1 What the reader is
+
+- **Model.** `guanxuyu/visual-jev-4b-answer-sft`: a LoRA adapter (r = 16, alpha = 32, dropout 0.05 in training; targets q, k, v, o, gate, up, down) on `Qwen/Qwen3-VL-4B-Instruct`, both Apache-2.0.
+  Read from the adapter itself: 504 tensors = 252 modules = 36 layers x 7 projections of the **language tower**; no key mentions the vision tower
+  (`exclude_modules: ".*visual.*"`), the embedding or the LM head. So `vision.onnx` and the token embedding of the public build are used unchanged, and only the 252 int4 matrices of the text decoder change.
+- **Readout.** No extra head. One prompt per question ends at the colon of `Answer:`; the score of option i is the LM-head logit of the token `" A"`, `" B"`, ... at that position; the answer is a
+  softmax over the K options supplied (2 to 16 in the reference; the reference evaluates K up to 8 and trained on K in {2, 4}). The LM head is tied to the embedding, so the score is `hidden . embedding_row(token)`.
+- **Reference numbers (the authors').** Macro accuracy on four held-out benchmarks 0.885 for the 4B adapter against 0.834 for the same backbone with the LM-head readout and no SFT (GQA 0.916, SNLI-VE 0.808,
+  TextVQA 0.975, TallyQA 0.841); the gain sits on the two task families in training (GQA, SNLI-VE); counting stays weak; English only; probabilities are overconfident (ECE 0.025 after temperature scaling on the task).
+  A fixed confidence threshold exceeded its target error rate, and reordering the options changed 17% of accept-or-review decisions on SNLI-VE: option order is part of the question and is never permuted by the reader.
+- **Branches.** One visual prefix (system turn, the image, the shared context) is encoded once; each question is an independent branch over the prefix cache. Reference: 5.6 ms against 20.5 ms per question at 32 questions per image on one RTX 5090. Not measured here.
+
+### 10.2 What the public ONNX builds are, and the DeepStack finding
+
+Public graphs (`onnx-community/Qwen3-VL-4B-Instruct-ONNX`, ONNX Runtime GenAI layout: `embedding.onnx`, `vision.onnx`, `text.onnx`; cpu_and_mobile and cuda variants, int4 RTN block 32; there is **no WebGPU build and no
+transformers.js layout** for the 4B; transformers.js 4.x maps `qwen3_vl` to its Qwen2.5-VL class, which reads `embed_tokens`, `vision_encoder` and `decoder_model_merged` files and has no DeepStack path):
+
+| file (cpu / cuda) | size | content |
+|---|---|---|
+| `text.onnx` + `.data` | 2.52 GB / 2.27 GB | 36 layers, 253 `MatMulNBits` (q, k, v, o, gate, up, down separate; lm_head), contrib ops `GroupQueryAttention`, `RotaryEmbedding`, `SkipSimplifiedLayerNormalization`; inputs `inputs_embeds`, `attention_mask`, `position_ids [3, B, S]`, cache; output `logits [B, S, 151936]` + cache. Scales float32 / float16, norm weights float32 |
+| `vision.onnx` + `.data` | 0.19 GB (int4) / 0.67 GB (float16) | 24 blocks + one merger; 24 `Loop` nodes; output `image_features` only |
+| `embedding.onnx` + `.data` | 0.21 GB (int4, block 128) / 0.78 GB (float16 table) | token lookup + scatter of the image rows into the sequence |
+
+**DeepStack is not in these graphs.** Qwen3-VL adds visual features taken after vision blocks 5, 11 and 17 (`deepstack_visual_indexes`), through three extra mergers, to the hidden state after text layers 0, 1 and 2 at the
+image positions; the reference model code of the paper (`vdm_model.py`) relies on it. Checked in the public graphs (cpu and cuda, and the 2B transformers.js layout): the vision graph has 49 LayerNorm (24 x 2 + the merger) and 98
+`MatMulNBits` (24 x 4 + 2), i.e. one merger, and `image_features` is the output of that merger (a bias Add after its second linear), not a sum; the text graph reads no input besides `inputs_embeds`, the mask, positions and the cache, and
+layers 0 to 2 add nothing but layer outputs. The ONNX Runtime GenAI builder in a local checkout (commit of 2026-10-25) has no DeepStack either; whether a newer upstream has was not checked (the file URL did not resolve).
+Consequence: the public builds compute the backbone **without DeepStack**, a different function from the one the adapter was trained and evaluated on. How large the difference is on decisions has not been measured.
+
+Two routes, both written down, neither claimed:
+
+- **A. Faithful build (recommended).** `vl-graph vision` adds three outputs `deepstack_0..2` (the hidden input of the LayerNorm that opens blocks 6, 12 and 18, through `reshape(-1, 4096)`, LayerNorm, Linear, GELU, Linear with the weights of
+  `visual.deepstack_merger_list.N`, 165 MB read from the base shards); `vl-graph text --deepstack` adds inputs `deepstack_0..2 [B, S, hidden]` added into the `down_proj` output that feeds layers 1, 2 and 3 (the fused residual stream
+  has no other place); zero except at image positions, so the suffix passes feed zeros. Each edit is tested on synthetic graphs against a numpy model (`converter/tests/test_vl.py`); the real graphs are only checked structurally.
+- **B. Public graphs as they are**, reported as "Qwen3-VL-4B + LoRA without DeepStack", never as the paper's model, with the decision difference against route A or float32 PyTorch measured first (section 10.7).
+
+### 10.3 Request and answer
+
+```ts
+interface ImageQuestion { name?: string; instruction: string; options: string[]; context?: string }
+decide({ image: { rgb: Uint8Array | Uint8ClampedArray; width: number; height: number; channels: 3 | 4 }, questions: ImageQuestion[], context?: string })
+```
+
+- `context` is the shared public text after the image (the reference's `state`); a question's own `context` is not used by the reference and is refused. Options are strings (no per-option description in v1); 2 to 16 of them; more is rejected,
+  not truncated. Options and instructions are English (the reference is English only). Alpha is dropped, not composited (PIL `convert("RGB")`).
+- The answer is a `ChoiceAnswer` of the text path (`probability` of the chosen option, `margin = p1 - p2`, `rawMargin` = logit gap) plus `modality: "image"`, `task: "choice"`, `decision` (the chosen option string), `probabilities` per option, `path: "s1"`.
+  Probabilities are the **raw** softmax of the reference (`readout.temperature` = 1); they are overconfident, there is no abstention outside the options supplied (add an option such as `not enough evidence`), and calibration is the caller's.
+
+### 10.4 Prompt and readout
+
+Text (`prefixText`, `suffixText` in `imagePrep.ts`, checked against the reference tokenizer on three prompts): `<|im_start|>system\n{SYSTEM}<|im_end|>\n<|im_start|>user\n<|vision_start|>` + one `<|image_pad|>` per merged image
+token + `<|vision_end|>` + (`\n{context}` if any) is the prefix; each question adds `\n\nQuestion: {instruction}\nOptions:\nA. {option}\nB. ...\nReply with the single letter of the correct option.<|im_end|>\n<|im_start|>assistant\nAnswer:`.
+`SYSTEM` is "You are a visual decision model. You inspect the image and answer each question by choosing exactly one of the given options. You never explain."
+
+- **Tokenisation.** Prefix and suffix are tokenised separately and concatenated, as the published inference does. Training tokenised the joint text; the two differ when a token spans the boundary: a context ending in "." followed by
+  "\n\n" merges into one token in the joint text (fixture, first prompt). The reader follows the inference path and the fixtures record the difference.
+- **Option tokens.** `" A"` to `" P"` are single tokens (ids 362, 425, 356, 422, 468, 434, 479, 472, 358, 619, 730, 444, 386, 451, 506, 393 in the Qwen3-VL tokenizer).
+- **Readout position.** The last token of the suffix (the colon). The graph is edited to output the final-norm hidden state (`vl-graph text --hidden-output`), not logits: the score is read in JavaScript as `hidden . row`,
+  with the 16 rows in `readout.rows` (float16, 80 KB, copied from the embedding table), accumulated in float64. This removes the int4 `lm_head` (200 MB) and the `[S, 151936]` logits of a prefill, and scores with the exact (tied)
+  head instead of its int4 copy. The public graph's own `logits` is the fallback and is measured as a second reading.
+- **Token embeddings** are looked up in JavaScript (`embeddings`: float16 table of 778 MB, exact, or the public int4 block-128 table of 207 MB, rows dequantised on demand; the choice is made on the parity measurement, section 10.7).
+
+### 10.5 Branches, positions, cache
+
+1. Preprocess the image (10.6), run the vision graph once: `features [N, hidden]` and the DeepStack features.
+2. Build the prefix embeddings (token rows, image rows scattered into the `<|image_pad|>` slots), the three DeepStack tensors (zero outside the image slots) and the M-RoPE positions of the **full** sequence of the first question;
+   the prefix positions are those of the full sequence sliced (`mropePositions`, equal to `get_rope_index` on four grids). Run the text graph once on the prefix: cache snapshot.
+3. Each question: copy the prefix cache (a real cost, 147 KB per token in float16), run the suffix with positions `nextPosition(prefix) + i` on all three axes, zero DeepStack inputs, read `hidden[last]`.
+4. v1 runs the branches one after the other (the graph is single-sequence); a padded batch of suffixes is not built. Prefix sharing is exact by construction (the reference's parity is the same: only arithmetic differences).
+
+### 10.6 Pre-processing and the pixel budget
+
+Reference processor: `smart_resize` to multiples of 32 within [65,536, 16,777,216] pixels, PIL bicubic, `(x/255 - 0.5)/0.5`, 16 x 16 patches in 2 x 2 merge groups, temporal patch 2 (the image repeated). The reference ran at **native resolution**
+(the authors report that their `max_pixels` setting was ignored: a 500 x 500 image gave 256 visual tokens, 25 x 25 patches to 32 x 32 after resize). The browser cannot take 16 M pixels: the manifest carries `minPixels` / `maxPixels`
+(proposal 65,536 / 786,432 = at most 768 merged tokens) and `referenceMaxPixels`. A package whose `maxPixels` is below what the image needs **resizes down**, which is a deviation from the reference; accuracy at the budget against native
+resolution is a measurement (10.7), not an assumption. Implemented in JavaScript: `smartResize` (30 cases identical), `resizeBicubicRGB` (Pillow's algorithm: byte-identical on 5 images, Pillow 13.0.0), `patchify` (values within 1e-6). The
+reference's fast processor (torchvision, antialiased bicubic) can differ from Pillow by a few levels: not measured.
+
+### 10.7 Build and parity (tolerances fixed before the runs)
+
+Pipeline (`converter/`): `vl-swap --verify` (no LoRA: every initializer the swap would write, the norms and `lm_head` recomputed from the base shards and compared byte for byte with the public file; the cast chain is probed on `lm_head`),
+`vl-swap` (LoRA fused in float32 into the 252 matrices, RTN block 32 symmetric with the quantizer of ONNX Runtime, written in place; `--split` rewrites the external data into pieces of at most 1.9 GiB), `vl-graph text`, `vl-graph vision`.
+The lm_head is the oracle because the adapter never touches it. Measured (range reads of the public files, no download of the weights): the quantizer of `vl-swap` (`rtn_q4`: ties up, the negative value when +x and -x tie for the
+largest magnitude) reproduces the public int4 bytes and scales exactly, 0 differing bytes, on 4096 rows of `lm_head` and on the whole of layer 0 q_proj, layer 17 v_proj and layer 35 down_proj, in both the cpu and the cuda build; the
+ONNX Runtime 1.31 quantizer function differs from them on 0.03% of the bytes (exact ties). The layer norms are byte-equal to bf16 widened to float32. If the full `--verify` run finds a difference, the swap still runs and the report says `oracle: false`:
+fidelity then rests on the checks below, not on byte equality. The cast chain matters only for the fused weights (the base weights are bf16, exactly representable in float16): the default is float32 into the quantizer (no intermediate rounding);
+a float16-scale build stores the scale rounded to float16 and computes q with that stored scale.
+
+| check | oracle | tolerance |
+|---|---|---|
+| quantizer | independent numpy reading of the same RTN | packed bytes and scales identical (tested) |
+| LoRA fusion, one layer | PEFT forward, float32 | max abs difference 1e-5 (tested) |
+| swapped graph, synthetic | ONNX Runtime CPU vs `x @ dequant(requantised fused W)` | 1e-4; vs unquantised fused W, relative Frobenius 0.20 (tested) |
+| untouched initializers | the public file | byte-identical (tested; on the real files: the heavy run) |
+| pure parts | the reference processor, tokenizer, `get_rope_index` | exact, or 1e-6 for float32 values (tested) |
+| graph edits | numpy model; on the real graph, PyTorch hidden states after blocks 5/11/17 and layers 0 to 2 | 1e-5 text / 1e-4 vision synthetic; real: float32 PyTorch within 1e-3 relative on the three DeepStack features, fp16 build 1e-2 |
+| end to end (the 4B) | PyTorch float32, `run_independent`, LoRA applied, same pixels | on at least 200 questions of GQA-style and SNLI-VE-style items not used for any choice here: median abs difference of the chosen option's probability <= 0.02, 95th percentile <= 0.10, decision flips <= 3%, accuracy within 1 point |
+| budget | the same questions at native resolution | accuracy drop at `maxPixels` reported; no claim below that |
+
+Reported, not required: the public graphs without DeepStack (route B) against the same oracle; the int4 `lm_head` reading against the exact rows; the int4 embedding table against the float16 table.
+
+### 10.8 Limits and risks
+
+- Everything about the 4B at run time is unmeasured: parity, accuracy, speed, memory. Memory arithmetic only: text int4 2.3 to 2.5 GB, vision 0.2 to 0.7 GB, float16 embedding table 0.78 GB, cache 147 KB per token and per branch
+  (a 700-token prefix with 8 branches is about 0.9 GB): about 4 GB, on a browser that measured 3.9 GB for a different 4B text model. It may not fit a 6 GB WebGPU device.
+- WebGPU: the text graph uses the contrib operators the audio decoder of this library already runs (`MatMulNBits`, `GroupQueryAttention`, `RotaryEmbedding`, `SkipSimplifiedLayerNormalization`) but with 3-axis `position_ids`, fp16 io in
+  the cuda layout and an `accuracy_level` 4 attribute (cpu layout); the vision graph has 24 `Loop` nodes, 3-D convolution and (cpu layout) `GatherBlockQuantized`, which may fall back to the CPU provider or fail. None of this was run.
+- onnxruntime-web reads at most 2 GB per external-data file and a graph's single buffers are limited by the adapter's `maxBufferSize`: the 2.3 to 2.5 GB data is split (`--split`); the largest single tensor is the embedding-derived `lm_head`
+  (194 MB, removed by `--hidden-output`).
+- The adapter helps only on task families seen in training; counting is weak; English only; K trained in {2, 4}; raw probabilities are overconfident; option order changes decisions.
+- Licence: base model and adapter Apache-2.0; training data (GQA, SNLI-VE over Flickr30k) have their own terms; a published build needs both licence texts and a notice that the weights were fused and requantised. Nothing is published from here.

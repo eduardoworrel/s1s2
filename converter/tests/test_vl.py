@@ -1,7 +1,8 @@
 """Tests of vl-swap and vl-graph with synthetic weights (no model download, a few MB): python -m unittest tests.test_vl (from converter/).
 
 Tolerances, written before the first run of these tests:
-  * ORT quantizer vs the independent numpy reading (`reference_q4`): packed bytes and scales identical on random float32 data without ties.
+  * Vectorised RTN (`rtn_q4`) vs the element-by-element loop reference (`reference_q4`): packed bytes and scales identical; the ONNX Runtime quantizer identical off ties;
+    exact ties go up and equal magnitudes of both signs take the negative value (the public build's rules; byte-equal on its lm_head rows and on three LoRA-target matrices of both builds, 0 differing bytes; the ONNX Runtime function differs on 0.03% of the bytes).
   * Dequantised error of one tensor: |w - dequant| <= |scale| element-wise (the clipped side of the symmetric range costs at most one step).
   * LoRA fusion vs PEFT's own forward (one layer, float32): max |difference| <= 1e-5.
   * Swapped graph run in ONNX Runtime CPU vs x @ dequant(reference_q4(W + alpha/r B A)).T: max |difference| <= 1e-4 (same int4 values, float32 accumulation order);
@@ -37,13 +38,31 @@ def tri(seed):
 
 
 class Quantizer(unittest.TestCase):
-    def test_ort_equals_independent_reference(self):
-        w = tri(1).standard_normal((48, 128)).astype(np.float32)
-        p, s = S.quantize_q4(torch.from_numpy(w), "f32", np.float32)
+    def test_rtn_equals_the_loop_reference_and_ort_off_ties(self):
+        w = tri(1).standard_normal((12, 128)).astype(np.float32)
         rp, rs = S.reference_q4(w)
-        self.assertEqual(p.shape, (48, 4, 16))
-        self.assertTrue(np.array_equal(p, rp))
-        self.assertTrue(np.array_equal(s, rs))
+        p, s = S.quantize_q4(torch.from_numpy(w), "f32", np.float32)
+        self.assertEqual(p.shape, (12, 4, 16))
+        self.assertTrue(np.array_equal(p, rp) and np.array_equal(s, rs))
+        op, os_ = S.quantize_q4(torch.from_numpy(w), "f32", np.float32, quantizer="ort")   # random floats have no exact ties
+        self.assertTrue(np.array_equal(op, rp) and np.array_equal(os_, rs))
+
+    def test_ties_go_up_as_in_the_public_build(self):
+        # one block: the largest magnitude is -8 -> scale 1; 0.5 is exactly halfway between steps 8 and 9 (x/scale + 8 = 8.5): the public build gives 9
+        w = np.zeros((1, 32), np.float32)
+        w[0, 0], w[0, 1], w[0, 2], w[0, 3] = -8.0, 0.5, -0.5, 2.5
+        p, s = S.quantize_q4(torch.from_numpy(w), "f32", np.float32)
+        self.assertEqual(float(s[0, 0]), 1.0)
+        q = np.stack([p[0, 0] & 15, p[0, 0] >> 4], -1).reshape(-1)
+        self.assertEqual([int(x) for x in q[:4]], [0, 9, 8, 11])   # -0.5 + 8.5 = 8.0 -> 8; 2.5 + 8.5 = 11 -> 11
+        self.assertTrue(np.array_equal(p, S.reference_q4(w)[0]))
+
+    def test_equal_magnitudes_of_both_signs_pick_the_negative_value(self):
+        w = np.zeros((1, 32), np.float32)
+        w[0, 0], w[0, 5], w[0, 9] = 1.0, -1.0, 0.25   # +1 comes first, -1 later: the public build's scale is -1 / -8 = +0.125, not +1 / -8
+        p, s = S.quantize_q4(torch.from_numpy(w), "f32", np.float32)
+        self.assertEqual(float(s[0, 0]), 0.125)
+        self.assertTrue(np.array_equal(p, S.reference_q4(w)[0]) and np.array_equal(s, S.reference_q4(w)[1]))
 
     def test_dequant_error_bound(self):
         w = tri(2).standard_normal((16, 96)).astype(np.float32)
@@ -52,12 +71,17 @@ class Quantizer(unittest.TestCase):
         step = np.repeat(np.abs(s), 32, axis=1)
         self.assertTrue(np.all(np.abs(w - d) <= step * (1 + 1e-5)))
 
-    def test_f16_chain_gives_f16_scales_then_cast(self):
-        w = tri(3).standard_normal((8, 64)).astype(np.float32)
-        p, s = S.quantize_q4(torch.from_numpy(w), "f16", np.float32)
-        self.assertEqual(s.dtype, np.float32)
-        p2, s2 = S.quantize_q4(torch.from_numpy(w), "f16", np.float16)
-        self.assertTrue(np.array_equal(s, s2.astype(np.float32)))  # float16 -> float32 is exact
+    def test_float16_scales_are_the_ones_q_was_computed_with(self):
+        w = (tri(3).standard_normal((8, 64)) * 0.37).astype(np.float32)   # scales not exactly representable in float16
+        p, s = S.quantize_q4(torch.from_numpy(w), "f32", np.float16)
+        self.assertEqual(s.dtype, np.float16)
+        d = S.dequant_q4(p, s)   # dequantised with the stored float16 scale
+        self.assertTrue(np.all(np.abs(w - d) <= np.repeat(np.abs(s.astype(np.float32)), 32, axis=1) * (1 + 1e-5)))
+        # for bf16-exact weights the f32 and f16 chains give the same bytes
+        wb = torch.from_numpy(w).bfloat16().float()
+        a, sa = S.quantize_q4(wb, "f32", np.float32)
+        b, sb = S.quantize_q4(wb, "f16", np.float32)
+        self.assertTrue(np.array_equal(a, b) and np.array_equal(sa, sb))
 
 
 class Rules(unittest.TestCase):
@@ -203,7 +227,7 @@ class Swap(unittest.TestCase):
     def test_only_lora_targets_change(self):
         _, ti = S.load_template(self.tdir)
         _, oi = S.load_template(self.out)
-        a, b = open(self.tdir / "text.onnx.data", "rb").read(), open(self.out / "text.onnx.data", "rb").read()
+        a, b = (self.tdir / "text.onnx.data").read_bytes(), (self.out / "text.onnx.data").read_bytes()
         self.assertEqual(len(a), len(b))
         changed = set()
         for n, d in ti.items():

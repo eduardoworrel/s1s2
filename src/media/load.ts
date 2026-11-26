@@ -1,4 +1,4 @@
-// loadMedia: read a media manifest (modalities ["audio"]), check its pinned files and return the model.
+// loadMedia: read a media manifest (modalities ["audio"]; "image" is specified, runtime not built), check its pinned files and return the model.
 
 import { Files, type FilesOptions } from "../files.js";
 import { validateMediaManifest } from "./manifest.js";
@@ -10,7 +10,7 @@ export interface MediaLoadOptions {
   /** Manifest object, or a URL / Node path to its JSON. */
   manifest: MediaManifest | Record<string, unknown> | string;
   /** Which media of a manifest that lists several. Default: its first. */
-  modality?: "audio";
+  modality?: "audio" | "image";
   device?: "auto" | "webgpu" | "wasm" | "cpu";
   /** Modules to use instead of importing them: onnxruntime. */
   modules?: { ort?: any };
@@ -42,7 +42,8 @@ export async function loadMedia(o: MediaLoadOptions): Promise<AudioModel> {
   const platform = detectPlatform();
   const f = o.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const m = await readMediaManifest(o.manifest, platform, f);
-  const which = o.modality ?? m.modalities.find((x) => x === "audio");
+  const which = o.modality ?? m.modalities.find((x) => x === "audio" || x === "image");
+  if (which === "image") throw new Error("loadMedia: the image reader is specified (spec/MULTIMODAL.md section 10) and its pure parts are exported (prepareImage, prefixText, suffixText, mropePositions, optionScores), but its runtime is not built: no image model is loaded");
   if (which !== "audio") throw new Error("loadMedia: the manifest lists no audio modality");
   if (!m.modalities.includes(which)) throw new Error(`loadMedia: this manifest takes ${m.modalities.join(", ")}, not ${which}`);
   const fo: FilesOptions = { platform, cacheDir: o.cacheDir, localDirs: o.localDirs, baseUrls: o.baseUrls, allowUnverified: o.allowUnverified, fetch: o.fetch, onStatus: o.onStatus };

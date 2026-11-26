@@ -484,6 +484,8 @@ export function validateManifest(m: any): Manifest {
   if (m.modalities !== undefined) need(Array.isArray(m.modalities) && m.modalities.length > 0 && m.modalities.every((x: any) => MODALITIES.includes(x)) && new Set(m.modalities).size === m.modalities.length, `modalities: a non-empty list of distinct values among ${MODALITIES.join(", ")}`);
   if (m.audio !== undefined) need(Array.isArray(m.modalities) && m.modalities.includes("audio"), 'audio: present, but modalities does not list "audio"');
   if (Array.isArray(m.modalities) && m.modalities.includes("audio")) need(m.audio !== undefined, 'audio: required by modalities "audio"');
+  if (m.image !== undefined) need(Array.isArray(m.modalities) && m.modalities.includes("image"), 'image: present, but modalities does not list "image"');
+  if (Array.isArray(m.modalities) && m.modalities.includes("image")) need(m.image !== undefined, 'image: required by modalities "image"');
   if (m.confidence !== undefined) need(isObj(m.confidence) && ["C1", "C3", "C4", "C5", "C6", "C7", "tbd-007"].includes(m.confidence.definition), 'confidence.definition: "C1" | "C3" | "C4" | "C5" | "C6" | "C7" | "tbd-007" (spec 5.1)');
   if (m.tasks !== undefined) {
     if (!isObj(m.tasks)) p.push("tasks: object of named tasks");
