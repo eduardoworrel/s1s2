@@ -378,6 +378,32 @@ class GraphEdits(unittest.TestCase):
             self.assertLess(float(np.abs(hid - toy_text_numpy(x, gam, W, ds)).max()), 1e-5)
             self.assertGreater(float(np.abs(hid - hid0).max()), 1e-2)  # the injection does something
 
+    def test_external_posembed(self):
+        g = tri(21)
+        P, hid, side = 12, 6, 4
+        table = g.standard_normal((side * side, hid)).astype(np.float32)
+        W = g.standard_normal((hid, hid)).astype(np.float32)
+        ini = [numpy_helper.from_array(table, "table"), numpy_helper.from_array(np.array([P, hid], np.int64), "shp"), numpy_helper.from_array(W, "W"),
+               numpy_helper.from_array(g.standard_normal((hid, 3, 1, 1)).astype(np.float32), "cw")]
+        nodes = [helper.make_node("Reshape", ["pix", "shp"], ["x2"], name="r0"),
+                 helper.make_node("Conv", ["img", "cw"], ["c"], name="conv"), helper.make_node("Reshape", ["c", "shp"], ["view_1"], name="r1"),
+                 helper.make_node("Gather", ["table", "idx"], ["emb"], axis=0, name="gather"), helper.make_node("Tile", ["emb", "reps"], ["repeat_1"], name="tile"),
+                 helper.make_node("Add", ["view_1", "repeat_1"], ["sum"], name="add"), helper.make_node("MatMul", ["sum", "W"], ["out"], name="mm")]
+        ini.append(numpy_helper.from_array(np.array([1, 1], np.int64), "reps"))
+        graph = helper.make_graph([n for n in nodes if n.name != "r0"], "v", [helper.make_tensor_value_info("img", TensorProto.FLOAT, [1, 3, P, 1]), helper.make_tensor_value_info("idx", TensorProto.INT64, [P])],
+                                  [helper.make_tensor_value_info("out", TensorProto.FLOAT, [P, hid])], initializer=ini[1:])
+        graph.initializer.append(ini[0])
+        m = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+        m.ir_version = 10
+        img = g.standard_normal((1, 3, P, 1)).astype(np.float32)
+        idx = g.integers(0, side * side, P).astype(np.int64)
+        ref = run_graph_model(m, {"img": img, "idx": idx})["out"]
+        m2, old = G.vision_external_posembed(m, "pos_embeds")
+        self.assertEqual(old, "repeat_1")
+        self.assertEqual([i.name for i in m2.graph.input], ["img", "idx", "pos_embeds"])
+        got = run_graph_model(m2, {"img": img, "idx": idx, "pos_embeds": table[idx]})["out"]
+        self.assertLess(float(np.abs(got - ref).max()), 1e-6)
+
     def test_merger_layout_check(self):
         ok = {"norm.weight": np.zeros(4096), "linear_fc1.weight": np.zeros((4096, 4096))}
         G.check_merger_layout(ok)

@@ -221,3 +221,30 @@ export function optionScores(hidden: ArrayLike<number>, rows: ArrayLike<number>,
   const sortedLogits = [...logits].sort((a, b) => b - a);
   return { logits, probabilities, choice: order[0], margin: probabilities[order[0]] - probabilities[order[1]], rawMargin: sortedLogits[0] - sortedLogits[1] };
 }
+
+// ---- position embedding of the vision tower, resampled to the image grid --------------------------------------------------------------------------
+
+/**
+ * `Qwen3VLVisionModel.fast_pos_embed_interpolate`: the learned square table [side * side, hidden] resampled to the (h, w) merged-block-ordered patch grid,
+ * bilinear with align_corners = true and border clamping (4 taps per patch). Returns [gh * gw, hidden] float32, rows in the order of `patchify`.
+ * Done here because the vision graph's own `Gather` of the table is wrong on the WebGPU provider of onnxruntime-web 1.31.1 (spec 10.9).
+ */
+export function positionEmbeddings(table: ArrayLike<number>, side: number, hidden: number, grid: [number, number, number], merge = 2): Float32Array {
+  const [t, gh, gw] = grid;
+  if (table.length !== side * side * hidden) throw new Error(`positionEmbeddings: table of ${table.length} values for ${side} x ${side} x ${hidden}`);
+  const axis = (i: number, size: number) => {
+    const src = (i * (side - 1)) / Math.max(size - 1, 1), fl = Math.floor(src), taps: number[] = [], ws: number[] = [];
+    for (const o of [0, 1]) { taps.push(Math.min(Math.max(fl + o, 0), side - 1)); ws.push(Math.max(1 - Math.abs(src - fl - o), 0)); }
+    return { taps, ws };
+  };
+  const out = new Float32Array(t * gh * gw * hidden);
+  let r = 0;
+  for (let f = 0; f < t; f++) for (let br = 0; br < gh / merge; br++) for (let bc = 0; bc < gw / merge; bc++) for (let ir = 0; ir < merge; ir++) for (let ic = 0; ic < merge; ic++, r++) {
+    const h = axis(br * merge + ir, gh), w = axis(bc * merge + ic, gw);
+    for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
+      const wt = Math.fround(h.ws[a] * w.ws[b]), base = (h.taps[a] * side + w.taps[b]) * hidden;
+      for (let k = 0; k < hidden; k++) out[r * hidden + k] += Math.fround(table[base + k] * wt);
+    }
+  }
+  return out;
+}

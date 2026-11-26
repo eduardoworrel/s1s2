@@ -169,6 +169,11 @@ export interface ImageVisionSpec {
   graph: PinnedFile; data?: PinnedFile[];
   inputs: { pixelValues: string; grid: string };
   outputs: { features: string; deepstack: string[] };
+  /**
+   * The position embedding as a graph input computed by the reader (`vl-graph vision --external-posembed`): the learned table (float16 [side * side, hidden]) is resampled to
+   * the image grid in JavaScript (`positionEmbeddings`). Needed on the WebGPU provider of onnxruntime-web 1.31.1, whose own Gather of that path is wrong.
+   */
+  posEmbeds?: { input: string; table: PinnedFile; side: number };
   devices: ("webgpu" | "wasm" | "cpu")[];
 }
 

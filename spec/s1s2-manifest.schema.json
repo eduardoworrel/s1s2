@@ -2445,6 +2445,27 @@
                   "cpu"
                 ]
               }
+            },
+            "posEmbeds": {
+              "type": "object",
+              "required": [
+                "input",
+                "table",
+                "side"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "input": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "table": {
+                  "$ref": "#/$defs/pinnedFile"
+                },
+                "side": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
             }
           }
         },

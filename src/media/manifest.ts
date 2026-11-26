@@ -146,6 +146,7 @@ function imageProblems(im: any, p: string[]): void {
     if (v.data !== undefined) { if (!Array.isArray(v.data)) p.push("image.vision.data: list of pinned files"); else v.data.forEach((d: any, i: number) => pinnedProblems(d, `image.vision.data[${i}]`, p)); }
     if (!(isObj(v.inputs) && str(v.inputs.pixelValues) && str(v.inputs.grid))) p.push("image.vision.inputs: {pixelValues, grid} graph names");
     if (!(isObj(v.outputs) && str(v.outputs.features) && Array.isArray(v.outputs.deepstack) && v.outputs.deepstack.length >= 1 && v.outputs.deepstack.every(str))) p.push("image.vision.outputs: {features, deepstack: [names]} (DeepStack outputs are required: spec section 10.2)");
+    if (v.posEmbeds !== undefined) { if (!(isObj(v.posEmbeds) && str(v.posEmbeds.input) && int(v.posEmbeds.side))) p.push("image.vision.posEmbeds: {input, table, side}"); else { pinnedProblems(v.posEmbeds.table, "image.vision.posEmbeds.table", p); if (isObj(v.posEmbeds.table) && Number.isInteger(v.posEmbeds.table.size) && isObj(t) && isObj(t.model) && int(t.model.hidden) && v.posEmbeds.table.size % (v.posEmbeds.side ** 2 * 2) !== 0) p.push("image.vision.posEmbeds.table.size: a whole number of float16 rows of side * side"); } }
     if (!Array.isArray(v.devices) || !v.devices.length || !v.devices.every((d: any) => DEVICES.includes(d))) p.push('image.vision.devices: non-empty list of "webgpu" | "wasm" | "cpu"');
   }
   if (!isObj(t) || t.runtime !== "onnx") p.push('image.text.runtime: "onnx"');

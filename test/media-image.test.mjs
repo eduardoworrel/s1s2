@@ -151,3 +151,15 @@ test("loadMedia on an image manifest needs the files it pins", async () => {
   const { loadMedia } = await import("../dist/media.js");
   await assert.rejects(() => loadMedia({ manifest: IMAGE_MANIFEST, modality: "image", localDirs: { "example/image-reader": "/nonexistent" }, device: "cpu", cacheDir: "/nonexistent-cache", fetch: async () => ({ ok: false, status: 404 }), modules: { ort: {}, transformers: {} }, tokenizer: { encode: () => [], decode: () => "" } }), /./);
 });
+
+test("positionEmbeddings equals fast_pos_embed_interpolate (4 grids), tolerance 1e-5", async () => {
+  const { positionEmbeddings } = await import("../dist/media.js");
+  for (const c of fx.posembed) {
+    const o = positionEmbeddings(c.table, c.side, c.hidden, c.grid);
+    assert.equal(o.length, c.out.length);
+    let worst = 0;
+    for (let i = 0; i < o.length; i++) worst = Math.max(worst, Math.abs(o[i] - c.out[i]));
+    assert.ok(worst <= 1e-5, `grid ${c.grid}: ${worst}`);
+  }
+  assert.throws(() => positionEmbeddings(new Float32Array(3), 6, 8, [1, 2, 2]), /table/);
+});

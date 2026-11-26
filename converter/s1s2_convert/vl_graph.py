@@ -38,18 +38,31 @@ def _elem_type(model, name):
     return None
 
 
+def _subgraph_uses(node):
+    """Every name read inside the subgraphs of `node` (Loop / If bodies read tensors of the enclosing graph without listing them as inputs)."""
+    used = set()
+    for a in node.attribute:
+        graphs = [a.g] if a.HasField("g") else list(a.graphs)
+        for sg in graphs:
+            for n in sg.node:
+                used.update(i for i in n.input if i)
+                used.update(_subgraph_uses(n))
+    return used
+
+
 def _prune(model):
-    """Drop nodes and initializers no output depends on."""
+    """Drop nodes and initializers no output depends on (subgraph reads count as uses)."""
     need = {o.name for o in model.graph.output}
     keep = []
     for n in reversed(list(model.graph.node)):
         if any(o in need for o in n.output):
             keep.append(n)
             need.update(i for i in n.input if i)
+            need.update(_subgraph_uses(n))
     keep.reverse()
     del model.graph.node[:]
     model.graph.node.extend(keep)
-    used = {i for n in keep for i in n.input}
+    used = {i for n in keep for i in n.input} | {u for n in keep for u in _subgraph_uses(n)}
     for ini in [i for i in model.graph.initializer if i.name not in used]:
         model.graph.initializer.remove(ini)
     return model
@@ -196,6 +209,69 @@ def vision_single_posembed_gather(model, table="visual.pos_embed.weight"):
     return model, len(gs)
 
 
+def vision_external_posembed(model, name="pos_embeds"):
+    """Make the interpolated position embedding a graph INPUT [num_patches, hidden]: the Add that follows the patch Conv (through Reshapes) reads `name` instead of the
+    graph's own Gather/interpolation, and the nodes only that path used are left dead for the runtime to drop. The caller computes the rows (src/media/imagePrep.ts `positionEmbeddings`);
+    onnxruntime-web 1.31.1 on WebGPU gets that path wrong (spec 10.9). Returns (model, tensor that was replaced)."""
+    from onnx import helper
+    g = model.graph
+    prod = {o: n for n in g.node for o in n.output}
+    cons = {}
+    for n in g.node:
+        for i in n.input:
+            cons.setdefault(i, []).append(n)
+    conv = next((n for n in g.node if n.op_type == "Conv"), None)
+    if conv is None:
+        raise SystemExit("no Conv (patch embedding) in the vision graph")
+    cur = conv.output[0]
+    while True:
+        nxt = cons.get(cur, [])
+        if len(nxt) != 1:
+            raise SystemExit(f"patch embedding output {cur} has {len(nxt)} consumers: not the public layout")
+        n = nxt[0]
+        if n.op_type == "Add":
+            break
+        if n.op_type not in ("Reshape", "Cast"):
+            raise SystemExit(f"unexpected {n.op_type} after the patch convolution")
+        cur = n.output[0]
+    other = [i for i in n.input if i != cur]
+    if len(other) != 1:
+        raise SystemExit("the Add after the patch embedding does not have two different inputs")
+    old = other[0]
+    elem = next((v.type.tensor_type.elem_type for v in g.value_info if v.name == old), None)
+    if elem is None:
+        elem = next((v.type.tensor_type.elem_type for v in g.value_info if v.name == cur), 1)
+    hid = None
+    for v in g.value_info:
+        if v.name == old and len(v.type.tensor_type.shape.dim) == 2:
+            hid = v.type.tensor_type.shape.dim[1].dim_value or None
+    g.input.append(helper.make_tensor_value_info(name, elem, ["num_patches", hid or "hidden"]))
+    n.input[list(n.input).index(old)] = name
+    return model, old   # the dead interpolation nodes stay: onnxruntime drops unused nodes itself, and a pruner that misses what the Loop bodies read breaks the graph
+
+
+def vision_break_aliases(model):
+    """Copy every output of a `Split` that feeds a `Squeeze` (the q/k/v unbind of each vision block): Squeeze(Split_out * 1).
+    On onnxruntime-web 1.31.1 / WebGPU, the Squeeze of the first output of that Split reads the contents of the third (isolated on the real graph: the Split outputs are right,
+    the Squeeze result is another output's data); a multiplication by one in between gives the Squeeze its own buffer. Returns (model, count)."""
+    import numpy as np
+    from onnx import helper, numpy_helper, TensorProto
+    g = model.graph
+    vt = {v.name: v.type.tensor_type.elem_type for v in g.value_info}
+    split_out = {o: vt.get(n.input[0]) for n in g.node if n.op_type == "Split" for o in n.output}   # output -> element type of the Split's input
+    done = 0
+    for n in list(g.node):
+        if n.op_type == "Squeeze" and split_out.get(n.input[0]) in (TensorProto.FLOAT, TensorProto.FLOAT16):
+            src = n.input[0]
+            dt = split_out[src]
+            one = numpy_helper.from_array(np.array(1.0, dtype={TensorProto.FLOAT: np.float32, TensorProto.FLOAT16: np.float16}[dt]), f"{src}/one")
+            g.initializer.append(one)
+            g.node.insert(list(g.node).index(n), helper.make_node("Mul", [src, one.name], [src + "/copy"], name=n.name + "/copy"))
+            n.input[0] = src + "/copy"
+            done += 1
+    return model, done
+
+
 def read_merger_weights(base_dir, n=3):
     """The deepstack mergers of a base checkpoint (safetensors dir), as float32 numpy: about 55 MB each."""
     from safetensors import safe_open
@@ -226,6 +302,8 @@ def main(argv=None):
     v.add_argument("--in", dest="inp", required=True)
     v.add_argument("--out", required=True)
     v.add_argument("--base", required=True)
+    v.add_argument("--external-posembed", action="store_true", help="the position embedding as a graph input computed by the caller (WebGPU workaround)")
+    v.add_argument("--break-aliases", action="store_true", help="copy the unbound q/k/v tensors (WebGPU workaround)")
     v.add_argument("--single-gather", action="store_true", help="one Gather for the position embedding (WebGPU workaround)")
     a = ap.parse_args(argv)
     m = onnx.load(a.inp, load_external_data=False)
@@ -239,6 +317,12 @@ def main(argv=None):
         del m.graph.value_info[:]
     else:
         m, taps = vision_deepstack(m, read_merger_weights(a.base))
+        if a.external_posembed:
+            m, old = vision_external_posembed(m)
+            print("position embedding is now the input pos_embeds (replaced", old + ")")
+        if a.break_aliases:
+            m, n_a = vision_break_aliases(m)
+            print('copies after', n_a, 'unbind Squeeze nodes')
         if a.single_gather:
             m, n_g = vision_single_posembed_gather(m)
             print('single posembed gather over', n_g, 'nodes')

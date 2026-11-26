@@ -6,7 +6,7 @@ import { detectPlatform, webgpuStatus, importOptional } from "../runtime.js";
 import { embeddingTable, fileTable, httpRangeTable, embeddingTableFromBytes, f16ToF32, type EmbeddingTable } from "../backends/embeddings.js";
 import { tokenizerFromJson, type Tok } from "../tok.js";
 import { f32ToF16Bits } from "./decoder.js";
-import { prepareImage, prefixText, suffixText, mropePositions, nextPosition, optionScores, rgbaToRgb, MIN_OPTIONS, MAX_OPTIONS } from "./imagePrep.js";
+import { positionEmbeddings, prepareImage, prefixText, suffixText, mropePositions, nextPosition, optionScores, rgbaToRgb, MIN_OPTIONS, MAX_OPTIONS } from "./imagePrep.js";
 import type { ImageSpec, MediaCost } from "./types.js";
 
 export interface ImageInput { rgb: Uint8Array | Uint8ClampedArray; width: number; height: number; channels?: 3 | 4 }
@@ -41,7 +41,7 @@ const u16 = (u: Uint8Array) => new Uint16Array(u.buffer.slice(u.byteOffset, u.by
 
 export class ImageModel {
   constructor(private spec: ImageSpec, private ort: any, private vision: any, private text: any, private table: EmbeddingTable, private tok: Tok, private rows: Float32Array,
-              readonly device: string, private noCache = false, private onPrefix?: ImageLoadOptions["onPrefix"]) {}
+              readonly device: string, private noCache = false, private posTable: Float32Array | null = null, private onPrefix?: ImageLoadOptions["onPrefix"]) {}
 
   private tensor(f: Float32Array, dims: number[]): any {
     const T = this.ort.Tensor;
@@ -70,10 +70,12 @@ export class ImageModel {
     let t = Date.now();
     const prep = prepareImage(rgb, im.height, im.width, { patchSize: pp.patchSize, mergeSize: pp.mergeSize, temporalPatchSize: pp.temporalPatchSize, mean: pp.mean, std: pp.std, minPixels: pp.minPixels, maxPixels: pp.maxPixels });
     lap("preprocess", t); t = Date.now();
-    const vo = await this.vision.run({
+    const vfeeds: Record<string, any> = {
       [spec.vision.inputs.pixelValues]: this.tensor(prep.pixelValues, [prep.rows, prep.dim]),
       [spec.vision.inputs.grid]: new T("int64", BigInt64Array.from(prep.grid.map(BigInt)), [1, 3]),
-    });
+    };
+    if (spec.vision.posEmbeds) vfeeds[spec.vision.posEmbeds.input] = this.tensor(positionEmbeddings(this.posTable!, spec.vision.posEmbeds.side, this.posTable!.length / spec.vision.posEmbeds.side ** 2, prep.grid, pp.mergeSize), [prep.rows, this.posTable!.length / spec.vision.posEmbeds.side ** 2]);
+    const vo = await this.vision.run(vfeeds);
     const feats = await this.toF32(vo[spec.vision.outputs.features]);
     const ds = await Promise.all(spec.vision.outputs.deepstack.map((n) => this.toF32(vo[n])));
     lap("vision", t); t = Date.now();
@@ -205,5 +207,6 @@ export async function loadImage(spec: ImageSpec, o: ImageLoadOptions): Promise<I
   if (device === "webgpu") for (let l = 0; l < L; l++) for (const kv of ["Key", "Value"] as const) loc[spec.text.cache[`present${kv}` as "presentKey"].replace("%d", String(l))] = "gpu-buffer";
   const text = await mk(spec.text, device === "webgpu" ? { preferredOutputLocation: loc } : {});
   void embeddingTable;
-  return new ImageModel(spec, ort, vision, text, table, tok, rows, device, !!o.noCache, o.onPrefix);
+  const posTable = spec.vision.posEmbeds ? f16ToF32(u16(await files.bytes(repo, revision, spec.vision.posEmbeds.table))) : null;
+  return new ImageModel(spec, ort, vision, text, table, tok, rows, device, !!o.noCache, posTable, o.onPrefix);
 }

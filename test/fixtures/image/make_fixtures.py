@@ -78,5 +78,14 @@ for gh, gw, p in ((4, 6, prompts[0]), (2, 6, prompts[1]), (6, 4, prompts[2]), (8
     pos, _ = model.get_rope_index(t, mm_token_type_ids=mm, image_grid_thw=torch.tensor([[1, gh, gw]]))
     pos_cases.append({"grid": [1, gh, gw], "ids": ids, "imageTokenId": IMG, "positions": pos[:, 0].tolist(), "prefixLen": len(enc(pre))})
 out["rope"] = pos_cases
+# position embedding resampled to the grid (Qwen3VLVisionModel: bilinear, align_corners True, merge-block order)
+from transformers.vision_utils import get_vision_interpolation_indices_and_weights
+pe = []
+for side, hid, gh, gw in ((6, 8, 4, 6), (6, 8, 2, 2), (48, 4, 16, 12), (5, 3, 6, 4)):
+    tab = torch.from_numpy(rng.standard_normal((side * side, hid)).astype(np.float32))
+    idx, w = get_vision_interpolation_indices_and_weights(torch.tensor([[1, gh, gw]]), num_grid_per_side=side, mode="bilinear", align_corners=True, spatial_merge_size=2)
+    o2 = (tab[idx] * w[:, :, None]).sum(1)
+    pe.append({"side": side, "hidden": hid, "grid": [1, gh, gw], "table": tab.reshape(-1).tolist(), "out": o2.reshape(-1).tolist()})
+out["posembed"] = pe
 Path(__file__).with_name("image.json").write_text(json.dumps(out))
 print("wrote", len(json.dumps(out)) // 1024, "KiB")
