@@ -151,7 +151,7 @@ const { forecast, session } = await model.forecast({ input, questions: [question
 if (forecast.behaviors.refuse.p < 0.5) await session.generate(prompt);                    // gate before System 2
 ```
 
-It needs a manifest with a `forecast` block and a build whose graph exposes the layer (`s1s2-convert build --forecast-layer N`, which uses the GenAI builder's `aux_hidden_state_layers`); `s1s2-convert train-forecast-head` trains the head offline from answers and behavior labels you supply. WebLLM and LiteRT builds cannot expose it. This implements the reading side of the idea in He and Jiralerspong, [arXiv 2611.06837](https://arxiv.org/abs/2611.06837); it does not reproduce their results and no accuracy of this reader has been measured. Details, file formats and limits: [`spec/FORECAST.md`](spec/FORECAST.md); a page that runs it: [`examples/forecast-gate`](examples/forecast-gate).
+It needs a manifest with a `forecast` block and a build whose graph exposes the layer (`s1s2-convert build --forecast-layer N`, which uses the GenAI builder's `aux_hidden_state_layers`); `s1s2-convert train-forecast-head` trains the head offline from answers and behavior labels you supply. WebLLM and LiteRT builds cannot expose it. This implements the reading side of the idea in He and Jiralerspong, [arXiv 2611.06837](https://arxiv.org/abs/2611.06837); it does not reproduce their results. One exploratory pilot (Qwen3.5-0.8B, auto-judge labels, 29 test refusals) gave AUROC 0.80 for predicting a refusal; it did not beat a last-layer head, and the Node path was not run with the real head. Details, file formats and limits: [`spec/FORECAST.md`](spec/FORECAST.md); a page that runs it: [`examples/forecast-gate`](examples/forecast-gate).
 
 ## Layout
 
