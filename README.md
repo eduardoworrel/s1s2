@@ -142,6 +142,32 @@ const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions:
 
 Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <dir>`, with a local copy of the repository); how the package is made: [`recipes/`](recipes).
 
+## Image (experimental)
+
+The library also reads an **image package**: [Visual Jev](https://arxiv.org/abs/2609.25845) (Guanxu Yu, Yuhang Yao), a LoRA on Qwen3-VL-4B-Instruct that answers closed-choice questions about one image, as int4 ONNX builds for Chrome and Node ([`eduardoworrel/Visual-Jev-4B-ONNX-S1S2`](https://huggingface.co/eduardoworrel/Visual-Jev-4B-ONNX-S1S2), 3.8 GB). A question is a list of 2 to 16 options (English); the answer is a probability per option, read from the LM-head logit of the option letter.
+
+```js
+import * as ort from "onnxruntime-web/webgpu";
+import * as transformers from "@huggingface/transformers";
+import { loadMedia } from "@s1s2/web/media";
+
+const reader = await loadMedia({
+  manifest: "https://huggingface.co/eduardoworrel/Visual-Jev-4B-ONNX-S1S2/resolve/main/manifest.json",
+  modality: "image",
+  modules: { ort, transformers },
+  device: "webgpu",            // the text graph; the vision graph runs on WASM (visionDevice: "wasm", also the default here)
+  visionDevice: "wasm",
+});
+// rgba: ImageData.data of a canvas
+const r = await reader.decide({ image: { rgb: rgba, width, height, channels: 4 },
+  questions: [{ name: "dog", instruction: "Is there a dog in the image?", options: ["yes", "no"] }] });
+console.log(r.answers[0].decision, r.answers[0].probability, r.cost);
+```
+
+- **Cost:** Chrome, Apple silicon (16 GB), text on WebGPU and vision on WASM, one question per image: median 15.6 s per question (vision 10.8 s, the question 4.3 s); about 3 GB resident; 3.8 GB to download. Node CPU took 2 to 3 s on 3 questions.
+- **Limits:** the vision graph is **wrong on WebGPU** in onnxruntime-web 1.31.1 (hence WASM). Chrome and desktop only. The reference tolerances written before the runs were **not met**: against a bfloat16 PyTorch oracle (float32 does not fit in 16 GB), n = 60, p95 of the probability difference 0.198 and 6.7% decision flips; Chrome against CPU, n = 240, p95 0.136 (flips 2.9%). Accuracy on 240 ScienceQA questions, which is **not** the paper's benchmark and outside its training families: 0.917 (CPU), 0.925 (Chrome). The paper's own numbers were not reproduced. Probabilities are raw and overconfident.
+- Design, tolerances and the measured status of each: [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) section 10; how the package is made: [`recipes/visual-jev-image`](recipes/visual-jev-image).
+
 ## Layout
 
 - [`src/`](src): the library. Run `npm test` for typecheck, build and unit tests. Unit tests use mocks and need no model download. There is no hosted CI yet: run `npm test` (and `python -m pytest` in `converter/`) before each release.
