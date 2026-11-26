@@ -12,6 +12,7 @@ Tolerances, written before the first run of these tests:
   * DeepStack text patch: zero inputs give bit-identical outputs; non-zero inputs match the numpy model within 1e-5. Vision patch within 1e-4.
 """
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -101,10 +102,14 @@ class Rules(unittest.TestCase):
         self.assertEqual(S.rule("model.layers.0.attn.qkv_proj.MatMul.weight_Q4")[0], None)  # a fused layout is not this graph
 
     def test_real_public_graph_if_present(self):
+        root = os.environ.get("S1S2_IMAGE_DIR")
+        if not root:
+            self.skipTest("needs the graph files of onnx-community/Qwen3-VL-4B-Instruct-ONNX (text.onnx only, no weights): download onnxruntime/cpu_and_mobile/cpu-int4-rtn-block-32/text.onnx "
+                          "to $S1S2_IMAGE_DIR/onnx-cpu/ and onnxruntime/cuda/cuda-int4-rtn-block-32/text.onnx to $S1S2_IMAGE_DIR/onnx-cuda/, then run with S1S2_IMAGE_DIR set")
         for d in ("onnx-cpu", "onnx-cuda"):
-            p = Path("/Users/pc/cai/image-jev") / d / "text.onnx"
+            p = Path(root) / d / "text.onnx"
             if not p.exists():
-                self.skipTest("public text.onnx not downloaded")
+                self.skipTest(f"{p} is missing (see S1S2_IMAGE_DIR above)")
             m = onnx.load(str(p), load_external_data=False)
             self.assertEqual([i.name for i in m.graph.initializer if S.rule(i.name)[0] is None], [])
 

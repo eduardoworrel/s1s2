@@ -49,26 +49,27 @@ test("patchify refuses sizes that are not a multiple of 32; rgbaToRgb drops alph
   assert.deepEqual([...rgbaToRgb(Uint8Array.from([1, 2, 3, 255, 4, 5, 6, 0]))], [1, 2, 3, 4, 5, 6]);
 });
 
-test("prompt text is the Visual Jev format and its token ids equal the reference tokenizer's", async (t) => {
-  const tokDir = "/Users/pc/cai/image-jev/base";
-  let tok = null;
-  if (existsSync(`${tokDir}/tokenizer.json`)) {
-    const tjs = await import("@huggingface/transformers");
-    const { tokenizerFromJson } = await import("../dist/index.js");
-    tok = tokenizerFromJson(tjs, JSON.parse(readFileSync(`${tokDir}/tokenizer.json`, "utf8")), JSON.parse(readFileSync(`${tokDir}/tokenizer_config.json`, "utf8")));
-  }
+test("prompt text is the Visual Jev format", () => {
   for (const p of fx.prompts) {
     assert.equal(prefixText(p.context, p.nPad), p.prefixText);
     assert.equal(suffixText(p.instruction, p.options), p.suffixText);
-    if (tok) {
-      assert.deepEqual(tok.encode(p.prefixText), p.prefixIds);
-      assert.deepEqual(tok.encode(p.suffixText), p.suffixIds);   // separately, as the published inference does
-    } else t.diagnostic("tokenizer.json not downloaded: token ids not compared");
   }
   assert.equal(fx.prompts[0].jointEqual, false);   // reference finding: a context ending in "." merges with "\n\n" when tokenised jointly (training), not when separately (inference)
   assert.ok(fx.optionTokenIds.slice(0, 16).every((x) => x.length === 1));   // " A" .. " P" are single tokens
   assert.throws(() => suffixText("q", ["only one"]), /2 to 16/);
   assert.throws(() => suffixText("q", Array.from({ length: 17 }, (_, i) => `o${i}`)), /2 to 16/);
+});
+
+test("prompt token ids equal the reference tokenizer's", async (t) => {
+  const dir = process.env.S1S2_IMAGE_DIR && `${process.env.S1S2_IMAGE_DIR}/base`;
+  if (!dir || !existsSync(`${dir}/tokenizer.json`)) return t.skip("needs tokenizer.json and tokenizer_config.json of Qwen/Qwen3-VL-4B-Instruct in $S1S2_IMAGE_DIR/base: download them from the Hub and run with S1S2_IMAGE_DIR set");
+  const tjs = await import("@huggingface/transformers");
+  const { tokenizerFromJson } = await import("../dist/index.js");
+  const tok = tokenizerFromJson(tjs, JSON.parse(readFileSync(`${dir}/tokenizer.json`, "utf8")), JSON.parse(readFileSync(`${dir}/tokenizer_config.json`, "utf8")));
+  for (const p of fx.prompts) {
+    assert.deepEqual(tok.encode(p.prefixText), p.prefixIds);
+    assert.deepEqual(tok.encode(p.suffixText), p.suffixIds);   // separately, as the published inference does
+  }
 });
 
 test("M-RoPE positions equal get_rope_index on 4 grids; suffix positions continue the prefix", () => {
