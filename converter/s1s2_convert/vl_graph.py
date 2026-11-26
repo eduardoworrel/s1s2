@@ -160,6 +160,14 @@ def vision_deepstack(model, weights, blocks=DEEPSTACK_VISION_BLOCKS):
     return model, taps
 
 
+def check_merger_layout(w, j=0):
+    """DeepStack mergers normalise AFTER the 2x2 regrouping (use_postshuffle_norm=True: LayerNorm over 4 * hidden, = the input width of fc1), unlike the main
+    merger (LayerNorm over hidden, then the regrouping): checked on the checkpoint header (norm.weight [4096], fc1 [4096, 4096]) and in Qwen3VLVisionModel.__init__.
+    The edit builds the post-shuffle layout, so a checkpoint that says otherwise fails here instead of producing a wrong graph."""
+    if w["norm.weight"].shape[0] != w["linear_fc1.weight"].shape[1]:
+        raise SystemExit(f"deepstack_merger_list.{j}: norm {tuple(w['norm.weight'].shape)} does not match fc1 {tuple(w['linear_fc1.weight'].shape)}: not the post-shuffle layout this edit builds")
+
+
 def read_merger_weights(base_dir, n=3):
     """The deepstack mergers of a base checkpoint (safetensors dir), as float32 numpy: about 55 MB each."""
     from safetensors import safe_open
@@ -172,6 +180,7 @@ def read_merger_weights(base_dir, n=3):
             key = f"model.visual.deepstack_merger_list.{j}.{k}"
             with safe_open(str(d / idx[key]), "pt") as f:
                 w[k] = f.get_tensor(key).float().numpy()
+        check_merger_layout(w, j)
         out.append(w)
     return out
 

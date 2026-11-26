@@ -240,6 +240,10 @@ def run(template, base, out=None, adapter=None, verify=False, limit_layers=None,
         raise SystemExit(3)
     if verify and adapter:
         raise SystemExit("--verify is the no-LoRA check against the template: drop --adapter")
+    first = {}
+    for name, kind, key, d in plan:
+        first[key] = min(first.get(key, d["off"]), d["off"])
+    plan.sort(key=lambda t: (first[t[2]] if t[2] else -1, t[0]))   # the packed bytes and the scales of one matrix are adjacent: it is quantised once (the file stores all the scales apart from the packed bytes)
     scale_dt = np.float32 if ini["model.layers.0.attn.q_proj.MatMul.weight_scales"]["dtype"] == ONNX_FLOAT else np.float16
     picked, probe = probe_chain(src, data_path, ini) if chain is None else (chain, {})
     rep["probe"], rep["oracle"] = probe, picked is not None

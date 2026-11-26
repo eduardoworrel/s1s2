@@ -378,6 +378,12 @@ class GraphEdits(unittest.TestCase):
             self.assertLess(float(np.abs(hid - toy_text_numpy(x, gam, W, ds)).max()), 1e-5)
             self.assertGreater(float(np.abs(hid - hid0).max()), 1e-2)  # the injection does something
 
+    def test_merger_layout_check(self):
+        ok = {"norm.weight": np.zeros(4096), "linear_fc1.weight": np.zeros((4096, 4096))}
+        G.check_merger_layout(ok)
+        with self.assertRaises(SystemExit):
+            G.check_merger_layout({"norm.weight": np.zeros(1024), "linear_fc1.weight": np.zeros((4096, 4096))})   # the main merger's layout
+
     def test_text_deepstack_refuses_other_layouts(self):
         with tempfile.TemporaryDirectory() as t:
             p = Path(t) / "toy.onnx"
