@@ -158,10 +158,10 @@ It needs a manifest with a `forecast` block and a build whose graph exposes the 
 - [`src/`](src): the library. Run `npm test` for typecheck, build and unit tests. Unit tests use mocks and need no model download. There is no hosted CI yet: run `npm test` (and `python -m pytest` in `converter/`) before each release.
 - [`spec/`](spec): the S1S2 package spec (0.2-draft) and its JSON Schema. `node bin/s1s2.mjs validate <package>` checks a package.
 - [`converter/`](converter/README.md): turns a Hugging Face model plus labelled JSONL into a package. Python.
+- [`examples/forecast-gate`](examples/forecast-gate): `decide()`, `forecast()` and a gate before `generate()` on one prefill (experimental; bring your own package, no weights are shipped).
 - [`converters/heads/`](converters/heads): converts published head formats into packages.
 - [`examples/`](examples): a Privacy Policy Checker that runs on the device, with the published [S5-nano GDPR + LGPD](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2) package (2.4 GB download; CCPA was not in its training). Run `node examples/policy-checker/serve.mjs` after `npm ci && npm run build`. `?en=<manifest URL>&pt=<manifest URL>` loads another package; a local build is served with `--mirror <repo>=<dir>`.
 - [`manifests/`](manifests): pinned manifests for CT0 (alias3-micro-1026, public builds) and the SmolLM2-135M base model. The SmolLM2 builds are not published, so these manifests load only from a mirror of those exact files; to make a small package of your own, run [`converter/`](converter/README.md) (`s1s2-convert all` writes the graph, heads and manifest) and serve it with `serve.mjs --mirror`.
-- [`examples/forecast-gate`](examples/forecast-gate): `decide()`, `forecast()` and a gate before `generate()` on one prefill (experimental; bring your own package, no weights are shipped).
 
 ## Credits
 
