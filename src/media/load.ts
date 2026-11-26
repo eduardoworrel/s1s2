@@ -5,6 +5,7 @@ import { validateMediaManifest } from "./manifest.js";
 import type { MediaManifest } from "./types.js";
 import { detectPlatform } from "../runtime.js";
 import { loadAudio, AudioModel } from "./audio.js";
+import { loadImage, ImageModel } from "./image.js";
 
 export interface MediaLoadOptions {
   /** Manifest object, or a URL / Node path to its JSON. */
@@ -13,7 +14,7 @@ export interface MediaLoadOptions {
   modality?: "audio" | "image";
   device?: "auto" | "webgpu" | "wasm" | "cpu";
   /** Modules to use instead of importing them: onnxruntime. */
-  modules?: { ort?: any };
+  modules?: { ort?: any; transformers?: any };
   cacheDir?: string;
   /** Node: repo id -> local directory mirroring that repo (sha256-checked once). */
   localDirs?: Record<string, string>;
@@ -38,12 +39,18 @@ async function readMediaManifest(src: MediaLoadOptions["manifest"], platform: st
   return validateMediaManifest(await r.json());
 }
 
-export async function loadMedia(o: MediaLoadOptions): Promise<AudioModel> {
+export async function loadMedia(o: MediaLoadOptions & { modality: "image"; tokenizer?: any }): Promise<ImageModel>;
+export async function loadMedia(o: MediaLoadOptions): Promise<AudioModel>;
+export async function loadMedia(o: MediaLoadOptions & { tokenizer?: any }): Promise<AudioModel | ImageModel> {
   const platform = detectPlatform();
   const f = o.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const m = await readMediaManifest(o.manifest, platform, f);
   const which = o.modality ?? m.modalities.find((x) => x === "audio" || x === "image");
-  if (which === "image") throw new Error("loadMedia: the image reader is specified (spec/MULTIMODAL.md section 10) and its pure parts are exported (prepareImage, prefixText, suffixText, mropePositions, optionScores), but its runtime is not built: no image model is loaded");
+  if (which === "image") {
+    if (!m.modalities.includes("image")) throw new Error(`loadMedia: this manifest takes ${m.modalities.join(", ")}, not image`);
+    const files = new Files({ platform, cacheDir: o.cacheDir, localDirs: o.localDirs, baseUrls: o.baseUrls, allowUnverified: o.allowUnverified, fetch: o.fetch, onStatus: o.onStatus });
+    return loadImage(m.image!, { device: o.device, modules: o.modules, files, repo: m.repo, revision: m.revision, onStatus: o.onStatus, tokenizer: (o as any).tokenizer, fetch: o.fetch });
+  }
   if (which !== "audio") throw new Error("loadMedia: the manifest lists no audio modality");
   if (!m.modalities.includes(which)) throw new Error(`loadMedia: this manifest takes ${m.modalities.join(", ")}, not ${which}`);
   const fo: FilesOptions = { platform, cacheDir: o.cacheDir, localDirs: o.localDirs, baseUrls: o.baseUrls, allowUnverified: o.allowUnverified, fetch: o.fetch, onStatus: o.onStatus };

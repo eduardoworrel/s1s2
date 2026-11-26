@@ -147,7 +147,7 @@ test("a text manifest that lists image has the image block checked too", () => {
   assert.match(problems(m).join("\n"), /audio: required by modalities "audio"/);
 });
 
-test("loadMedia says plainly that the image runtime is not built", async () => {
+test("loadMedia on an image manifest needs the files it pins", async () => {
   const { loadMedia } = await import("../dist/media.js");
-  await assert.rejects(() => loadMedia({ manifest: IMAGE_MANIFEST }), /image reader is specified .* runtime is not built/);
+  await assert.rejects(() => loadMedia({ manifest: IMAGE_MANIFEST, modality: "image", localDirs: { "example/image-reader": "/nonexistent" }, device: "cpu", cacheDir: "/nonexistent-cache", fetch: async () => ({ ok: false, status: 404 }), modules: { ort: {}, transformers: {} }, tokenizer: { encode: () => [], decode: () => "" } }), /./);
 });
