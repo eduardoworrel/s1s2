@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><script type="module">
+import * as ort from "/ort/ort.all.bundle.min.mjs";
+const post = (p, o) => fetch(p, { method: "POST", body: JSON.stringify(o) });
+try {
+  ort.env.wasm.wasmPaths = "/ort/";
+  const idx = (await (await fetch("/build/idx.json")).json()).idx, out = { version: ort.env.versions?.web };
+  for (const ep of ["webgpu", "wasm"]) {
+    const s = await ort.InferenceSession.create("/build/repro.onnx", { executionProviders: [ep] });
+    const r = await s.run(Object.fromEntries(idx.map((v, k) => ["idx" + k, new ort.Tensor("int64", BigInt64Array.from(v, BigInt), [768])])));
+    out[ep] = [];
+    for (let k = 0; k < 4; k++) { const d = await r["out" + k].getData(true); const f = !(d instanceof Uint16Array) ? Float32Array.from(d, Number) : Float32Array.from(d, (b) => { const sg = b >> 15 ? -1 : 1, e = (b >> 10) & 31, m = b & 1023; return e === 0 ? sg * m * 2 ** -24 : sg * (1 + m / 1024) * 2 ** (e - 15); }); let s2 = 0; for (const v of f) s2 += v * v; out[ep].push({ rms: Math.sqrt(s2 / f.length), head: Array.from(f.slice(0, 4)) }); }
+  }
+  post("/result", out);
+} catch (e) { post("/result", { error: String(e?.stack ?? e) }); }
+</script>

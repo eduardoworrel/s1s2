@@ -434,6 +434,9 @@ def main(argv=None):
     if argv and argv[0] == "asr-decoder":  # Qwen3-ASR text decoder -> GenAI build that reads embeddings (audio decoder questions)
         from .asr_decoder import main as asr_main
         return asr_main(argv[1:]) or 0
+    if argv and argv[0] in ("vl-swap", "vl-graph"):  # image reader: LoRA fused into the public Qwen3-VL int4 text graph; DeepStack / hidden-output graph edits
+        import importlib
+        return importlib.import_module("." + argv[0].replace("-", "_"), __package__).main(argv[1:]) or 0
     if argv and argv[0] in ("pack-mlc", "pack-litert", "pack-tjs"):  # repackage a published GenAI repo for another runtime
         import importlib
         return importlib.import_module("." + argv[0].replace("-", "_"), __package__).main(argv[1:]) or 0

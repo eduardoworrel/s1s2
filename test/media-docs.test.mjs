@@ -83,3 +83,26 @@ for (const doc of ["README.md", "README.pt-BR.md"]) {
     assert.ok(typeof parseAsr === "function");
   });
 }
+
+// ---- the image package: the README snippet reads the embedded manifest and asks the Hub URL it names (no network) ----
+test("the image README snippet: manifest URL, options and the files it asks for", async () => {
+  const { loadMedia } = await import("../dist/media.js");
+  const emb = readJson("manifests/visual-jev-image.json"), asked = [];
+  for (const doc of ["README.md", "README.pt-BR.md"]) {
+    const text = readFileSync(path.join(ROOT, doc), "utf8"), url = /manifest: "(https:\/\/huggingface\.co\/eduardoworrel\/Visual-Jev-4B-ONNX-S1S2\/resolve\/main\/manifest\.json)"/.exec(text);
+    assert.ok(url, `${doc}: no image manifest URL`);
+    assert.match(text, /modality: "image"/); assert.match(text, /visionDevice: "wasm"/); assert.match(text, /reader\.decide\(/);
+    const fetchFn = async (u) => { asked.push(String(u)); if (String(u) === url[1]) return { ok: true, status: 200, json: async () => emb }; return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) }; };
+    await assert.rejects(() => loadMedia({ manifest: url[1], modality: "image", device: "cpu", cacheDir: path.join(tmpdir(), "s1s2-doc-test-" + process.pid), modules: { ort: {}, transformers: {} }, tokenizer: { encode: () => [], decode: () => "" }, fetch: fetchFn }), /404|HTTP/);
+  }
+  assert.ok(asked.some((u) => u.includes("/Visual-Jev-4B-ONNX-S1S2/resolve/") && /tokenizer|option_rows/.test(u)), "no file URL under the Hub repo: " + asked.join(" "));
+});
+
+test("manifests/visual-jev-image.json is the package manifest of the Hub repo, except the revision", () => {
+  const lib = readJson("manifests/visual-jev-image.json");
+  assert.equal(lib.repo, "eduardoworrel/Visual-Jev-4B-ONNX-S1S2");
+  assert.match(lib.revision, /^([0-9a-f]{40})$/);   // 40 zeros until the Hub commit is pinned: node scripts/pin-image-manifest.mjs <40-hex commit>
+  const pkg = process.env.S1S2_IMAGE_PACKAGE_DIR;
+  if (!pkg) return;   // optional: S1S2_IMAGE_PACKAGE_DIR=<the package folder> compares it with the package's own manifest.json
+  assert.deepEqual({ ...lib, revision: "" }, { ...JSON.parse(readFileSync(path.join(pkg, "manifest.json"), "utf8")), revision: "" });
+});

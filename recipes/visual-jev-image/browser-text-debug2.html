@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"onnxruntime-web/webgpu":"/ort/ort.all.bundle.min.mjs","onnxruntime-web":"/ort/ort.all.bundle.min.mjs","onnxruntime-common":"/ort/ort.all.bundle.min.mjs"}}</script>
+<script type="module">
+import * as ort from "/ort/ort.all.bundle.min.mjs";
+const post = (p, o) => fetch(p, { method: "POST", body: JSON.stringify(o) });
+try {
+  ort.env.wasm.wasmPaths = "/ort/";
+  const q = new URLSearchParams(location.search), B = +(q.get("c") || 0), S = +(q.get("s") || 200), H = 2560, e = q.get("ep");
+  const emb = new Float32Array(S * H); for (let i = 0; i < emb.length; i++) emb[i] = Math.sin(i * 0.001) * 0.5;
+  const P = (a, i) => a === 0 ? i : a === 1 ? i % 7 : i % 5;
+  const ds = [0, 1, 2].map((k) => { const d = new Float32Array(S * H); for (let j = 0; j < d.length; j++) d[j] = Math.cos(j * 0.002 + k) * 0.3; return d; });
+  const s = await ort.InferenceSession.create("/build/" + (q.get("g") || "text.onnx"), { executionProviders: [e === "webgpu" ? { name: "webgpu", validationMode: "disabled" } : "wasm"], externalData: ["text.onnx.data", "text.onnx.data_1"].map((n) => ({ path: n, data: location.origin + "/build/" + n })), logSeverityLevel: 3 });
+  const names = ["hidden", ...Array.from({ length: 36 }, (_, l) => [`present.${l}.key`, `present.${l}.value`]).flat()];
+  let past = {}; for (let l = 0; l < 36; l++) for (const k of ["key", "value"]) past[`past_key_values.${l}.${k}`] = new ort.Tensor("float32", new Float32Array(0), [1, 8, 0, 128]);
+  const bs = B ? B : S; let r, done = 0;
+  while (done < S) {
+    const L = Math.min(bs, S - done);
+    const pos = new BigInt64Array(3 * L); for (let a = 0; a < 3; a++) for (let i = 0; i < L; i++) pos[a * L + i] = BigInt(P(a, done + i));
+    const f = { inputs_embeds: new ort.Tensor("float32", emb.slice(done * H, (done + L) * H), [1, L, H]), attention_mask: new ort.Tensor("int64", new BigInt64Array(done + L).fill(1n), [1, done + L]), position_ids: new ort.Tensor("int64", pos, [3, 1, L]), ...past };
+    ds.forEach((d, k) => (f["deepstack_" + k] = new ort.Tensor("float32", d.slice(done * H, (done + L) * H), [1, L, H])));
+    r = await s.run(f, names); past = {};
+    for (let l = 0; l < 36; l++) for (const k of ["key", "value"]) past[`past_key_values.${l}.${k}`] = r[`present.${l}.${k}`];
+    done += L;
+  }
+  const out = {};
+  for (const k of ["hidden", "present.0.key", "present.17.key", "present.35.key", "present.35.value"]) { const a = await r[k].getData(true); let s2 = 0; for (const v of a) s2 += v * v; out["P_" + k] = { rms: Math.sqrt(s2 / a.length), head: Array.from(a.slice(-4)) }; }
+  { const a = await r["hidden"].getData(true); out.tok = [0, 1, 2, 3, 5, 8, 13, 21, 34, 47].filter((t) => t < S).map((t) => Array.from(a.slice(t * H, t * H + 6))); }
+  out.k0 = []; out.v0 = []; for (let l = 0; l < 36; l++) { const a = await r[`present.${l}.key`].getData(true), b = await r[`present.${l}.value`].getData(true); out.k0.push(Array.from(a.slice(0, 4))); out.v0.push(Array.from(b.slice(0, 4))); }
+  post("/result", out);
+} catch (er) { post("/result", { error: String(er?.stack ?? er) }); }
+</script>

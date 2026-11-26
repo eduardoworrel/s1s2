@@ -1,0 +1,211 @@
+{
+ "schema": "s1s2.manifest/1",
+ "id": "visual-jev-4b-onnx-s1s2",
+ "modalities": [
+  "image"
+ ],
+ "repo": "eduardoworrel/Visual-Jev-4B-ONNX-S1S2",
+ "revision": "9ed50bdb56ade0f513434664f2f9c69ae7cfb6cf",
+ "license": "Apache-2.0",
+ "image": {
+  "preprocess": {
+   "kind": "qwen-vl-patches",
+   "patchSize": 16,
+   "mergeSize": 2,
+   "temporalPatchSize": 2,
+   "mean": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "std": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "resample": "pillow-bicubic",
+   "minPixels": 65536,
+   "maxPixels": 200704,
+   "referenceMaxPixels": 16777216
+  },
+  "vision": {
+   "runtime": "onnx",
+   "graph": {
+    "path": "vision.onnx",
+    "sha256": "9010287b8462406c9476cc3a06a24f078162e3702a997b14db5af9b843136945",
+    "size": 330286234
+   },
+   "data": [
+    {
+     "path": "vision.onnx.data",
+     "sha256": "486403e1e62348cdcbdc18319027be976aa1e1def09595d36c7734a2c6911ea9",
+     "size": 183828480
+    }
+   ],
+   "inputs": {
+    "pixelValues": "pixel_values",
+    "grid": "image_grid_thw"
+   },
+   "outputs": {
+    "features": "image_features",
+    "deepstack": [
+     "deepstack_0",
+     "deepstack_1",
+     "deepstack_2"
+    ]
+   },
+   "devices": [
+    "wasm",
+    "cpu"
+   ]
+  },
+  "text": {
+   "runtime": "onnx",
+   "graph": {
+    "path": "text.onnx",
+    "sha256": "279abd8ebd218a0607ab3c506316d92136a993caff929a0857a6f43e5798b45b",
+    "size": 999101
+   },
+   "data": [
+    {
+     "path": "text.onnx.data",
+     "sha256": "3c4c91358f222497f2944e857bfe742f4abe7a4f2516be2d263f004f1d283ec5",
+     "size": 2038562816
+    },
+    {
+     "path": "text.onnx.data_1",
+     "sha256": "f1f5403e31c27b4b658685a8c44224ab454418a2c3d7833dcd54201cb57d6277",
+     "size": 479690752
+    }
+   ],
+   "inputs": {
+    "embeds": "inputs_embeds",
+    "attentionMask": "attention_mask",
+    "positionIds": "position_ids",
+    "deepstack": [
+     "deepstack_0",
+     "deepstack_1",
+     "deepstack_2"
+    ]
+   },
+   "cache": {
+    "pastKey": "past_key_values.%d.key",
+    "pastValue": "past_key_values.%d.value",
+    "presentKey": "present.%d.key",
+    "presentValue": "present.%d.value"
+   },
+   "output": {
+    "hidden": "hidden"
+   },
+   "model": {
+    "layers": 36,
+    "kvHeads": 8,
+    "headDim": 128,
+    "hidden": 2560,
+    "vocab": 151936
+   },
+   "ioDtype": "float32",
+   "devices": [
+    "webgpu",
+    "wasm",
+    "cpu"
+   ]
+  },
+  "embeddings": {
+   "file": {
+    "path": "embedding.fp16",
+    "sha256": "894430cf9d1953269a321711869f694f40e57bf08ed8d3feb3a0c189e202334a",
+    "size": 777912320
+   },
+   "format": "f16"
+  },
+  "tokenizer": {
+   "tokenizer": {
+    "path": "tokenizer.json",
+    "sha256": "a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+    "size": 7032403
+   },
+   "config": {
+    "path": "tokenizer_config.json",
+    "sha256": "c2da771801886ad9ae98181793ffd3dfb7f1af30f6f7c6a4e15d7dbba52e2399",
+    "size": 10868
+   }
+  },
+  "prompt": {
+   "imagePad": 151655,
+   "visionStart": 151652,
+   "visionEnd": 151653,
+   "imStart": 151644,
+   "imEnd": 151645
+  },
+  "readout": {
+   "kind": "option-letters",
+   "tokenIds": [
+    362,
+    425,
+    356,
+    422,
+    468,
+    434,
+    479,
+    472,
+    358,
+    619,
+    730,
+    444,
+    386,
+    451,
+    506,
+    393
+   ],
+   "rows": {
+    "path": "option_rows.f16",
+    "sha256": "2852e2834b9a475d5a83bb1a9c32f81f4d1135d474ce81a6fc4d614055208c06",
+    "size": 81920
+   },
+   "minOptions": 2,
+   "maxOptions": 16,
+   "temperature": 1
+  },
+  "notes": "Questions with 2 to 16 lettered options about one image, scored by the LM-head logit of the option letter (Visual Jev, arXiv:2609.25845) on Qwen3-VL-4B-Instruct with the visual-jev-4b-answer-sft LoRA fused into the int4 text decoder. Vision graph: run on WASM (devices list no WebGPU: onnxruntime-web 1.31.1 returns wrong values for it, spec/MULTIMODAL.md 10.9); text graph: WebGPU, WASM or CPU, float32 activations, int4 weights. English only; raw probabilities, overconfident; option order is part of the question.",
+  "fidelity": {
+   "measuredOn": "2026-11-26",
+   "environment": "Apple silicon Mac 16 GB; Chrome headless, onnxruntime-web 1.31.1; onnxruntime 1.31 CPU",
+   "set": "ScienceQA test split, questions with an image and 2 to 8 options (first 240 in dataset order); pixel budget 65,536 to 200,704",
+   "browserVsCpu": {
+    "n": 240,
+    "medianAbsDp": 0.0011,
+    "p95AbsDp": 0.136,
+    "maxAbsDp": 0.284,
+    "decisionFlips": 7,
+    "accuracyCpu": 0.917,
+    "accuracyBrowser": 0.925
+   },
+   "vsTorchBf16Oracle": {
+    "n": 60,
+    "medianAbsDp": 0.0014,
+    "p95AbsDp": 0.198,
+    "maxAbsDp": 0.458,
+    "decisionFlips": 4,
+    "accuracyOracle": 0.9,
+    "accuracyReader": 0.9
+   },
+   "accuracyCpuN240": {
+    "accuracy": 0.917,
+    "wilson95": [
+     0.875,
+     0.945
+    ],
+    "chance": 0.359
+   },
+   "toleranceStatus": "p95 and flips against the bf16 oracle not met (0.198; 6.7%); browser vs CPU p95 not met (0.136), flips 2.9%, median and accuracy met; see spec/MULTIMODAL.md 10.9",
+   "timePerQuestionMs": {
+    "median": 15596,
+    "p95": 28294,
+    "visionWasmMedian": 10758,
+    "branchMedian": 4329
+   },
+   "chromeResidentPeakMBLowerBound": 2963
+  }
+ }
+}

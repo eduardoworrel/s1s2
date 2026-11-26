@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><script type="module">
+const post = (p, o) => fetch(p, { method: "POST", body: JSON.stringify(o) });
+const out = {};
+for (const id of [362, 151644, 5, 99999]) { const r = await fetch("/build/embedding.fp16", { headers: { Range: `bytes=${id * 5120}-${id * 5120 + 5119}` } }); const b = new Uint16Array(await r.arrayBuffer()); out[id] = { status: r.status, len: b.length, head: Array.from(b.slice(0, 4)) }; }
+post("/result", out);
+</script>

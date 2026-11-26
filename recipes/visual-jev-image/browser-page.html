@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><title>Visual Jev image reader</title><pre id="log"></pre>
+<script>fetch("/log",{method:"POST",body:JSON.stringify({s:"page start"})}); window.addEventListener("error",(e)=>fetch("/log",{method:"POST",body:JSON.stringify({s:"error: "+e.message+" "+e.filename})}));</script>
+<script type="importmap">{"imports":{"onnxruntime-web/webgpu":"/ort/ort.all.bundle.min.mjs","onnxruntime-web":"/ort/ort.all.bundle.min.mjs","onnxruntime-common":"/ort/ort.all.bundle.min.mjs","@huggingface/transformers":"/tjs/transformers.web.js"}}</script>
+<script type="module">
+import * as ort from "/ort/ort.all.bundle.min.mjs";
+import * as tjs from "/tjs/transformers.web.js";
+import { loadMedia } from "/dist/media.js";
+const q = new URLSearchParams(location.search), ep = q.get("ep") || "webgpu", N = +(q.get("n") || 3);
+const post = (p, o) => fetch(p, { method: "POST", body: JSON.stringify(o) });
+const log = (...a) => { const s = a.join(" "); document.getElementById("log").textContent += s + "\n"; post("/log", { s }); };
+window.addEventListener("error", (e) => post("/result", { error: String(e.message) }));
+window.addEventListener("unhandledrejection", (e) => post("/result", { error: String(e.reason?.stack ?? e.reason) }));
+try {
+  ort.env.wasm.wasmPaths = "/ort/"; ort.env.wasm.numThreads = 1;
+  const manifest = await (await fetch("/manifest.json")).json();
+  const t0 = performance.now();
+  const model = await loadMedia({ manifest, modality: "image", baseUrls: { [manifest.repo]: location.origin + "/build/" }, allowUnverified: true, device: ep, visionDevice: q.get('vd') || undefined, noCache: q.get('nc') === '1', modules: { ort, transformers: tjs }, onStatus: log });
+  log("loaded ms", (performance.now() - t0).toFixed(0), "device", model.device);
+  const qs = (await (await fetch("/q.jsonl")).text()).trim().split("\n").slice(0, N).map((l) => JSON.parse(l));
+  const rows = [];
+  for (const x of qs) {
+    const bmp = await createImageBitmap(await (await fetch("/img/" + x.image.split("/").pop())).blob());
+    const c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext("2d"); g.drawImage(bmp, 0, 0);
+    const d = g.getImageData(0, 0, bmp.width, bmp.height);
+    const r = await model.decide({ image: { rgb: d.data, width: bmp.width, height: bmp.height, channels: 4 }, context: x.context, questions: [{ instruction: x.instruction, options: x.options }] });
+    rows.push({ image: x.image, instruction: x.instruction, label: x.label, probabilities: r.answers[0].probabilities, ms: r.cost.ms, parts: r.cost.parts, tokens: r.cost.imageTokens });
+    log("q", rows.length, "ms", r.cost.ms, JSON.stringify(r.cost.parts));
+  }
+  post("/result", { rows, jsHeapMB: (performance.memory?.usedJSHeapSize ?? 0) / 1e6 });
+} catch (e) { post("/result", { error: String(e?.stack ?? e) }); }
+</script>
