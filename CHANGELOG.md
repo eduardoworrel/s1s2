@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Image reader, specified and partly built (`spec/MULTIMODAL.md` section 10): manifest block `image` (modality `"image"`, schema and rules), the pure parts in `src/media/imagePrep.ts` exported from `@s1s2/web/media` (smart resize, Pillow-identical bicubic resize, patch layout, the Visual Jev prompt, M-RoPE positions, option readout; each checked against the Hugging Face processor, tokenizer and `get_rope_index` by fixtures), and converter commands `vl-swap` (LoRA fused into the int4 text graph of the public Qwen3-VL ONNX build by swapping weight blocks; quantizer byte-equal to the public build on the tensors measured) and `vl-graph` (DeepStack and hidden-output graph edits: the public graphs run without DeepStack). `loadMedia` on an image manifest throws: the browser runtime and the weights package are not built; nothing about the 4B was run.
 - The Marimba audio package is on the Hub (`eduardoworrel/Marimba-ONNX-S1S2`); `manifests/marimba-audio.json` pins it (repo, revision and the hashes of the re-exported decoder), so `loadMedia` with no `baseUrls` downloads from there. Local weights through `baseUrls` / `localDirs` work as before, keyed by the new repo id.
 
 ## 0.2.1 (2026-11-26)
