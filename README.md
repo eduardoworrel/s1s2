@@ -100,25 +100,47 @@ Other projects already run typed decisions in one pass, including open-jev, the 
 
 ## Audio (experimental)
 
-Besides text, the library reads an **audio package** (a frozen Qwen3-ASR-0.6B encoder with Marimba readouts). Same answers (`probability`, `margin`, `rawMargin`), one pass for any number of audio questions.
+Besides text, the library reads an **audio package**: ONNX builds of [Marimba](https://huggingface.co/charcot-ai/marimba) (typed questions about an 8-second audio window, on a frozen Qwen3-ASR-0.6B encoder) for the browser and Node. The weights are on the Hub, [eduardoworrel/Marimba-ONNX-S1S2](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2), and `manifests/marimba-audio.json` pins that repository at the commit that holds them, so `loadMedia` downloads and checks them with no further option. Same answers as the text models (`probability`, `margin`, `rawMargin`, `decision`); one encoder pass answers any number of questions. Requires `@s1s2/web` 0.2.0 or later (`transcribe`: 0.2.1).
 
 ```js
+import * as ort from "onnxruntime-web/webgpu";
 import { loadMedia } from "@s1s2/web/media";
 
-const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
-const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
-// d.answers[i].decision / .probability / .margin ; d.cost: { ms, parts: { mel, tower, readers } }
+const audio = await loadMedia({
+  manifest: "https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2/resolve/main/manifest.json",
+  modules: { ort },
+  decoder: "auto",                       // loads language and term; if that fails the other five questions still work
+  onStatus: console.log,
+});
 
-// With the decoder: the text itself (one window of up to 8 s; greedy, or `{ beam: true }` for beam search)
-const t = await audio.transcribe({ samples, sampleRate: 16000 }, { maxNewTokens: 256 });
-// t.text (no "language" prefix), t.language ("pt" or null), t.method, t.tokens, t.finishReason, t.cost; with beam: t.hypotheses (four, best first)
+// samples: Float32Array, mono, 16 kHz (the last 8 s are read)
+const enc = await audio.encode({ samples, sampleRate: 16000 });          // one encoder pass
+const [vad, turn, same, change, count, lang, term] = await audio.read(enc, [
+  "voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count",
+  "language", { task: "term", term: "obrigado" },
+]);
+console.log(vad.decision, turn.decision, lang.choice, term.probability, term.hypotheses);
+
+// System 2: the text itself, from the same encoder pass (0.2.1 or later)
+const { text, language } = await audio.transcribe(enc);
 ```
 
-`transcribe` also takes the result of `audio.encode(...)`, so the questions above and the text share one tower pass. It needs the decoder (it throws like `language` and `term` when it is not loaded), reads one window (no timestamps, no streaming), and with int4 weights its text differs from the float32 reference about as often as the `term` hypotheses do (section 9.6 of the spec).
+Questions: `voice_activity`, `turn_end`, `same_speaker`, `speaker_change`, `speaker_count` (the three speaker ones need 8 s of audio), `language` (one of 30, with probabilities) and `{ task: "term", term }` (was the word said: yes or no, and the fraction n/5 of five transcript hypotheses, not calibrated). `transcribe` returns `{ text, language, method, tokens, finishReason, cost }` for one window (greedy, or `{ beam: true }` for beam 4 with `hypotheses`); it has no timestamps and no streaming. `language`, `term` and `transcribe` need the decoder; `decoder: false` loads none of it (the other five questions stay, 0.76 GB instead of 1.42 GB), and `decoder: true` fails instead of going on without it. In Node, drop `modules` (it uses `onnxruntime-node`, which you install, on the CPU build of the decoder) and the files go to `$S1S2_CACHE`. With `revision` pinned, the browser checks each large file against the sha256 that the Hub reports; `allowUnverified` is only for other hosts.
 
-- Audio, Chrome WebGPU, 56 FLEURS pt-BR windows: probabilities within 3.82e-5 of the torch Marimba package and the same decision on 56 of 56; about 0.2 s per window (log-mel in JavaScript 116 ms, encoder 71 ms, five readers 10 ms).
-- Audio language (30 languages) and spoken-word questions use the Qwen3-ASR decoder when the manifest lists it (about 0.7 GB more; measured on Portuguese only). `loadMedia` loads it by default (`decoder: "auto"`): if it cannot load (WebGPU out of memory, a server without Range requests, no build for the device) the model still answers the five other questions, `onStatus` and `model.decoder` say why, and only a `language` or `term` question throws; `decoder: false` loads none of it and `decoder: true` fails when it cannot load. The language code matched the torch reference on all 72 test windows, but the 0.02 tolerance on its probability is **not met** on the noise clip (up to 0.09 with int4 weights) nor, by 0.0001, on one speech window ([spec section 9.5](spec/MULTIMODAL.md)); int4 also changes the transcript text (only about a quarter of the beam hypotheses equal torch's). `transcribe` returns the text of one window; not included: timestamps, streaming, margin policies for media. [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) has the design, tolerances and every limit; the same file lists the open points and the licences read on the sources.
-- The weights are **not published**: the manifest is `revision: "local"` and the demo points at a local directory. Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <dir>`); how the package is made: [`recipes/`](recipes).
+- **Cost** (Apple M2 Pro, Chrome 158, WebGPU, median of 8 windows, encoder warm): `language` about 0.13 s, `term` (greedy and four beams) about 1.4 to 1.7 s, one 8 s window with mel, encoder, `language` and `term` about 2 s. In Chrome with WASM, `term` took about 37 s: ask for a term on demand there, not on every window.
+- **Size:** 0.76 GB without the decoder, 1.42 GB with the WebGPU build (the CPU build is 0.41 GB and only the build the device needs is fetched).
+- **The five other readers**, Chrome WebGPU, 56 FLEURS pt-BR windows: probabilities within 3.82e-5 of the torch Marimba package and the same decision on 56 of 56; about 0.2 s per window (log-mel in JavaScript 116 ms, encoder 71 ms, five readers 10 ms).
+- **Limits:** only Portuguese was validated (one noise clip besides); the other 29 languages of `language` are the original's behaviour, not checked here. The 0.02 tolerance on the probability of the top language is **not met** on the noise clip (up to 0.09 with int4 weights) nor, by 0.0001, on one speech window; the language code matched the torch reference on all 72 test windows. int4 changes the text: about half of the greedy transcripts and three quarters of the beam ones differ from float32 torch, while the `term` fraction and decision stay near 98 %. If transcript fidelity matters, this package is the wrong one. Parity tables, every limit and the licences: the [model card](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2) and [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md).
+
+Local weights (opt-in): to read files you made yourself or mirrored, map the repository to a URL (browser) or a directory (`localDirs`, Node); the manifest's `revision` is then not used, and a large file that is not on the Hub needs `allowUnverified: true` (the demo server hashes what it serves).
+
+```js
+const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "eduardoworrel/Marimba-ONNX-S1S2": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
+const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
+// d.answers[i].decision / .probability / .margin ; d.cost: { ms, parts: { mel, tower, readers } }
+```
+
+Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <dir>`, with a local copy of the repository); how the package is made: [`recipes/`](recipes).
 
 ## Layout
 

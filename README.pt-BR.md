@@ -100,25 +100,47 @@ Outros projetos já fazem decisão tipada numa passada, entre eles o open-jev, o
 
 ## Áudio (experimental)
 
-Além de texto, a biblioteca lê um **pacote de áudio** (codificador Qwen3-ASR-0.6B congelado com leituras do Marimba). As respostas são as mesmas (`probability`, `margin`, `rawMargin`), com uma passada para qualquer número de perguntas de áudio.
+Além de texto, a biblioteca lê um **pacote de áudio**: builds ONNX do [Marimba](https://huggingface.co/charcot-ai/marimba) (perguntas tipadas sobre uma janela de 8 segundos de áudio, sobre um codificador Qwen3-ASR-0.6B congelado) para o navegador e o Node. Os pesos estão no Hub, [eduardoworrel/Marimba-ONNX-S1S2](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2), e o `manifests/marimba-audio.json` fixa esse repositório no commit que os guarda; assim o `loadMedia` baixa e confere os arquivos sem nenhuma opção a mais. As respostas são as dos modelos de texto (`probability`, `margin`, `rawMargin`, `decision`); uma passada do codificador responde qualquer número de perguntas. Exige o `@s1s2/web` 0.2.0 ou superior (`transcribe`: 0.2.1).
 
 ```js
+import * as ort from "onnxruntime-web/webgpu";
 import { loadMedia } from "@s1s2/web/media";
 
-const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
-const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
-// d.answers[i].decision / .probability / .margin ; d.cost: { ms, parts: { mel, tower, readers } }
+const audio = await loadMedia({
+  manifest: "https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2/resolve/main/manifest.json",
+  modules: { ort },
+  decoder: "auto",                       // carrega idioma e termo; se falhar, as outras cinco perguntas continuam
+  onStatus: console.log,
+});
 
-// Com o decodificador: o próprio texto (uma janela de até 8 s; guloso, ou `{ beam: true }` para beam search)
-const t = await audio.transcribe({ samples, sampleRate: 16000 }, { maxNewTokens: 256 });
-// t.text (sem o prefixo "language"), t.language ("pt" ou null), t.method, t.tokens, t.finishReason, t.cost; com beam: t.hypotheses (quatro, a melhor primeiro)
+// samples: Float32Array, mono, 16 kHz (os últimos 8 s são lidos)
+const enc = await audio.encode({ samples, sampleRate: 16000 });          // uma passada do codificador
+const [vad, turn, same, change, count, lang, term] = await audio.read(enc, [
+  "voice_activity", "turn_end", "same_speaker", "speaker_change", "speaker_count",
+  "language", { task: "term", term: "obrigado" },
+]);
+console.log(vad.decision, turn.decision, lang.choice, term.probability, term.hypotheses);
+
+// System 2: o próprio texto, da mesma passada do codificador (0.2.1 ou superior)
+const { text, language } = await audio.transcribe(enc);
 ```
 
-O `transcribe` também aceita o resultado de `audio.encode(...)`, então as perguntas acima e o texto dividem uma passada da torre. Precisa do decodificador (dá erro como `language` e `term` quando ele não está carregado), lê uma janela (sem marcas de tempo, sem streaming) e, com pesos int4, o texto difere da referência em float32 quase tanto quanto as hipóteses do `term` (seção 9.6 da spec).
+Perguntas: `voice_activity`, `turn_end`, `same_speaker`, `speaker_change`, `speaker_count` (as três de locutor exigem 8 s de áudio), `language` (uma de 30, com probabilidades) e `{ task: "term", term }` (a palavra foi dita: sim ou não, e a fração n/5 de cinco hipóteses de transcrição, não calibrada). O `transcribe` devolve `{ text, language, method, tokens, finishReason, cost }` para uma janela (guloso, ou `{ beam: true }` para beam 4 com `hypotheses`); não há marcas de tempo nem streaming. `language`, `term` e `transcribe` precisam do decodificador; `decoder: false` não carrega nada dele (ficam as outras cinco perguntas, 0,76 GB em vez de 1,42 GB), e `decoder: true` falha em vez de seguir sem ele. No Node, tire o `modules` (usa o `onnxruntime-node`, que você instala, com a build CPU do decodificador) e os arquivos vão para `$S1S2_CACHE`. Com `revision` fixo, o navegador confere cada arquivo grande com o sha256 que o Hub informa; `allowUnverified` só serve para outros hosts.
 
-- Áudio, Chrome WebGPU, 56 janelas FLEURS pt-BR: probabilidades a até 3,82e-5 do pacote Marimba em torch e a mesma decisão em 56 de 56; cerca de 0,2 s por janela (log-mel em JavaScript 116 ms, codificador 71 ms, cinco leituras 10 ms).
-- Idioma (30 línguas) e palavra dita em áudio usam o decodificador do Qwen3-ASR quando o manifest o lista (cerca de 0,7 GB a mais; medido só em português). O `loadMedia` o carrega por padrão (`decoder: "auto"`): se não carregar (WebGPU sem memória, servidor sem Range, sem build para o dispositivo) o modelo ainda responde as outras cinco perguntas, `onStatus` e `model.decoder` dizem o motivo, e só uma pergunta `language` ou `term` dá erro; `decoder: false` não carrega nada e `decoder: true` falha se não carregar. O código do idioma coincidiu com a referência torch nas 72 janelas de teste, mas a tolerância de 0,02 na probabilidade **não é cumprida** no clipe de ruído (até 0,09 com pesos int4) nem, por 0,0001, em uma janela de fala ([spec seção 9.5](spec/MULTIMODAL.md)); o int4 também muda o texto da transcrição (só cerca de um quarto das hipóteses de beam são iguais às do torch). O `transcribe` devolve o texto de uma janela; fora do pacote: marcas de tempo, streaming, política de margem para mídia. [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) traz o desenho, as tolerâncias e todos os limites; o mesmo arquivo lista os pontos em aberto e as licenças lidas nas fontes.
-- Os pesos **não estão publicados**: o manifest é `revision: "local"` e a demo aponta para uma pasta local. Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <pasta>`); como o pacote é feito: [`recipes/`](recipes).
+- **Custo** (Apple M2 Pro, Chrome 158, WebGPU, mediana de 8 janelas, codificador aquecido): `language` cerca de 0,13 s, `term` (guloso e quatro beams) cerca de 1,4 a 1,7 s, uma janela de 8 s com mel, codificador, `language` e `term` cerca de 2 s. No Chrome com WASM, o `term` levou cerca de 37 s: peça um termo sob demanda ali, não a cada janela.
+- **Tamanho:** 0,76 GB sem o decodificador, 1,42 GB com a build WebGPU (a build CPU tem 0,41 GB e só se baixa a que o dispositivo usa).
+- **As cinco outras leituras**, Chrome WebGPU, 56 janelas FLEURS pt-BR: probabilidades a até 3,82e-5 do pacote Marimba em torch e a mesma decisão em 56 de 56; cerca de 0,2 s por janela (log-mel em JavaScript 116 ms, codificador 71 ms, cinco leituras 10 ms).
+- **Limites:** só o português foi validado (mais um clipe de ruído); as outras 29 línguas do `language` são o comportamento do original, sem conferência aqui. A tolerância de 0,02 na probabilidade do idioma mais provável **não é cumprida** no clipe de ruído (até 0,09 com pesos int4) nem, por 0,0001, em uma janela de fala; o código do idioma coincidiu com a referência torch nas 72 janelas de teste. O int4 muda o texto: cerca de metade das transcrições gulosas e três quartos das de beam diferem do torch em float32, enquanto a fração e a decisão do `term` ficam perto de 98 %. Se a fidelidade da transcrição importa, este pacote não serve. Tabelas de paridade, todos os limites e as licenças: o [cartão do modelo](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2) e a [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md).
+
+Pesos locais (opcional): para ler arquivos que você mesmo gerou ou espelhou, mapeie o repositório para uma URL (navegador) ou uma pasta (`localDirs`, Node); a `revision` do manifest deixa de ser usada, e um arquivo grande fora do Hub exige `allowUnverified: true` (o servidor da demo confere o hash do que serve).
+
+```js
+const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "eduardoworrel/Marimba-ONNX-S1S2": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
+const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
+// d.answers[i].decision / .probability / .margin ; d.cost: { ms, parts: { mel, tower, readers } }
+```
+
+Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <pasta>`, com uma cópia local do repositório); como o pacote é feito: [`recipes/`](recipes).
 
 ## Estrutura
 

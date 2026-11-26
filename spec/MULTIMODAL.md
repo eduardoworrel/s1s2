@@ -20,7 +20,7 @@ measured in the reference runs on the builds named here; nothing else is claimed
 `modalities` is the list of inputs `decide` takes: absent = `["text"]`. `["text", "audio"]` is a regular text
 manifest that also has an `audio` block (free-text questions over media: not built, see limits). The package here
 is media-only: `["audio"]` (questions are fixed tasks).
-A media-only manifest needs `repo` and `revision` (a 40-hex sha, or `"local"` for an unpublished package whose files `baseUrls` /
+A media-only manifest needs `repo` and `revision` (a 40-hex sha, or `"local"` for a package that is not on the Hub, whose files `baseUrls` /
 `localDirs` map) in place of the text sections.
 
 ## 2. Types
@@ -107,7 +107,7 @@ The readout files are Marimba's own safetensors, pinned unchanged; the tower and
 ```js
 import { loadMedia } from "@s1s2/web/media";
 
-const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "local/marimba-audio-web": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
+const audio = await loadMedia({ manifest: "manifests/marimba-audio.json", baseUrls: { "eduardoworrel/Marimba-ONNX-S1S2": new URL("/weights/marimba-audio/", location.href).href }, modules: { ort }, allowUnverified: true });
 const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions: ["voice_activity", "turn_end", "speaker_change"] });
 // d.answers[i]: { task, probability, margin, rawMargin, decision, threshold, available } ; d.cost: { ms, parts: { mel, tower, readers }, passes: 1 }
 const enc = await audio.encode({ samples, sampleRate: 16000 });          // one tower pass ...
@@ -127,7 +127,7 @@ const w = await audio.read(enc, ["language", { task: "term", term: "obrigado" }]
 | decisions at their thresholds | torch | identical on every window | 56 / 56 |
 | float16 rounding, JS fallback vs `Math.f16round` | itself | exactly equal | n/a |
 
-The comparison of the readers and of the speech head with the torch probabilities needs the weights, which are not published: on a clone
+The comparison of the readers and of the speech head with the torch probabilities needs the weights, which are not in this repository (the package is on the Hub, but the tests read local files): on a clone
 without `.weights/marimba-audio/` (or `S1S2_MM_WEIGHTS`) those tests are reported as skipped, with the message saying what is missing, and
 `npm test` does not prove them. The log-mel against torch, the float16 fallback and the reader arithmetic run from the stored fixtures on every clone.
 
@@ -148,21 +148,23 @@ itself differs from torch by <= 1.8e-4 on any hidden value, which moves a probab
 - **Readers are calibrated on their own data.** The Marimba card reports that turn-end calibration shifts across domains (ICSI: ECE 0.200 before per-domain calibration, 0.011 after), and that speaker questions compare two four-second halves or the last two seconds with the previous six; they identify no one. A `turn_end` or `speaker_*` answer on something that is not speech is not defined: the demo's synthetic noise clip gets `voice_activity` no and `turn_end` yes (90 %). Read `voice_activity` first.
 - **The demo's microphone button is not verified.** It is written (MediaRecorder on click, decoded with Web Audio at 16 kHz); in headless Chrome with a fake device `getUserMedia` did not resolve, so that path was never run. File and clip inputs were.
 - **Margins are not escalated.** No margin threshold is measured for audio; `escalation` is ignored.
-- **Weights are not published.** The manifest is `revision: "local"`; their files are produced by the recipes from third-party
-  checkpoints and mapped with `baseUrls` / `localDirs`. Publication is a decision for the package owner; section 8 lists the licences read on each source.
+- **Weights are on the Hub, not in this repository.** `manifests/marimba-audio.json` pins `eduardoworrel/Marimba-ONNX-S1S2` at the commit that
+  holds the weight files, so `loadMedia` with no `baseUrls` downloads them from there (the browser checks each large file against the sha256 the
+  Hub reports, so `allowUnverified` is not needed). The files are produced by the recipes from third-party checkpoints; `baseUrls` / `localDirs`
+  still map them to a local copy (the `revision` is then not used). Section 8 lists the licences read on each source.
 - Large files in the browser are not re-hashed by the page (see `Files.large`); the demo server hashes what it serves against the
   manifest before it starts.
 
 ## 7. Open points
 
 - **Not verified:** the demo's microphone button; browser resampling to 16 kHz against the reference resampler; weights downloaded
-  from a hub (every run used local files, none are published).
+  from the Hub by this repository's tests or in a browser (the tests and the measurements here read local copies; the URLs it would fetch are checked by a test with a mocked `fetch`).
 - **Not measured:** a margin policy for audio.
 
 ## 8. Licences read on the sources
 
 Read on the model and dataset cards (and the `LICENSE` file where the repository has one), November 2026. This is a record of what the
-sources state, not legal advice, and nothing here distributes weights.
+sources state, not legal advice, and nothing in this repository distributes weights; the weights package on the Hub carries its own `LICENSE` (Apache-2.0) and `NOTICE`.
 
 - The decoder build (section 9.3) is a derivative of `Qwen/Qwen3-ASR-0.6B` (Apache-2.0): a published copy needs that licence text, a notice that the weights were converted (renamed, int4-quantised, embedding table written as float16), and the source revision. The language and term logic is a port of `marimba-audio` 0.1.2 (Apache-2.0; no code is copied, behaviour is) and should be credited as such.
 - Apache-2.0 is declared by `Qwen/Qwen3-ASR-0.6B`, `charcot-ai/marimba` (head and readout weights; its code repository has an Apache-2.0

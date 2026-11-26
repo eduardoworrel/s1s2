@@ -1,0 +1,559 @@
+{
+  "schema": "s1s2.manifest/1",
+  "id": "marimba-qwen3-asr-0.6b-web",
+  "modalities": [
+    "audio"
+  ],
+  "repo": "eduardoworrel/Marimba-ONNX-S1S2",
+  "revision": "635924eb45bde6197a9be2e7e0cabc69f2930248",
+  "license": "Apache-2.0",
+  "provenance": {
+    "generator": {
+      "name": "recipes/marimba-audio",
+      "version": "0.1.0"
+    },
+    "base": {
+      "repo": "Qwen/Qwen3-ASR-0.6B",
+      "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+      "license": "Apache-2.0"
+    },
+    "source": {
+      "format": "marimba-readouts",
+      "repo": "charcot-ai/marimba",
+      "revision": "ad374b4e61202c8425d1b3b2766bef985b01df45",
+      "files": [
+        "turn_end/readout.safetensors",
+        "diarization/same_speaker.safetensors",
+        "diarization/speaker_change.safetensors",
+        "diarization/speaker_count.safetensors",
+        "speech_head/model.safetensors"
+      ]
+    },
+    "notes": "Published package. audio_tower.onnx and vad_head.onnx are ONNX exports of the frozen Qwen3-ASR-0.6B audio encoder and of the Marimba speech head (recipes/marimba-audio/export_*.py in eduardoworrel/s1s2.js); the readout safetensors are the Marimba files unchanged (their sha256 are in Marimba's config.json); decoder/ is the Qwen3-ASR-0.6B text decoder converted by `s1s2-convert asr-decoder` (renamed tensors, tied lm_head, int4, float16 embedding table), WebGPU build and CPU build. Licenses as the cards state them: Apache-2.0 for the encoder, the decoder and the head/readout weights; the turn-end readout was trained on pipecat-ai/smart-turn-data-v3.2-train (CC BY 4.0). `revision` is the commit of this repository that holds the weight files. This is not an official package of the Qwen team or of Charcot."
+  },
+  "audio": {
+    "preprocess": {
+      "kind": "log-mel",
+      "sampleRate": 16000,
+      "windowSeconds": 8,
+      "nFft": 400,
+      "hop": 160,
+      "nMels": 128,
+      "window": "hann-periodic",
+      "padding": "reflect",
+      "filters": "slaney",
+      "log": {
+        "floor": 1e-10,
+        "dynamicRange": 8,
+        "shift": 4,
+        "divide": 4
+      },
+      "frames": 800
+    },
+    "tower": {
+      "runtime": "onnx",
+      "file": {
+        "path": "audio_tower.onnx",
+        "sha256": "d0ff159793d5ee691b3113223c776727a69c85f216a8fbe8f2ee2190095aa5bd",
+        "size": 745697054
+      },
+      "input": {
+        "name": "mel",
+        "shape": [
+          128,
+          800
+        ]
+      },
+      "outputs": {
+        "h9": {
+          "layer": 9,
+          "frames": 104,
+          "dim": 896
+        },
+        "h12": {
+          "layer": 12,
+          "frames": 104,
+          "dim": 896
+        },
+        "h18": {
+          "layer": 18,
+          "frames": 104,
+          "dim": 896
+        },
+        "audio_features": {
+          "layer": "final",
+          "frames": 104,
+          "dim": 1024
+        }
+      },
+      "devices": [
+        "webgpu",
+        "wasm",
+        "cpu"
+      ]
+    },
+    "readers": {
+      "voice_activity": {
+        "kind": "speech-head",
+        "type": "predicate",
+        "tap": "h9",
+        "graph": {
+          "path": "vad_head.onnx",
+          "sha256": "17bf8e53d57ee7f203ee93017a183ece4954f8b75787dee383fd07206f50a63e",
+          "size": 9670121
+        },
+        "question": {
+          "path": "vad_question.f32",
+          "sha256": "ff19dab1417afb106f21f5abe6f617023dae5c7bf83a8f2126f1030eb4ed191e",
+          "size": 1024,
+          "dim": 256,
+          "prompt": "Há fala humana neste áudio?\nA. sim\nB. não\nResponda só com a letra da opção."
+        },
+        "inputs": {
+          "tap": "h9",
+          "mask": "fmask",
+          "question": "qpool",
+          "output": "score"
+        },
+        "frames": 100,
+        "temperature": 0.6540604692061299,
+        "threshold": 0.225
+      },
+      "turn_end": {
+        "kind": "pooled-linear",
+        "type": "predicate",
+        "tap": "h18",
+        "pooling": {
+          "kind": "tail-mean",
+          "seconds": 2
+        },
+        "weights": {
+          "path": "turn_end/readout.safetensors",
+          "sha256": "908a2a1a6fd9770d031684aa47f2eb5f5cb748e5a8a4f3e5ca2c10c4988c2ee9",
+          "size": 18348
+        },
+        "tensors": {
+          "coef": "coef",
+          "intercept": "intercept",
+          "mean": "mean",
+          "scale": "scale"
+        },
+        "calibration": {
+          "kind": "platt",
+          "coefficient": "platt_coef",
+          "intercept": "platt_intercept"
+        }
+      },
+      "same_speaker": {
+        "type": "predicate",
+        "tap": "h12",
+        "weights": {
+          "path": "diarization/same_speaker.safetensors",
+          "sha256": "47a77387c8cee820b7174040a4b7cad8b5dc3f23ba6ff82e0cd2148b9b5b7ea6",
+          "size": 22196
+        },
+        "kind": "pooled-linear",
+        "pooling": {
+          "kind": "pair",
+          "a": {
+            "from": 0,
+            "to": 4
+          },
+          "b": {
+            "from": 4,
+            "to": 8
+          }
+        },
+        "tensors": {
+          "coef": "coef",
+          "intercept": "intercept",
+          "mean": "scaler_mean",
+          "scale": "scaler_scale"
+        },
+        "calibration": {
+          "kind": "platt",
+          "coefficient": "platt_coefficient",
+          "intercept": "platt_intercept"
+        }
+      },
+      "speaker_change": {
+        "kind": "pooled-mlp",
+        "type": "predicate",
+        "tap": "h12",
+        "pooling": {
+          "kind": "pair-split",
+          "split": 6
+        },
+        "weights": {
+          "path": "diarization/speaker_change.safetensors",
+          "sha256": "e18ec6e25ba5c30b92de338808681aaf6ac9032250ab639b82ef5c7b6221a1d7",
+          "size": 3672796
+        },
+        "tensors": {
+          "layer0Weight": "layer_0_weight",
+          "layer0Bias": "layer_0_bias",
+          "layer1Weight": "layer_1_weight",
+          "layer1Bias": "layer_1_bias"
+        },
+        "calibration": {
+          "kind": "platt",
+          "coefficient": "platt_coefficient",
+          "intercept": "platt_intercept"
+        }
+      },
+      "speaker_count": {
+        "kind": "pooled-linear",
+        "type": "choice",
+        "labels": [
+          "0",
+          "1",
+          "2",
+          "3+"
+        ],
+        "tap": "h12",
+        "pooling": {
+          "kind": "mean-std"
+        },
+        "weights": {
+          "path": "diarization/speaker_count.safetensors",
+          "sha256": "a93128ba279ba2e0d13421bb00c6c0a62372cad2edb5f2a95cab2536645d3e8b",
+          "size": 43644
+        },
+        "tensors": {
+          "coef": "coef",
+          "intercept": "intercept",
+          "mean": "scaler_mean",
+          "scale": "scaler_scale"
+        },
+        "calibration": {
+          "kind": "temperature",
+          "tensor": "temperature"
+        }
+      },
+      "language": {
+        "kind": "decoder-language",
+        "type": "choice",
+        "tap": "audio_features"
+      },
+      "term": {
+        "kind": "decoder-term",
+        "type": "predicate",
+        "tap": "audio_features"
+      }
+    },
+    "notes": "voice_activity answers ONE canonical Portuguese question (its encoding is pinned in question). Speaker tasks need a full 8 s window; turn_end reads the last 2 s of real audio. Language and term are answered by the Qwen3-ASR decoder over the tower's final vectors (spec section 9): language is the closed-set score over 30 languages, term the fraction of five hypotheses (greedy + beam 4) that contain the word, uncalibrated.",
+    "fidelity": {
+      "reference": "marimba-audio 0.1.2 (torch float32 CPU), 56 FLEURS pt-BR clips, windows right-aligned to 8 s (set A) and 3 clips concatenated (set B)",
+      "chrome157WebGPU": {
+        "n": 56,
+        "maxAbsDiffP": {
+          "voice_activity": 2.04e-05,
+          "turn_end": 3.82e-05,
+          "same_speaker": 3.17e-05,
+          "speaker_change": 8.2e-06,
+          "speaker_count": 3.35e-05
+        },
+        "decisionAgreement": "56/56 (vad at 0.225, turn_end at 0.5)"
+      },
+      "source": "test/browser/media-chrome.mjs audio",
+      "decoder": {
+        "reference": "marimba-audio 0.1.2 (torch float32 CPU); 72 windows with the audio at index 0: 56 FLEURS pt-BR clips, 3 demo clips, 12 joined 8 s windows; 952 (window, term) pairs",
+        "nodeCpuInt4": {
+          "build": "cpuBuild",
+          "languageArgmax": "72/72",
+          "maxAbsDiffTopProbability": 0.09,
+          "speechOnlyMaxAbsDiffTopProbability": 0.0201,
+          "termFractionIdentical": 0.943,
+          "termFractionWithin02": 0.981,
+          "termDecisionEqual": 0.986,
+          "greedyTextEqual": 0.51,
+          "beamTextEqual": 0.26
+        },
+        "chromeWebGPUInt4": {
+          "build": "graph",
+          "languageArgmax": "72/72",
+          "maxAbsDiffTopProbability": 0.035,
+          "speechOnlyMaxAbsDiffTopProbability": 0.015,
+          "termFractionIdentical": 0.943,
+          "termFractionWithin02": 0.982,
+          "termDecisionEqual": 0.985,
+          "greedyTextEqual": 0.47,
+          "beamTextEqual": 0.25
+        },
+        "nodeCpuFloat32": {
+          "windows": 12,
+          "languageArgmax": "12/12",
+          "maxAbsDiffProbability": 7.5e-08,
+          "termFractionIdentical": 1,
+          "greedyTextEqual": 1,
+          "beamTextEqual": 1
+        },
+        "note": "The tolerance of spec section 9.4 for the probability of the most probable language (0.02) is not met: on the synthetic noise clip (largest difference 0.090 on Node CPU, 0.035 on WebGPU) and by 0.0001 on one speech window of the Node CPU run with torch features (0.0201). Float32 and torch agree to 1e-7, so the differences are int4. Measured on Portuguese audio only."
+      }
+    },
+    "decoder": {
+      "runtime": "onnx-genai",
+      "graph": {
+        "path": "decoder/model.onnx",
+        "sha256": "f587b38e01ecc7db0118db67973f0919d4b86a4d369373dd0a13c2087812c33f",
+        "size": 232843
+      },
+      "data": {
+        "path": "decoder/model.onnx.data",
+        "sha256": "2c99388a067013f192a345ed331bd31d6c92f6e46c502e970d97051b3988540c",
+        "size": 352149504
+      },
+      "embeddings": {
+        "path": "decoder/embed_tokens.fp16.bin",
+        "sha256": "e80150119fa5f7e56e85aed64c3a02d5c78eb7a37cfdcb973d0987316f15bee2",
+        "size": 311164928
+      },
+      "tokens": {
+        "path": "decoder/decoder_tokens.json",
+        "sha256": "1fcf6ee3b7462b50c59382a4e9af1ef79b6531d5180d36d6884b031a199af19b",
+        "size": 1828819
+      },
+      "model": {
+        "layers": 28,
+        "kvHeads": 8,
+        "headDim": 128,
+        "hidden": 1024,
+        "vocab": 151936
+      },
+      "prompt": {
+        "before": [
+          151644,
+          8948,
+          198,
+          151645,
+          198,
+          151644,
+          872,
+          198,
+          151669
+        ],
+        "after": [
+          151670,
+          151645,
+          198,
+          151644,
+          77091,
+          198
+        ],
+        "audioFrames": 104,
+        "languageToken": 11528
+      },
+      "eos": [
+        151643,
+        151645
+      ],
+      "languages": {
+        "zh": {
+          "name": "Chinese",
+          "ids": [
+            8453
+          ]
+        },
+        "en": {
+          "name": "English",
+          "ids": [
+            6364
+          ]
+        },
+        "yue": {
+          "name": "Cantonese",
+          "ids": [
+            72366,
+            2367
+          ]
+        },
+        "ar": {
+          "name": "Arabic",
+          "ids": [
+            34117
+          ]
+        },
+        "de": {
+          "name": "German",
+          "ids": [
+            5938
+          ]
+        },
+        "fr": {
+          "name": "French",
+          "ids": [
+            8585
+          ]
+        },
+        "es": {
+          "name": "Spanish",
+          "ids": [
+            15154
+          ]
+        },
+        "pt": {
+          "name": "Portuguese",
+          "ids": [
+            42188
+          ]
+        },
+        "id": {
+          "name": "Indonesian",
+          "ids": [
+            58829
+          ]
+        },
+        "it": {
+          "name": "Italian",
+          "ids": [
+            14811
+          ]
+        },
+        "ko": {
+          "name": "Korean",
+          "ids": [
+            16134
+          ]
+        },
+        "ru": {
+          "name": "Russian",
+          "ids": [
+            8522
+          ]
+        },
+        "th": {
+          "name": "Thai",
+          "ids": [
+            26392
+          ]
+        },
+        "vi": {
+          "name": "Vietnamese",
+          "ids": [
+            48477
+          ]
+        },
+        "ja": {
+          "name": "Japanese",
+          "ids": [
+            10769
+          ]
+        },
+        "tr": {
+          "name": "Turkish",
+          "ids": [
+            23734
+          ]
+        },
+        "hi": {
+          "name": "Hindi",
+          "ids": [
+            43980
+          ]
+        },
+        "ms": {
+          "name": "Malay",
+          "ids": [
+            79140
+          ]
+        },
+        "nl": {
+          "name": "Dutch",
+          "ids": [
+            23234
+          ]
+        },
+        "sv": {
+          "name": "Swedish",
+          "ids": [
+            30109
+          ]
+        },
+        "da": {
+          "name": "Danish",
+          "ids": [
+            43680
+          ]
+        },
+        "fi": {
+          "name": "Finnish",
+          "ids": [
+            57853
+          ]
+        },
+        "pl": {
+          "name": "Polish",
+          "ids": [
+            31984
+          ]
+        },
+        "cs": {
+          "name": "Czech",
+          "ids": [
+            33150
+          ]
+        },
+        "fil": {
+          "name": "Filipino",
+          "ids": [
+            62417
+          ]
+        },
+        "fa": {
+          "name": "Persian",
+          "ids": [
+            49861
+          ]
+        },
+        "el": {
+          "name": "Greek",
+          "ids": [
+            17860
+          ]
+        },
+        "ro": {
+          "name": "Romanian",
+          "ids": [
+            73597
+          ]
+        },
+        "hu": {
+          "name": "Hungarian",
+          "ids": [
+            56769
+          ]
+        },
+        "mk": {
+          "name": "Macedonian",
+          "ids": [
+            56452,
+            75491
+          ]
+        }
+      },
+      "term": {
+        "beams": 4,
+        "maxNewTokens": 256,
+        "lengthPenalty": 1,
+        "repetitionThreshold": 20
+      },
+      "devices": [
+        "webgpu",
+        "wasm",
+        "cpu"
+      ],
+      "cpuBuild": {
+        "graph": {
+          "path": "decoder/cpu/model.onnx",
+          "sha256": "ded2fffbbffd71255ed5bb4e596e65c86e1da201f9b5851c380d569ca302ba99",
+          "size": 289443
+        },
+        "data": {
+          "path": "decoder/cpu/model.onnx.data",
+          "sha256": "6f1a0e5f17281261be4b4d82e55a16ccb76d1f23742d6613d0727ad6d4fc3540",
+          "size": 406306816
+        }
+      }
+    }
+  }
+}
