@@ -5,8 +5,7 @@
 | [`policy-checker/`](policy-checker) | Privacy Policy Checker (GDPR / LGPD / CCPA) with the published S5-nano package; own `serve.mjs`. |
 | [`audio-turn/`](audio-turn) | **Experimental.** Voice activity, end of turn, same speaker, speaker change and speaker count from an audio file, the microphone (on click; **not yet verified**: see [`spec/MULTIMODAL.md`](../spec/MULTIMODAL.md)) or example clips, each with probability and margin. Frozen Qwen3-ASR-0.6B encoder + Marimba readouts; one pass for all five. With the decoder files: the language of the audio and a typed word (yes / no, from five transcripts). |
 
-The media demo runs 100 % in the browser and need **local weights**: they are not published and the pages never fetch them from
-anywhere else. Produce them as described in [`../recipes/marimba-audio`](../recipes/marimba-audio/README.md), put them in one directory (`marimba-audio/`), then:
+The media demo runs 100 % in the browser and needs the weights in a **local directory**: the pages never fetch them from anywhere else. The package is on the Hub ([eduardoworrel/Marimba-ONNX-S1S2](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2)); put its files in one directory (`marimba-audio/`) or produce them as described in [`../recipes/marimba-audio`](../recipes/marimba-audio/README.md), then:
 
 ```sh
 npm ci && npm run build

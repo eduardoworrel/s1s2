@@ -17,7 +17,7 @@ const mode = opt("--mode", "features"), limit = Number(opt("--limit", 1e9)), onl
 const rows = fs.readFileSync(path.join(refDir, "dec_ref.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !only || only.includes(r.id)).slice(0, limit);
 const f32 = (f) => { const b = fs.readFileSync(f); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 
-const model = await loadMedia({ manifest: path.resolve(opt("--manifest", path.join(ROOT, "manifests/marimba-audio.json"))), device: opt("--device", "cpu"), localDirs: { "local/marimba-audio-web": path.join(wdir, "marimba-audio") }, onStatus: (m) => console.log("[load]", m) });
+const model = await loadMedia({ manifest: path.resolve(opt("--manifest", path.join(ROOT, "manifests/marimba-audio.json"))), device: opt("--device", "cpu"), localDirs: { "eduardoworrel/Marimba-ONNX-S1S2": path.join(wdir, "marimba-audio") }, onStatus: (m) => console.log("[load]", m) });
 console.log("loaded; windows", rows.length, "| mode", mode);
 const results = [];
 for (const r of rows) {

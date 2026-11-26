@@ -22,7 +22,7 @@ const winA = f32("winA.f32"), winB = f32("winB.f32"), melA = f32("melA.f32"), me
 const WIN = 128000, MEL = 128 * 800;
 
 const t0 = performance.now();
-const model = await loadMedia({ manifest: path.join(ROOT, "manifests/marimba-audio.json"), device: "cpu", localDirs: { "local/marimba-audio-web": path.join(ROOT, ".weights/marimba-audio") }, onStatus: (m) => console.log("[load]", m) });
+const model = await loadMedia({ manifest: path.join(ROOT, "manifests/marimba-audio.json"), device: "cpu", localDirs: { "eduardoworrel/Marimba-ONNX-S1S2": path.join(ROOT, ".weights/marimba-audio") }, onStatus: (m) => console.log("[load]", m) });
 const loadMs = performance.now() - t0;
 console.log("loaded", Math.round(loadMs), "ms; tasks", model.tasks.join(", "));
 const maxd = {}, agree = {}, timing = { mel: [], tower: [], readers: [], ms: [] };

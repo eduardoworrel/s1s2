@@ -4,8 +4,8 @@
   "modalities": [
     "audio"
   ],
-  "repo": "local/marimba-audio-web",
-  "revision": "local",
+  "repo": "eduardoworrel/Marimba-ONNX-S1S2",
+  "revision": "635924eb45bde6197a9be2e7e0cabc69f2930248",
   "license": "Apache-2.0",
   "provenance": {
     "generator": {
@@ -29,7 +29,7 @@
         "speech_head/model.safetensors"
       ]
     },
-    "notes": "Unpublished package (revision local). audio_tower.onnx and vad_head.onnx are ONNX exports of the frozen Qwen3-ASR-0.6B audio encoder and of the Marimba speech head (recipes/marimba-audio/export_*.py); the readout safetensors are the Marimba files unchanged (their sha256 are in Marimba's config.json). Licenses as the cards state them: Apache-2.0 for the encoder and for the head/readout weights (Marimba card); training data of the turn-end readout is CC BY 4.0 (pipecat-ai/smart-turn-data-v3.2-train). Publishing the exports is undecided."
+    "notes": "Published package. audio_tower.onnx and vad_head.onnx are ONNX exports of the frozen Qwen3-ASR-0.6B audio encoder and of the Marimba speech head (recipes/marimba-audio/export_*.py in eduardoworrel/s1s2.js); the readout safetensors are the Marimba files unchanged (their sha256 are in Marimba's config.json); decoder/ is the Qwen3-ASR-0.6B text decoder converted by `s1s2-convert asr-decoder` (renamed tensors, tied lm_head, int4, float16 embedding table), WebGPU build and CPU build. Licenses as the cards state them: Apache-2.0 for the encoder, the decoder and the head/readout weights; the turn-end readout was trained on pipecat-ai/smart-turn-data-v3.2-train (CC BY 4.0). `revision` is the commit of this repository that holds the weight files. This is not an official package of the Qwen team or of Charcot."
   },
   "audio": {
     "preprocess": {
@@ -247,11 +247,11 @@
       "chrome157WebGPU": {
         "n": 56,
         "maxAbsDiffP": {
-          "voice_activity": 0.0000204,
-          "turn_end": 0.0000382,
-          "same_speaker": 0.0000317,
-          "speaker_change": 0.0000082,
-          "speaker_count": 0.0000335
+          "voice_activity": 2.04e-05,
+          "turn_end": 3.82e-05,
+          "same_speaker": 3.17e-05,
+          "speaker_change": 8.2e-06,
+          "speaker_count": 3.35e-05
         },
         "decisionAgreement": "56/56 (vad at 0.225, turn_end at 0.5)"
       },
@@ -283,7 +283,7 @@
         "nodeCpuFloat32": {
           "windows": 12,
           "languageArgmax": "12/12",
-          "maxAbsDiffProbability": 7.5e-8,
+          "maxAbsDiffProbability": 7.5e-08,
           "termFractionIdentical": 1,
           "greedyTextEqual": 1,
           "beamTextEqual": 1
@@ -300,7 +300,7 @@
       },
       "data": {
         "path": "decoder/model.onnx.data",
-        "sha256": "148fed06bf4445f528a81eb9d616b056fe7ef26f0f3ec656616da91eef4674fb",
+        "sha256": "2c99388a067013f192a345ed331bd31d6c92f6e46c502e970d97051b3988540c",
         "size": 352149504
       },
       "embeddings": {
@@ -550,7 +550,7 @@
         },
         "data": {
           "path": "decoder/cpu/model.onnx.data",
-          "sha256": "ff373a624e2759c3032065d9ea3b754105844e39b8c6fdfbb95c458c1b7f84f7",
+          "sha256": "6f1a0e5f17281261be4b4d82e55a16ccb76d1f23742d6613d0727ad6d4fc3540",
           "size": 406306816
         }
       }

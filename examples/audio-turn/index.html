@@ -124,7 +124,7 @@ async function load() {
     const t0 = performance.now();
     model = await loadMedia({
       manifest: MANIFEST, modules: { ort }, allowUnverified: true, decoder: $("#dec").checked ? "auto" : false, device: q.get("device") ?? "auto",     // the demo server checked the sha256 of what it serves
-      baseUrls: { "local/marimba-audio-web": WEIGHTS + "marimba-audio/" },
+      baseUrls: { "eduardoworrel/Marimba-ONNX-S1S2": WEIGHTS + "marimba-audio/" },
       onStatus: (m) => setStatus(`${T.loading}: ${m}`),
     });
     setStatus(`${T.ready} (${model.device}, ${((performance.now() - t0) / 1000).toFixed(1)} s)`);

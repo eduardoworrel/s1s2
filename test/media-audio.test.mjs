@@ -234,10 +234,10 @@ test("log-mel in JavaScript vs the torch feature extractor on stored FLEURS wind
 // readers + real heads on the stored tower outputs
 const wdir = audioWeightsDir();
 // Without the weights these two parity tests (readers and speech head against the torch probabilities) do not run: the weights
-// are not published. To run them: put the package files in <repo>/.weights/marimba-audio/ (layout: recipes/marimba-audio/README.md)
+// are not in this repository (they are on the Hub). To run them: put the package files in <repo>/.weights/marimba-audio/ (layout: recipes/marimba-audio/README.md)
 // or point S1S2_MM_WEIGHTS at the directory that holds marimba-audio/, then `node --test test/media-audio.test.mjs`.
 const skipW = (!meta && "fixtures not generated (recipes/marimba-audio/node-parity.mjs --write-fixtures)")
-  || (!wdir && "SKIPPED, not passed: the Marimba weights are missing (not published). Put marimba-audio/ in .weights/ or set S1S2_MM_WEIGHTS=<dir holding marimba-audio/>; layout in recipes/marimba-audio/README.md");
+  || (!wdir && "SKIPPED, not passed: the Marimba weights are missing (not in the repository; they are on the Hub). Put marimba-audio/ in .weights/ or set S1S2_MM_WEIGHTS=<dir holding marimba-audio/>; layout in recipes/marimba-audio/README.md");
 test("pooled readers with the real Marimba readouts reproduce the torch probabilities (stored tower outputs)", { skip: skipW }, async () => {
   const files = new Files({ platform: "node", localDirs: { [MANIFEST.repo]: wdir } });
   const run = {};

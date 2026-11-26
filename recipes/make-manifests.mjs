@@ -8,6 +8,8 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// The package lives on the Hub; `revision` is the commit that holds the weight files.
+const HUB_REPO = "eduardoworrel/Marimba-ONNX-S1S2", HUB_REVISION = "635924eb45bde6197a9be2e7e0cabc69f2930248";
 const W = path.resolve(process.argv[2] ?? path.join(ROOT, ".weights"));
 
 async function pin(dir, rel) {
@@ -99,13 +101,13 @@ async function pin(dir, rel) {
     audio.notes = audio.notes.replace(/ language and term are/, " Language and term are");
   }
   const man = {
-    schema: "s1s2.manifest/1", id: "marimba-qwen3-asr-0.6b-web", modalities: ["audio"], repo: "local/marimba-audio-web", revision: "local",
+    schema: "s1s2.manifest/1", id: "marimba-qwen3-asr-0.6b-web", modalities: ["audio"], repo: HUB_REPO, revision: HUB_REVISION,
     license: "Apache-2.0",
     provenance: {
       generator: { name: "recipes/marimba-audio", version: "0.1.0" },
       base: { repo: "Qwen/Qwen3-ASR-0.6B", revision: "5eb144179a02acc5e5ba31e748d22b0cf3e303b0", license: "Apache-2.0" },
       source: { format: "marimba-readouts", repo: "charcot-ai/marimba", revision: "ad374b4e61202c8425d1b3b2766bef985b01df45", files: ["turn_end/readout.safetensors", "diarization/same_speaker.safetensors", "diarization/speaker_change.safetensors", "diarization/speaker_count.safetensors", "speech_head/model.safetensors"] },
-      notes: "Unpublished package (revision local). audio_tower.onnx and vad_head.onnx are ONNX exports of the frozen Qwen3-ASR-0.6B audio encoder and of the Marimba speech head (recipes/marimba-audio/export_*.py); the readout safetensors are the Marimba files unchanged (their sha256 are in Marimba's config.json). Licenses as the cards state them: Apache-2.0 for the encoder and for the head/readout weights (Marimba card); training data of the turn-end readout is CC BY 4.0 (pipecat-ai/smart-turn-data-v3.2-train). Publishing the exports is undecided.",
+      notes: "Published package. audio_tower.onnx and vad_head.onnx are ONNX exports of the frozen Qwen3-ASR-0.6B audio encoder and of the Marimba speech head (recipes/marimba-audio/export_*.py in eduardoworrel/s1s2.js); the readout safetensors are the Marimba files unchanged (their sha256 are in Marimba's config.json); decoder/ is the Qwen3-ASR-0.6B text decoder converted by `s1s2-convert asr-decoder` (renamed tensors, tied lm_head, int4, float16 embedding table), WebGPU build and CPU build. Licenses as the cards state them: Apache-2.0 for the encoder, the decoder and the head/readout weights; the turn-end readout was trained on pipecat-ai/smart-turn-data-v3.2-train (CC BY 4.0). `revision` is the commit of this repository that holds the weight files. This is not an official package of the Qwen team or of Charcot.",
     },
     audio,
   };
