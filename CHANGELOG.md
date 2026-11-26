@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.1 (2026-11-26)
+
+- `AudioModel.transcribe(input, options?)`: free transcription of one window with the decoder, from an `encode` result or from the audio. Returns `{ text, language, method, hypotheses?, tokens, finishReason, cost }`; the text has no "language" prefix and `language` is the code the model wrote (or `null`). Greedy by default, `{ beam: true }` for beam 4, `maxNewTokens`, `signal`. Same engine as `term`: the greedy text is its first hypothesis and the beams are the other four. Without the decoder it throws what `language` and `term` throw; `dispose()` waits for it. The text bundle and the manifest are unchanged; `parseAsr` is exported next to `parseAsrText`. Same limits as the decoder questions: int4 text differs from float32 torch, Portuguese only, one 8 s window, no timestamps.
+
 ## 0.2.0 (2026-11-25)
 
 - New entry point `@s1s2/web/media` (`loadMedia`, `AudioModel`, `validateMediaManifest`, ...): audio in, same answers (`predicate`, `choice`) with probability and margin. The text bundle carries none of it.

@@ -112,15 +112,27 @@ const WS = "[\\t\\n\\v\\f\\r \\x1c-\\x1f\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\
 /** Python str.strip() (Unicode whitespace; unlike \\s, not U+FEFF). */
 const pyStrip = (s: string) => s.replace(new RegExp(`^${WS}+|${WS}+$`, "g"), "");
 
-/** parse_asr_output(raw)[1]: the transcript after "<asr_text>" (or the whole text when the tag is missing). */
-export function parseAsrText(raw: string, repetitionThreshold = 20): string {
+/**
+ * parse_asr_output(raw): the language name written before "<asr_text>" ("" when there is none or it says "None") and the transcript after it
+ * (the whole text when the tag is missing).
+ */
+export function parseAsr(raw: string, repetitionThreshold = 20): { language: string; text: string } {
   const s0 = pyStrip(raw ?? "");
-  if (!s0) return "";
+  if (!s0) return { language: "", text: "" };
   const s = detectAndFixRepetitions(s0, repetitionThreshold);
   const at = s.indexOf("<asr_text>");
-  if (at < 0) return pyStrip(s);
-  return pyStrip(s.slice(at + "<asr_text>".length));
+  if (at < 0) return { language: "", text: pyStrip(s) };
+  let language = "";
+  for (const line of s.slice(0, at).split(/\r?\n/)) {
+    const l = pyStrip(line);
+    if (/^language\s/i.test(l)) { language = pyStrip(l.slice(8)); break; }
+  }
+  if (language.toLowerCase() === "none") language = "";
+  return { language, text: pyStrip(s.slice(at + "<asr_text>".length)) };
 }
+
+/** parse_asr_output(raw)[1]: the transcript after "<asr_text>" (or the whole text when the tag is missing). */
+export function parseAsrText(raw: string, repetitionThreshold = 20): string { return parseAsr(raw, repetitionThreshold).text; }
 
 // ---- byte-level BPE decoding ----------------------------------------------------------------------------------------------------
 

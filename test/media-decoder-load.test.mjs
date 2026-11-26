@@ -210,3 +210,39 @@ test("language options: codes that are not the package's (including names inheri
   assert.deepEqual(ok.answers[0].probabilities.map((x) => x.value), ["aa", "cc"]);
   await model.dispose();
 });
+
+// ---- transcribe ------------------------------------------------------------------------------------------------------------------------
+
+test("transcribe through the real ortDecoder wrapper: greedy and beam on the fake session, maxNewTokens cuts, the encoding is accepted", async () => {
+  const { model } = await load(pkg(), fakeOrt());
+  const g = await model.transcribe(A());
+  assert.equal(g.method, "greedy"); assert.equal(g.text, "gggggg"); assert.equal(g.finishReason, "length"); assert.equal(g.tokens, 6); assert.equal(g.language, null);
+  assert.equal((await model.transcribe(A(), { maxNewTokens: 3 })).text, "ggg");
+  const b = await model.transcribe(await model.encode(A()), { beam: true });
+  assert.equal(b.method, "beam"); assert.equal(b.hypotheses.length, 4); assert.equal(b.text, b.hypotheses[0]);
+  const viaTerm = await model.decide({ audio: A(), questions: [{ task: "term", term: "a" }] });
+  assert.equal(viaTerm.answers[0].hypotheses[0], g.text); assert.deepEqual(viaTerm.answers[0].hypotheses.slice(1), b.hypotheses);
+  await model.dispose();
+});
+
+test("transcribe without the decoder throws what language and term throw (failed to load, and decoder: false)", async () => {
+  const { model } = await load(pkg(), fakeOrt({ failDecoder: true }));
+  await assert.rejects(() => model.transcribe(A()), /needs the decoder, which failed to load: boom: out of memory/);
+  await assert.rejects(() => model.decide({ audio: A(), questions: ["language"] }), /needs the decoder, which failed to load: boom: out of memory/);
+  await model.dispose();
+  const off = (await load(pkg(), fakeOrt(), { decoder: false })).model;
+  await assert.rejects(() => off.transcribe(A()), /needs the decoder, which was not loaded \(loadMedia option decoder: false\)/);
+  await off.dispose();
+});
+
+test("dispose() during a running transcription: the decoder session is released after its last run", async () => {
+  const ort = fakeOrt({ delay: 3 }), { model } = await load(pkg(), ort);
+  const q = model.transcribe(A(), { beam: true });
+  for (let i = 0; i < 2000 && ort.log.runs < 3; i++) await new Promise((r) => setTimeout(r, 2));
+  assert.ok(ort.log.runs >= 3);
+  const settled = q.then((r) => r.method, (e) => `failed: ${e.message}`);
+  await model.dispose();
+  assert.equal(ort.log.releasedWhileActive, false);
+  assert.equal(await settled, "beam");
+  await assert.rejects(() => model.transcribe(A()), /disposed/);
+});

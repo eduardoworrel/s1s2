@@ -8,7 +8,7 @@
 import { pastNameFor, cacheDims, inputMeta, halfToNumber } from "../backends/common.js";
 import { blockPlan } from "../backends/genai.js";
 import type { EmbeddingTable } from "../backends/embeddings.js";
-import { decodeIds, parseAsrText, type DecoderTokens } from "./decoderText.js";
+import { decodeIds, parseAsr, parseAsrText, type DecoderTokens } from "./decoderText.js";
 import type { DecoderSpec } from "./types.js";
 
 // ---- float16 ----------------------------------------------------------------------------------------------------------------------
@@ -203,8 +203,24 @@ export class DecoderEngine {
 
   decode(ids: number[]): string { return parseAsrText(decodeIds(ids, this.tokens), this.spec.term.repetitionThreshold); }
 
+  /** The transcript of generated ids and the code of the language the model wrote before it (null: none, or a name this package has no code for). */
+  parse(ids: number[]): { text: string; language: string | null } {
+    const p = parseAsr(decodeIds(ids, this.tokens), this.spec.term.repetitionThreshold);
+    if (!p.language) return { text: p.text, language: null };
+    const want = p.language.toLowerCase();
+    const code = Object.keys(this.spec.languages).find((c) => this.spec.languages[c].name.toLowerCase() === want);
+    return { text: p.text, language: code ?? null };
+  }
+
   async close(): Promise<void> { try { await this.be.close(); } finally { await this.table.close?.(); } }
 }
+
+/** Limits of one generation: `maxNewTokens` (default: the manifest's `term.maxNewTokens`) and an AbortSignal checked before every step. */
+export interface GenerateLimits { maxNewTokens?: number; signal?: AbortSignal }
+
+const checkAbort = (signal?: AbortSignal) => {
+  if (signal?.aborted) { const e = new Error("transcribe: aborted"); e.name = "AbortError"; throw e; }
+};
 
 export interface LanguageScores { codes: string[]; scores: number[] }
 
@@ -260,14 +276,16 @@ export class DecoderWindow {
   }
 
   /** Greedy decoding (num_beams=1): generated ids, EOS included when it was produced. */
-  async greedy(): Promise<number[]> {
-    const { eos, term } = this.e.spec, E = new Set(eos), out: number[] = [];
+  async greedy(lim: GenerateLimits = {}): Promise<number[]> {
+    const { eos, term } = this.e.spec, E = new Set(eos), out: number[] = [], maxNew = lim.maxNewTokens ?? term.maxNewTokens;
+    checkAbort(lim.signal);
     let { kv, logits } = await this.promptState();
     try {
       for (;;) {
         const t = argmaxFirst(logits);
         out.push(t);
-        if (E.has(t) || out.length >= term.maxNewTokens) break;
+        if (E.has(t) || out.length >= maxNew) break;
+        checkAbort(lim.signal);
         const r = await this.e.be.feed(await this.e.tokenRow(t), kv, true);
         this.e.be.dispose(kv); kv = r.kv; logits = r.logits!;
       }
@@ -276,11 +294,12 @@ export class DecoderWindow {
   }
 
   /** Beam search, num_beams = beams, returning the `beams` best finished sequences, best first (Hugging Face `_beam_search` semantics). */
-  async beam(beams = this.e.spec.term.beams): Promise<number[][]> {
-    const { eos, term } = this.e.spec, E = new Set(eos), maxNew = term.maxNewTokens, lpen = term.lengthPenalty, V = this.e.be.vocab;
+  async beam(beams = this.e.spec.term.beams, lim: GenerateLimits = {}): Promise<number[][]> {
+    const { eos, term } = this.e.spec, E = new Set(eos), maxNew = lim.maxNewTokens ?? term.maxNewTokens, lpen = term.lengthPenalty, V = this.e.be.vocab;
     const keep = Math.max(2, 1 + eos.length) * beams;
     type Run = { kv: DecoderKv; logits: Float32Array; seq: number[]; score: number };
     type Done = { seq: number[]; score: number; finished: boolean };
+    checkAbort(lim.signal);
     const first = await this.promptState();
     let running: Run[] = Array.from({ length: beams }, (_, i) => ({ kv: first.kv, logits: first.logits, seq: [], score: i === 0 ? 0 : NEG }));
     let done: Done[] = Array.from({ length: beams }, () => ({ seq: [], score: NEG, finished: false }));
@@ -288,6 +307,7 @@ export class DecoderWindow {
     const dispose = (rs: Run[]) => { for (const kv of new Set(rs.map((r) => r.kv))) this.e.be.dispose(kv); };
     try {
       for (;;) {
+        checkAbort(lim.signal);
         // top `keep` continuations of the accumulated log-probabilities over (beam, token)
         const cand: { b: number; tok: number; v: number }[] = [];
         const lps = new Map<Float32Array, Float64Array>();

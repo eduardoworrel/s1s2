@@ -334,3 +334,31 @@ the page took 4.3 s to load 1.4 GB from local files.
 - int4 changes the text: about half of the greedy transcripts and a quarter of the beam transcripts differ from float32 torch (a word or a spelling), and the probability of the most probable language moved by up to 0.09 on a non-speech clip. A float32 build (2.4 GB) reproduces torch exactly (12 windows) and is the fallback if that matters.
 - The term takes 1.4-1.7 s per window on WebGPU and about 37 s on browser WASM: ask it on demand, not on every window.
 - `probability` of `term` is a fraction of five hypotheses, not a calibrated probability.
+
+### 9.7 Free transcription (`transcribe`)
+
+`AudioModel.transcribe(input, options?)` returns what the decoder writes for one window, with no term to look for. It is the same engine as `term` (same window, same prompt,
+same greedy and beam search, same repetition clean-up and `parse_asr_output`), so it adds nothing to the manifest: it needs `audio.decoder` and a decoder reader (the tap is the one
+`language` and `term` read), and it throws the same message they throw when the decoder is not loaded (`needs the decoder, which failed to load: ...` or `... was not loaded (loadMedia option decoder: false)`).
+
+```ts
+transcribe(input: AudioEncoding | { samples: Float32Array; sampleRate: number }, options?: { beam?: boolean; maxNewTokens?: number; signal?: AbortSignal }): Promise<Transcription>
+interface Transcription {
+  text: string;                       // the transcript, without the "language X" prefix; "" for silence
+  language: string | null;            // code of the language the model wrote before the transcript; null when it wrote none ("language None" too) or a name with no code
+  method: "greedy" | "beam";
+  hypotheses?: string[];              // beam only: the four beams, best first; text === hypotheses[0]
+  tokens: number;                     // generated tokens of text, the end token not counted
+  finishReason: "stop" | "length";    // length: maxNewTokens cut it
+  cost: MediaCost;                    // ms, parts { mel, tower (only when given audio), leftTower, decoderOpen, decode }, passes, backend, device
+}
+```
+
+- **Input.** An `encode` result (reuse it for `read` and `transcribe`) or the audio itself, encoded first. Less than 8 s of audio: the left-aligned window, the second tower pass of 9.1, done once per encoding and shared with `language` and `term`. Only the last 8 s are read; there is no chunking.
+- **Method.** Greedy by default (the `term` greedy hypothesis, the cheapest). `beam: true` runs beam 4 (the manifest's `term.beams`) with the length penalty of the manifest and returns the best beam as `text`; the four beams are `hypotheses`, the same four that `term` returns after its greedy one. `maxNewTokens` defaults to the manifest's (256).
+- **Same engine as `term`.** On the same encoding, `transcribe(enc).text` is `term`'s `hypotheses[0]` and `transcribe(enc, { beam: true }).hypotheses` are its `hypotheses.slice(1)`. `recipes/marimba-audio/transcribe-parity.mjs` checks this on the real package.
+- **Language.** The name after `language ` in the generated prefix, mapped to a code by `audio.decoder.languages[code].name` (case-insensitive).
+- **Abort and dispose.** An aborted `signal` rejects with an `AbortError` before the next step (no partial text) and frees the decoder state. `dispose()` waits for transcriptions in flight, like for questions; after it, `transcribe` rejects with "disposed".
+- **Cost.** Node CPU, CPU build, 12 full windows (median): greedy 0.37 s, beam 1.21 s, the whole `term` question 1.62 s (greedy + beams), on top of the tower and the prompt rows. Other runtimes: 9.5; the browser WASM beam is slow, ask for it on demand.
+- **Real-package check.** `recipes/marimba-audio/transcribe-parity.mjs`, 12 pt-BR windows: the greedy text equals `term`'s first hypothesis on 12 of 12 and the beams equal its other four on 12 of 12; language `pt` on all. Against float32 torch, int4 gave the same greedy text on 5 of 12 windows and the same four beams on 0 of 12 (reported, not required).
+- **Limits.** All of 9.6 applies. int4 changes the text: about half of the greedy transcripts and three quarters of the beam transcripts differ from float32 torch (a word or a spelling); only Portuguese was validated; one 8 s window, no timestamps, no streaming, no punctuation or number guarantees beyond what the 0.6B model writes. Equality with the torch text is asserted only for the float32 build and the text fixtures (the parse and the decoding of given token ids); the int4 text is checked for format and stability, and for equality with `term`'s hypotheses.

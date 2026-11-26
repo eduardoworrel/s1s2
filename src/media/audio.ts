@@ -14,7 +14,7 @@ import { createPooledReader, frameMask, rightAlign, type PooledReaderRun } from 
 import { DecoderEngine, DecoderWindow, ortDecoder } from "./decoder.js";
 import { termFraction, normalizeTerm } from "./decoderText.js";
 import { SMALL_FILE_LIMIT } from "../files.js";
-import type { AudioSpec, MediaAnswer, MediaDecision, MediaDecisionRequest, SpeechHeadReader, UnavailableAnswer } from "./types.js";
+import type { AudioSpec, TranscribeOptions, Transcription, MediaAnswer, MediaDecision, MediaDecisionRequest, SpeechHeadReader, UnavailableAnswer } from "./types.js";
 
 /** What the audio model needs from a runtime: run the tower on a mel, run a speech head. Tests inject fakes. */
 export interface AudioRuntime {
@@ -153,12 +153,59 @@ export class AudioModel {
 
   /** Decoder questions in flight are counted: `dispose` waits for them instead of closing the session under a running `feed`. */
   private decoderAnswers(asks: Ask[], features: () => Promise<Float32Array>, timing?: Record<string, number>): Promise<MediaAnswer[]> {
+    return this.track(() => this.runDecoderAnswers(asks, features, timing));
+  }
+
+  private track<T>(start: () => Promise<T>): Promise<T> {
     if (this.closing) return Promise.reject(new Error("audio: backend already disposed"));
-    const run = this.runDecoderAnswers(asks, features, timing);
+    const run = start();
     this.inflight.add(run);
     const done = () => { this.inflight.delete(run); };
     run.then(done, done);
     return run;
+  }
+
+  /** Why the decoder is not usable, as the sentence the language and term questions end with. */
+  private decoderWhy(): string {
+    return this.parts.decoderMissing && this.parts.decoderMissing !== "off" ? `failed to load: ${this.parts.decoderMissing}` : "was not loaded (loadMedia option decoder: false)";
+  }
+
+  /**
+   * Free transcription of one window (the decoder over the tower's vectors, no term needed). Takes what `read` takes, an `encode` result, or the audio itself
+   * (`{ samples, sampleRate }`, encoded first). Greedy by default; `beam: true` runs beam search and returns the best beam. With less than 8 s of audio the
+   * decoder reads the left-aligned window, as for `language` and `term`. Throws like them when the decoder is not loaded. One window, no timestamps.
+   */
+  async transcribe(input: AudioEncoding | NonNullable<MediaDecisionRequest["audio"]>, options: TranscribeOptions = {}): Promise<Transcription> {
+    const { spec } = this.parts;
+    if (!spec.decoder) throw new Error("transcribe: this package has no decoder (audio.decoder is not in the manifest)");
+    if (!this.parts.decoder) throw new Error(`transcribe: needs the decoder, which ${this.decoderWhy()}`);
+    const max = options.maxNewTokens;
+    if (max !== undefined && !(Number.isInteger(max) && max >= 1)) throw new Error("transcribe: maxNewTokens must be a whole number of at least 1");
+    const tapOf = Object.values(spec.readers).find((r) => r.kind === "decoder-language" || r.kind === "decoder-term")?.tap;
+    if (!tapOf) throw new Error("transcribe: the manifest lists no decoder reader to take the tower output from");
+    return this.track(async () => {
+      const t0 = performance.now(), timing: Record<string, number> = {};
+      const isEnc = !!input && typeof input === "object" && "taps" in input && "nValid" in input;
+      const enc = isEnc ? (input as AudioEncoding) : await this.encode(input as NonNullable<MediaDecisionRequest["audio"]>);
+      const eng = this.parts.decoder!, E = new Set(spec.decoder!.eos), limits = { maxNewTokens: max, signal: options.signal };
+      const t2 = performance.now();
+      const win = await eng.open(await this.decoderFeatures(enc, tapOf, timing));
+      timing.decoderOpen = performance.now() - t2;
+      let ids: number[], hyps: number[][] | undefined;
+      try {
+        const t3 = performance.now();
+        if (options.beam) { hyps = await win.beam(undefined, limits); ids = hyps[0]; } else ids = await win.greedy(limits);
+        timing.decode = performance.now() - t3;
+      } finally { await win.close(); }
+      const stopped = ids.length > 0 && E.has(ids[ids.length - 1]);
+      const textIds = stopped ? ids.slice(0, -1) : ids, p = eng.parse(ids), t4 = performance.now();
+      return {
+        text: p.text, language: p.language, method: options.beam ? "beam" : "greedy",
+        ...(hyps ? { hypotheses: hyps.map((h) => eng.decode(h)) } : {}),
+        tokens: textIds.length, finishReason: stopped ? "stop" : "length",
+        cost: { ms: t4 - t0, parts: { ...(isEnc ? {} : { mel: enc.ms.mel, tower: enc.ms.tower }), ...timing }, passes: (isEnc ? 0 : 1) + (timing.leftTower !== undefined ? 1 : 0), backend: this.backend, device: this.device },
+      } satisfies Transcription;
+    });
   }
 
   private async runDecoderAnswers(asks: Ask[], features: () => Promise<Float32Array>, timing?: Record<string, number>): Promise<MediaAnswer[]> {
@@ -217,7 +264,7 @@ export class AudioModel {
       if (!r) {
         const need = this.parts.spec.readers[task];
         if (need && (need.kind === "decoder-language" || need.kind === "decoder-term")) {
-          const why = this.parts.decoderMissing && this.parts.decoderMissing !== "off" ? `failed to load: ${this.parts.decoderMissing}` : "was not loaded (loadMedia option decoder: false)";
+          const why = this.decoderWhy();
           throw new Error(`decide: task ${JSON.stringify(task)} needs the decoder, which ${why}`);
         }
         throw new Error(`decide: unknown audio task ${JSON.stringify(task)} (this package has: ${this.tasks.join(", ")})`);

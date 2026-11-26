@@ -14,6 +14,7 @@ aeb1644ec5e7ff7d1167ec58d14fbf2b3d6fab38a080b8e09ea1b57fdf639fdb  marimba-audio/
 3b54c9e9101d0290a37315470369de0f396f88f719f19e7446bfa3f92864f195  marimba-audio/node-parity.mjs
 ac49ade2da9a6f9e73a563ef15acae76e9d6411339891920243c47b1235bfbdc  marimba-audio/prep.py
 a6abad9e4b13bae5a9669b1e695975f807093d60c3b08cc8ee73299a950b6f32  marimba-audio/refs.py
+08dbcf3adf91dfc5f57851805b1096b9324650b4c955956d93f0edb4339999dd  marimba-audio/transcribe-parity.mjs
 5396ba744951b37822e58c37b7323a4d48d2651fcd76ecf85fd29dd2ca9e7357  marimba-audio/run.py
 
 # weight files pinned by the manifests (not in the repository): sha256  size  package/path
