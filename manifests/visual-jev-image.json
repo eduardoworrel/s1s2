@@ -5,7 +5,7 @@
   "image"
  ],
  "repo": "eduardoworrel/Visual-Jev-4B-ONNX-S1S2",
- "revision": "0000000000000000000000000000000000000000",
+ "revision": "9ed50bdb56ade0f513434664f2f9c69ae7cfb6cf",
  "license": "Apache-2.0",
  "image": {
   "preprocess": {
