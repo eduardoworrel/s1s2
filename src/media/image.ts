@@ -166,7 +166,7 @@ export async function loadImage(spec: ImageSpec, o: ImageLoadOptions): Promise<I
   const platform = detectPlatform();
   let device = o.device ?? "auto";
   if (device === "auto") device = platform === "node" ? "cpu" : (await webgpuStatus()).ok ? "webgpu" : "wasm";
-  for (const [n, d] of [["vision", spec.vision.devices], ["text", spec.text.devices]] as const) if (!d.includes(device as any)) throw new Error(`image ${n} lists devices ${d.join(", ")}, not ${device}`);
+  if (!spec.text.devices.includes(device as any)) throw new Error(`image text lists devices ${spec.text.devices.join(", ")}, not ${device}`);
   if ((platform === "node") !== (device === "cpu")) throw new Error(`image: device ${device} does not run on ${platform}`);
   const ort: any = o.modules?.ort ?? (platform === "node"
     ? await importOptional("onnxruntime-node", () => import(/* @vite-ignore */ "onnxruntime-node"), "ONNX Runtime in Node")
@@ -187,7 +187,7 @@ export async function loadImage(spec: ImageSpec, o: ImageLoadOptions): Promise<I
   if (platform === "node") table = await fileTable(await files.local(repo, revision, ef.file), H);
   else if ((ef.file.size ?? Infinity) <= 64 * 1024 * 1024) table = embeddingTableFromBytes(await files.bytes(repo, revision, ef.file), H);
   else table = httpRangeTable(await files.large(repo, revision, ef.file), ef.file.size!, H, o.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a)));
-  const vdev = o.visionDevice ?? device;
+  const vdev = o.visionDevice ?? (spec.vision.devices.includes(device as any) ? device : device === "webgpu" && spec.vision.devices.includes("wasm") ? "wasm" : device);   // a package whose vision graph is not listed for WebGPU runs it on WASM
   if (!spec.vision.devices.includes(vdev as any)) throw new Error(`image vision lists devices ${spec.vision.devices.join(", ")}, not ${vdev}`);
   const mk = async (g: { graph: any; data?: any[] }, extra: Record<string, any> = {}, dev: string = device) => {
     const data = g.data ?? [];
