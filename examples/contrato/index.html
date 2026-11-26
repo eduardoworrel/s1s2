@@ -6,10 +6,12 @@
 <title>Contrato · Contract check</title>
 <script type="importmap">
 { "imports": {
-  "onnxruntime-web/webgpu": "../vendor/ort/ort.webgpu.min.mjs",
-  "onnxruntime-web": "../vendor/ort/ort.webgpu.min.mjs",
-  "onnxruntime-common": "../vendor/ortc/index.js",
-  "@huggingface/transformers": "../vendor/tjs/transformers.web.js"
+  "@s1s2/web": "https://cdn.jsdelivr.net/npm/@s1s2/web@0.2.0/dist/index.js",
+  "@s1s2/web/media": "https://cdn.jsdelivr.net/npm/@s1s2/web@0.2.0/dist/media.js",
+  "onnxruntime-web/webgpu": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort.webgpu.min.mjs",
+  "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort.webgpu.min.mjs",
+  "onnxruntime-common": "https://cdn.jsdelivr.net/npm/onnxruntime-common@1.31.1/dist/esm/index.js",
+  "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/dist/transformers.web.js"
 } }
 </script>
 <style>
@@ -89,7 +91,7 @@
 <script type="module">
 import * as ort from "onnxruntime-web/webgpu";
 import * as tjs from "@huggingface/transformers";
-import { S1S2 } from "../lib/index.js";
+import { S1S2 } from "@s1s2/web";
 
 const REPO = "eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2";
 const REV = "ac7e5cfa31b46e29c06842945fe69163b81fca5f"; // published revision; manifest.cnli.json declares the Entailment / Contradiction / Not mentioned choice head
@@ -173,15 +175,10 @@ const stateOf = (nda) => manifest.lab.state.replace("{nda}", nda);
 
 async function loadModel() {
   manifest = await (await fetch(MANIFEST)).json();
-  let mirrors = {};
-  try { mirrors = await (await fetch("../models.json")).json(); } catch {}
-  const baseUrls = {};
-  for (const repo of [manifest.tokenizer.repo, ...Object.values(manifest.builds).map((b) => b.repo)])
-    if (mirrors[repo]) baseUrls[repo] = new URL(mirrors[repo], location.href).href;
   ort.env.wasm.numThreads = 1;
-  ort.env.wasm.wasmPaths = new URL("../vendor/ort/", location.href).href;
+  ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/"; // same version as the module above
   const t0 = performance.now();
-  lib = await S1S2.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs }, baseUrls, allowUnverified: Object.keys(baseUrls).length > 0, // a local mirror: its big weights are not Hub-verified
+  lib = await S1S2.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs },
     genai: { verifyEp: true }, onStatus: (m) => setStatus(m) });
   const s = await lib.decide({ input: stateOf("Warm up."), questions: [{ name: "w", ...question("Warm up.") }] }, { keepState: false }); // compile the kernels once
   await s.dispose();

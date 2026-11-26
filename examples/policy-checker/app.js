@@ -3,7 +3,7 @@
 // a head trained by the lab plugs in through the manifest (builds.<name>.heads, defaults.method.choice = "head").
 import * as ort from "onnxruntime-web/webgpu";
 import * as tjs from "@huggingface/transformers";
-import { S1S2 } from "./lib/index.js";
+import { S1S2 } from "@s1s2/web";
 
 const $ = (id) => document.getElementById(id);
 const status = (m) => { $("status").textContent = m; };
@@ -12,18 +12,14 @@ const params = new URLSearchParams(location.search);
 
 let REQ = null, LAW = "GDPR";
 const models = {}; // manifest file -> S1S2
-let mirrors = {};
 
 async function loadModel(file) {
   if (models[file]) return models[file];
-  const url = params.get(file.includes(".pt.") ? "pt" : "en") ?? (/^https?:\/\//.test(file) ? file : `./manifests/${file}`);
+  const url = params.get(file.includes(".pt.") ? "pt" : "en") ?? file;
   const manifest = await (await fetch(url)).json();
-  const baseUrls = {};
-  for (const repo of [manifest.tokenizer.repo, ...Object.values(manifest.builds).map((b) => b.repo)])
-    if (mirrors[repo]) baseUrls[repo] = new URL(mirrors[repo], location.href).href;
   ort.env.wasm.numThreads = 1;
-  ort.env.wasm.wasmPaths = new URL("./vendor/ort/", location.href).href;
-  const lib = await S1S2.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs }, baseUrls,
+  ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/"; // same version as the module in index.html
+  const lib = await S1S2.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs },
     genai: { verifyEp: true }, onStatus: (m) => status(`${manifest.id}: ${m}`) });
   models[file] = lib;
   return lib;
@@ -134,7 +130,6 @@ async function fetchUrl() {
 
 async function main() {
   REQ = await (await fetch("./requirements.json")).json();
-  try { mirrors = await (await fetch("./models.json")).json(); } catch { mirrors = {}; }
   document.querySelectorAll(".laws button").forEach((b) => b.addEventListener("click", () => {
     LAW = b.dataset.law;
     document.querySelectorAll(".laws button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
