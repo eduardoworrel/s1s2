@@ -175,6 +175,27 @@ def check_merger_layout(w, j=0):
         raise SystemExit(f"deepstack_merger_list.{j}: norm {tuple(w['norm.weight'].shape)} does not match fc1 {tuple(w['linear_fc1.weight'].shape)}: not the post-shuffle layout this edit builds")
 
 
+def vision_single_posembed_gather(model, table="visual.pos_embed.weight"):
+    """Replace the four Gather nodes that read the interpolated position embedding (same table, four index vectors) by ONE Gather over the concatenated indices and a Split.
+    onnxruntime-web 1.31.1 on WebGPU returns the rows of another Gather for two of the four (reproduced against CPU on the same indices); one Gather has no other to be confused with."""
+    from onnx import helper, numpy_helper
+    import numpy as np
+    g = model.graph
+    gs = [n for n in g.node if n.op_type == "Gather" and n.input[0] == table]
+    if len(gs) < 2:
+        return model, 0
+    pos = list(g.node).index(gs[0])
+    cat = helper.make_node("Concat", [n.input[1] for n in gs], ["posembed/indices"], axis=0, name="posembed/Concat")
+    one = helper.make_node("Gather", [table, "posembed/indices"], ["posembed/rows"], axis=0, name="posembed/Gather")
+    outs = [n.output[0] for n in gs]
+    sp = helper.make_node("Split", ["posembed/rows"], outs, axis=0, num_outputs=len(gs), name="posembed/Split")
+    for n in gs:
+        g.node.remove(n)
+    for k, n in enumerate([cat, one, sp]):
+        g.node.insert(pos + k, n)
+    return model, len(gs)
+
+
 def read_merger_weights(base_dir, n=3):
     """The deepstack mergers of a base checkpoint (safetensors dir), as float32 numpy: about 55 MB each."""
     from safetensors import safe_open
@@ -205,6 +226,7 @@ def main(argv=None):
     v.add_argument("--in", dest="inp", required=True)
     v.add_argument("--out", required=True)
     v.add_argument("--base", required=True)
+    v.add_argument("--single-gather", action="store_true", help="one Gather for the position embedding (WebGPU workaround)")
     a = ap.parse_args(argv)
     m = onnx.load(a.inp, load_external_data=False)
     if a.what == "text":
@@ -217,6 +239,9 @@ def main(argv=None):
         del m.graph.value_info[:]
     else:
         m, taps = vision_deepstack(m, read_merger_weights(a.base))
+        if a.single_gather:
+            m, n_g = vision_single_posembed_gather(m)
+            print('single posembed gather over', n_g, 'nodes')
         print("taps", taps)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     onnx.save(m, a.out)

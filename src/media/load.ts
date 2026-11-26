@@ -49,7 +49,7 @@ export async function loadMedia(o: MediaLoadOptions & { tokenizer?: any }): Prom
   if (which === "image") {
     if (!m.modalities.includes("image")) throw new Error(`loadMedia: this manifest takes ${m.modalities.join(", ")}, not image`);
     const files = new Files({ platform, cacheDir: o.cacheDir, localDirs: o.localDirs, baseUrls: o.baseUrls, allowUnverified: o.allowUnverified, fetch: o.fetch, onStatus: o.onStatus });
-    return loadImage(m.image!, { device: o.device, modules: o.modules, files, repo: m.repo, revision: m.revision, onStatus: o.onStatus, tokenizer: (o as any).tokenizer, fetch: o.fetch });
+    return loadImage(m.image!, { device: o.device, modules: o.modules, files, repo: m.repo, revision: m.revision, onStatus: o.onStatus, tokenizer: (o as any).tokenizer, noCache: (o as any).noCache, onPrefix: (o as any).onPrefix, visionDevice: (o as any).visionDevice, fetch: o.fetch });
   }
   if (which !== "audio") throw new Error("loadMedia: the manifest lists no audio modality");
   if (!m.modalities.includes(which)) throw new Error(`loadMedia: this manifest takes ${m.modalities.join(", ")}, not ${which}`);

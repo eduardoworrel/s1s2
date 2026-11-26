@@ -31,6 +31,8 @@ export interface ImageLoadOptions {
   tokenizer?: Tok;
   /** Run every question as one full pass over prefix + suffix, with no prefix cache (slower; the diagnostic for a provider whose attention with a past is wrong). */
   noCache?: boolean;
+  /** Diagnostics: called with the prefix inputs of each decide() (embeddings, positions, DeepStack rows) before the text graph runs. */
+  onPrefix?: (p: { embeds: Float32Array; positions: BigInt64Array; deepstack: Float32Array[]; length: number }) => void;
   fetch?: typeof fetch;
 }
 
@@ -39,7 +41,7 @@ const u16 = (u: Uint8Array) => new Uint16Array(u.buffer.slice(u.byteOffset, u.by
 
 export class ImageModel {
   constructor(private spec: ImageSpec, private ort: any, private vision: any, private text: any, private table: EmbeddingTable, private tok: Tok, private rows: Float32Array,
-              readonly device: string, private noCache = false) {}
+              readonly device: string, private noCache = false, private onPrefix?: ImageLoadOptions["onPrefix"]) {}
 
   private tensor(f: Float32Array, dims: number[]): any {
     const T = this.ort.Tensor;
@@ -98,6 +100,7 @@ export class ImageModel {
       for (let i = 0; i < S; i++) if (isImg[i]) { z.set(ds[d].subarray(r * H, (r + 1) * H), i * H); r++; }
       feeds[name] = this.tensor(z, [1, S, H]);
     });
+    if (this.onPrefix) this.onPrefix({ embeds: prefixEmb, positions: BigInt64Array.from([...pos[0], ...pos[1], ...pos[2]], (v) => BigInt(v)), deepstack: spec.text.inputs.deepstack.map((n) => feeds[n].data ?? new Float32Array(0)), length: S });
     const empty = () => this.tensor(new Float32Array(0), [1, kvH, 0, hd]);
     const past = (l: number, kv: "key" | "value") => (kv === "key" ? spec.text.cache.pastKey : spec.text.cache.pastValue).replace("%d", String(l));
     const present = (l: number, kv: "key" | "value") => (kv === "key" ? spec.text.cache.presentKey : spec.text.cache.presentValue).replace("%d", String(l));
@@ -202,5 +205,5 @@ export async function loadImage(spec: ImageSpec, o: ImageLoadOptions): Promise<I
   if (device === "webgpu") for (let l = 0; l < L; l++) for (const kv of ["Key", "Value"] as const) loc[spec.text.cache[`present${kv}` as "presentKey"].replace("%d", String(l))] = "gpu-buffer";
   const text = await mk(spec.text, device === "webgpu" ? { preferredOutputLocation: loc } : {});
   void embeddingTable;
-  return new ImageModel(spec, ort, vision, text, table, tok, rows, device, !!o.noCache);
+  return new ImageModel(spec, ort, vision, text, table, tok, rows, device, !!o.noCache, o.onPrefix);
 }
