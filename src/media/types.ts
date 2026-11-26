@@ -181,6 +181,32 @@ export interface MediaDecisionRequest {
   questions: (string | { name?: string; task?: string; term?: string; options?: string[] })[];
 }
 
+/** Options of `AudioModel.transcribe`. */
+export interface TranscribeOptions {
+  /** Beam search (the manifest's `term.beams`, 4) instead of greedy decoding: about four times slower. Default false. */
+  beam?: boolean;
+  /** Most tokens to generate (default: the manifest's `term.maxNewTokens`, 256). */
+  maxNewTokens?: number;
+  /** Rejects with an `AbortError` before the next step when aborted. */
+  signal?: AbortSignal;
+}
+
+/** Free transcription of one window: what the decoder writes, without a term to look for. */
+export interface Transcription {
+  /** The transcript, without the "language X" prefix the model writes before it; "" for silence. */
+  text: string;
+  /** Code (a key of `audio.decoder.languages`) of the language the model wrote before the transcript; null when it wrote none or a name with no code. */
+  language: string | null;
+  method: "greedy" | "beam";
+  /** Beam: the beams' transcripts, best first (`text` is the first). Absent for greedy. */
+  hypotheses?: string[];
+  /** Generated tokens of `text`, the end token not counted. */
+  tokens: number;
+  /** "stop": the model ended; "length": `maxNewTokens` cut it. */
+  finishReason: "stop" | "length";
+  cost: MediaCost;
+}
+
 export interface MediaCost {
   /** Wall time of the whole decide() call, and its parts: mel, tower, readers. */
   ms: number;
