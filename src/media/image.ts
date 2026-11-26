@@ -20,6 +20,8 @@ export interface ImageDecision { answers: ImageAnswer[]; cost: MediaCost & { ima
 
 export interface ImageLoadOptions {
   device?: "auto" | "webgpu" | "wasm" | "cpu";
+  /** Run the vision graph on another provider than the text graph (e.g. "wasm" with the text on WebGPU: see spec section 10.8, the WebGPU Gather of the vision graph's position embedding). */
+  visionDevice?: "webgpu" | "wasm" | "cpu";
   modules?: { ort?: any; transformers?: any };
   files: Files;
   repo: string;
@@ -27,6 +29,8 @@ export interface ImageLoadOptions {
   onStatus?: (m: string) => void;
   /** Replace the tokenizer built from the manifest's tokenizer.json (tests). */
   tokenizer?: Tok;
+  /** Run every question as one full pass over prefix + suffix, with no prefix cache (slower; the diagnostic for a provider whose attention with a past is wrong). */
+  noCache?: boolean;
   fetch?: typeof fetch;
 }
 
@@ -35,7 +39,7 @@ const u16 = (u: Uint8Array) => new Uint16Array(u.buffer.slice(u.byteOffset, u.by
 
 export class ImageModel {
   constructor(private spec: ImageSpec, private ort: any, private vision: any, private text: any, private table: EmbeddingTable, private tok: Tok, private rows: Float32Array,
-              readonly device: string) {}
+              readonly device: string, private noCache = false) {}
 
   private tensor(f: Float32Array, dims: number[]): any {
     const T = this.ort.Tensor;
@@ -81,11 +85,12 @@ export class ImageModel {
     for (let i = 0; i < preIds.length; i++) if (isImg[i]) { prefixEmb.set(feats.subarray(k * H, (k + 1) * H), i * H); k++; }
     if (k !== nImg) throw new Error(`prompt has ${k} image pads for ${nImg} image tokens`);
     const pos = mropePositions(isImg, prep.grid, pp.mergeSize);
+    if (this.noCache) return this.decideFull(req, prep, feats, ds, preIds, prefixEmb, parts, t0);
     const S = preIds.length, nL = spec.text.model.layers, kvH = spec.text.model.kvHeads, hd = spec.text.model.headDim;
     const feeds: Record<string, any> = {
       [spec.text.inputs.embeds]: this.tensor(prefixEmb, [1, S, H]),
       [spec.text.inputs.attentionMask]: new T("int64", new BigInt64Array(S).fill(1n), [1, S]),
-      [spec.text.inputs.positionIds]: new T("int64", BigInt64Array.from([...pos[0], ...pos[1], ...pos[2]], Number as any), [3, 1, S]),
+      [spec.text.inputs.positionIds]: new T("int64", BigInt64Array.from([...pos[0], ...pos[1], ...pos[2]], (v) => BigInt(v)), [3, 1, S]),
     };
     spec.text.inputs.deepstack.forEach((name, d) => {
       const z = new Float32Array(S * H);
@@ -125,6 +130,27 @@ export class ImageModel {
     return { answers, cost: { ms: Date.now() - t0, parts, passes: 1 + 1 + req.questions.length, backend: "onnxruntime", device: this.device, imageTokens: nImg, grid: prep.grid, resized: prep.resized } };
   }
 
+  /** One full pass per question (no cache): the same inputs as the cached path, concatenated. */
+  private async decideFull(req: ImageRequest, prep: any, feats: Float32Array, ds: Float32Array[], preIds: number[], prefixEmb: Float32Array, parts: Record<string, number>, t0: number): Promise<ImageDecision> {
+    const { spec } = this, H = spec.text.model.hidden, T = this.ort.Tensor, nL = spec.text.model.layers, kvH = spec.text.model.kvHeads, hd = spec.text.model.headDim;
+    const answers: ImageAnswer[] = [];
+    for (let qi = 0; qi < req.questions.length; qi++) {
+      const q = req.questions[qi], sIds = this.tok.encode(suffixText(q.instruction, q.options)), ids = [...preIds, ...sIds], S = ids.length;
+      const isImg = ids.map((x) => x === spec.prompt.imagePad), emb = new Float32Array(S * H);
+      emb.set(prefixEmb); emb.set(await this.embed(sIds), preIds.length * H);
+      const pos = mropePositions(isImg, prep.grid, spec.preprocess.mergeSize);
+      const feeds: Record<string, any> = { [spec.text.inputs.embeds]: this.tensor(emb, [1, S, H]), [spec.text.inputs.attentionMask]: new T("int64", new BigInt64Array(S).fill(1n), [1, S]),
+        [spec.text.inputs.positionIds]: new T("int64", BigInt64Array.from([...pos[0], ...pos[1], ...pos[2]], (v) => BigInt(v)), [3, 1, S]) };
+      spec.text.inputs.deepstack.forEach((name, d) => { const z = new Float32Array(S * H); let r = 0; for (let i = 0; i < S; i++) if (isImg[i]) { z.set(ds[d].subarray(r * H, (r + 1) * H), i * H); r++; } feeds[name] = this.tensor(z, [1, S, H]); });
+      for (let l = 0; l < nL; l++) for (const n of [spec.text.cache.pastKey, spec.text.cache.pastValue]) feeds[n.replace("%d", String(l))] = this.tensor(new Float32Array(0), [1, kvH, 0, hd]);
+      const r = await this.text.run(feeds, [spec.text.output.hidden]);
+      const h = await this.toF32(r[spec.text.output.hidden]);
+      const sc = optionScores(h.subarray((S - 1) * H, S * H), this.rows, q.options.length, spec.readout.temperature);
+      answers.push({ name: q.name ?? `q${qi}`, modality: "image", task: "choice", available: true, path: "s1", decision: q.options[sc.choice], choice: sc.choice, probability: sc.probabilities[sc.choice], probabilities: sc.probabilities, logits: sc.logits, margin: sc.margin, rawMargin: sc.rawMargin, options: q.options });
+    }
+    return { answers, cost: { ms: Date.now() - t0, parts, passes: 1 + req.questions.length, backend: "onnxruntime", device: this.device, imageTokens: prep.mergedTokens, grid: prep.grid, resized: prep.resized } };
+  }
+
   async dispose(): Promise<void> {
     await this.vision.release?.(); await this.text.release?.(); await this.table.close?.();
   }
@@ -156,7 +182,9 @@ export async function loadImage(spec: ImageSpec, o: ImageLoadOptions): Promise<I
   if (platform === "node") table = await fileTable(await files.local(repo, revision, ef.file), H);
   else if ((ef.file.size ?? Infinity) <= 64 * 1024 * 1024) table = embeddingTableFromBytes(await files.bytes(repo, revision, ef.file), H);
   else table = httpRangeTable(await files.large(repo, revision, ef.file), ef.file.size!, H, o.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a)));
-  const mk = async (g: { graph: any; data?: any[] }, extra: Record<string, any> = {}) => {
+  const vdev = o.visionDevice ?? device;
+  if (!spec.vision.devices.includes(vdev as any)) throw new Error(`image vision lists devices ${spec.vision.devices.join(", ")}, not ${vdev}`);
+  const mk = async (g: { graph: any; data?: any[] }, extra: Record<string, any> = {}, dev: string = device) => {
     const data = g.data ?? [];
     if (platform === "node") {
       for (const d of data) await files.local(repo, revision, d);
@@ -164,15 +192,15 @@ export async function loadImage(spec: ImageSpec, o: ImageLoadOptions): Promise<I
     }
     const bytes = await files.bytes(repo, revision, g.graph);
     const externalData = await Promise.all(data.map(async (d: any) => ({ path: base(d.path), data: await files.large(repo, revision, d) })));
-    return ort.InferenceSession.create(bytes, { executionProviders: [device === "webgpu" ? { name: "webgpu", validationMode: "disabled" } : "wasm"], externalData, graphOptimizationLevel: "all", enableGraphCapture: false, logSeverityLevel: 3, ...extra });
+    return ort.InferenceSession.create(bytes, { executionProviders: [dev === "webgpu" ? { name: "webgpu", validationMode: "disabled" } : "wasm"], externalData, graphOptimizationLevel: "all", enableGraphCapture: false, logSeverityLevel: 3, ...extra });
   };
   status(`loading vision (${device})…`);
-  const vision = await mk(spec.vision);
+  const vision = await mk(spec.vision, {}, vdev);
   status(`loading text (${device})…`);
   const L = spec.text.model.layers;
   const loc: Record<string, string> = { [spec.text.output.hidden]: "cpu" };
   if (device === "webgpu") for (let l = 0; l < L; l++) for (const kv of ["Key", "Value"] as const) loc[spec.text.cache[`present${kv}` as "presentKey"].replace("%d", String(l))] = "gpu-buffer";
   const text = await mk(spec.text, device === "webgpu" ? { preferredOutputLocation: loc } : {});
   void embeddingTable;
-  return new ImageModel(spec, ort, vision, text, table, tok, rows, device);
+  return new ImageModel(spec, ort, vision, text, table, tok, rows, device, !!o.noCache);
 }

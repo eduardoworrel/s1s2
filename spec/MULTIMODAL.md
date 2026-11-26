@@ -483,3 +483,21 @@ Reported, not required: the public graphs without DeepStack (route B) against th
   (194 MB, removed by `--hidden-output`).
 - The adapter helps only on task families seen in training; counting is weak; English only; K trained in {2, 4}; raw probabilities are overconfident; option order changes decisions.
 - Licence: base model and adapter Apache-2.0; training data (GQA, SNLI-VE over Flickr30k) have their own terms; a published build needs both licence texts and a notice that the weights were fused and requantised. Nothing is published from here.
+
+### 10.9 Measured (26 November 2026, one Mac, CPU/WebGPU; n is small and the oracle is bf16)
+
+Build: public cuda-layout text graph (fp16 io), LoRA fused and swapped (`vl-swap`: oracle true, 651 of 651 compared initializers byte-equal on `--verify`; swap 504 initializers, 252 modules), DeepStack edits, hidden output, pixel budget 65,536 to 200,704.
+Questions: the first 60 image questions of the ScienceQA test split (2 to 5 options; not used for any choice here; the reader was trained on GQA and SNLI-VE, so this is out of the training families). **Deviation from 10.7:** the oracle is PyTorch **bfloat16** on CPU (float32 does not fit in 16 GB), n = 60 instead of 200; the oracle's own bf16 error is not separated from the reader's int4 error.
+
+| comparison (n = 60) | median abs dp | p95 | max | decision flips | accuracy (oracle / other) |
+|---|---|---|---|---|---|
+| ONNX Runtime CPU, faithful build (DeepStack) vs torch bf16 + adapter | 0.0014 | 0.198 | 0.458 | 4 (6.7%) | 0.90 / 0.90 |
+| ONNX Runtime CPU, public graphs without DeepStack (route B) vs the same oracle | 0.0029 | 0.436 | 0.685 | 6 (10%) | 0.90 / 0.85 |
+
+The pre-registered tolerances of 10.7 (p95 <= 0.10, flips <= 3%) are **not met** against the bf16 oracle, by either build; the faithful build is closer than route B on every number, which supports the DeepStack finding (10.2). `ImageModel` on Node CPU equals the Python ONNX Runtime pipeline to three decimals on 5 questions (same graphs), and in Chrome with the WASM provider it equals CPU on 4 questions up to the JPEG decoder (browser canvas vs PIL).
+Speed (Chrome, WebGPU text, WASM vision, 60 questions): about 3.7 s per question with one question per image (vision 0.6 to 1.6 s). Not a validated number, because of the WebGPU result below.
+
+**WebGPU does not reproduce CPU with onnxruntime-web 1.31.1 (Chrome headless, Apple GPU): not usable for this reader yet.** Full WebGPU (vision and text): accuracy 0.75 against 0.90, 25% flips against the oracle on 60 questions; fp32-io text graph on WebGPU, 6 of 12 flips. Isolated causes, each reproduced with a debug page against CPU on the same inputs (`recipes/visual-jev-image/browser-*debug.html`):
+1. Vision graph: the four `Gather` nodes of the interpolated position embedding (`visual.pos_embed.weight`, int64 indices that are equal to CPU's) return the rows of the last one for two of them (`embedding`, `embedding_1` equal `embedding_3`; casting the indices to int32 does not fix it; graph optimisation level `basic` neither). The patch convolution (`conv3d`) before it matches. Vision on the WASM provider matches CPU.
+2. Text graph: a 40-token prefill with M-RoPE positions and DeepStack input matches CPU within fp16 noise, but a 200-token prefill diverges from layer 17 on (value rms 1.5% off at layer 35, hidden head elements off by 0.1 to 0.5), and a suffix pass over a past diverges likewise; running every question as one full pass without a cache gives the same wrong answers, so it is not the cache. fp32 io does not help, so it is not half-precision arithmetic. The attention path of the WebGPU provider is the suspect; not narrowed further.
+Workaround kept in the code: `loadMedia({ visionDevice: "wasm" })` runs the vision graph on WASM with the text on WebGPU; it does not fix the text divergence. WASM (all graphs) is correct and takes about 65 to 85 s per question.

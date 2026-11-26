@@ -70,15 +70,20 @@ def text_deepstack(model, layers=DEEPSTACK_TEXT_LAYERS, hidden=None):
         nxt = by_name.get(f"/model/layers.{i + 1}/input_layernorm/SkipLayerNorm") or by_name.get(f"/model/layers.{i + 1}/final_norm_layernorm/SkipLayerNorm")
         if nxt is None or nxt.op_type != "SkipSimplifiedLayerNormalization":
             raise SystemExit(f"no SkipSimplifiedLayerNormalization after layer {i}: this is not the public graph layout")
-        if not re.search(rf"/layers\.{i}/mlp/down_proj/MatMul/output_0$", nxt.input[1]):
-            raise SystemExit(f"layer {i + 1} skip input is {nxt.input[1]}, expected the down_proj output of layer {i}")
+        prod = {o: n for n in g.node for o in n.output}
+        tgt, tgt_node = nxt.input[1], nxt
+        slot = 1
+        if tgt in prod and prod[tgt].op_type == "Cast":   # fp16 build: the norm runs in float32 behind Casts; add before the Cast, in the io dtype
+            tgt_node, slot = prod[tgt], 0
+            tgt = tgt_node.input[0]
+        if not re.search(rf"/layers\.{i}/mlp/down_proj/MatMul/output_0$", tgt):
+            raise SystemExit(f"layer {i + 1} skip input is {tgt}, expected the down_proj output of layer {i}")
         name = f"deepstack_{i}"
         g.input.append(helper.make_tensor_value_info(name, dt, ["batch_size", "sequence_length", hidden]))
         out = f"/model/layers.{i}/deepstack/Add/output_0"
-        add = helper.make_node("Add", [nxt.input[1], name], [out], name=f"/model/layers.{i}/deepstack/Add")
-        pos = list(g.node).index(nxt)
-        g.node.insert(pos, add)
-        nxt.input[1] = out
+        add = helper.make_node("Add", [tgt, name], [out], name=f"/model/layers.{i}/deepstack/Add")
+        g.node.insert(list(g.node).index(tgt_node), add)
+        tgt_node.input[slot] = out
     return model
 
 
@@ -93,7 +98,9 @@ def text_hidden_output(model):
     gname = fin.input[2]
     gam = next(i for i in g.initializer if i.name == gname)
     hid = helper.make_tensor_value_info("hidden", old.type.tensor_type.elem_type, ["batch_size", "sequence_length", int(gam.dims[0])])
-    ident = helper.make_node("Identity", [fin.output[0]], ["hidden"], name="/model/hidden_output")
+    lm = next((n for n in g.node if n.name == "/lm_head/MatMul_Q4"), None)
+    src = lm.input[0] if lm is not None else fin.output[0]   # the tensor the lm_head reads: the final norm output in the io dtype
+    ident = helper.make_node("Identity", [src], ["hidden"], name="/model/hidden_output")
     g.node.append(ident)
     pos = list(g.output).index(old)
     g.output.remove(old)
@@ -205,6 +212,9 @@ def main(argv=None):
             text_deepstack(m)
         if a.hidden_output:
             text_hidden_output(m)
+        # The public graph declares a rank-0 shape for rank-1 intermediates (".../TotalLen/Mul/output_0": declared {} , inferred {1}): onnxruntime on CPU merges
+        # leniently, onnxruntime-web refuses ("Mismatch between number of inferred and declared dimensions"). Dropping the declared intermediate shapes lets the runtime infer them.
+        del m.graph.value_info[:]
     else:
         m, taps = vision_deepstack(m, read_merger_weights(a.base))
         print("taps", taps)
