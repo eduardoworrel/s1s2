@@ -1,48 +1,92 @@
-// Forecast gate: decide() and forecast() read one prefill; generate() continues from it only when the gate allows.
+// Read one decision prefill. The example predicts a standalone reply, as in the pilot.
 import * as ort from "onnxruntime-web/webgpu";
 import * as tjs from "@huggingface/transformers";
 import { S1S2 } from "./lib/index.js";
 
 const $ = (id) => document.getElementById(id);
-const status = (m) => { $("status").textContent = m; };
-const QUESTION = { name: "q", type: "predicate", instructions: "Does the request ask for a list?" };
-let model = null, loaded = "";
+const status = (message) => { $("status").textContent = message; };
+const QUESTION = { name: "q", type: "predicate", instructions: "Will your answer refuse to do what this request asks?" };
+let model = null;
+let loaded = "";
+
+ort.env.wasm.wasmPaths = new URL(document.body.dataset.ortBase ?? "./vendor/ort/", location.href).href;
 
 async function load(url) {
-  if (model && loaded === url) return model;
+  if (model && loaded === url.href) return model;
   await model?.dispose();
-  const manifest = await (await fetch(url)).json();
-  const base = new URL(".", new URL(url, location.href)).href;
-  const baseUrls = Object.fromEntries([manifest.tokenizer.repo, ...Object.values(manifest.builds).map((b) => b.repo)].map((r) => [r, base]));
-  ort.env.wasm.wasmPaths = new URL("./vendor/ort/", location.href).href;
-  model = await S1S2.load({ manifest, modules: { ort, transformers: tjs }, baseUrls, onStatus: status });
-  loaded = url;
-  if (model.forecastUnavailable) throw new Error(model.forecastUnavailable);
-  $("beh").innerHTML = model.forecastBehaviors.map((b) => `<option>${b}</option>`).join("");
+  model = null;
+
+  const local = url.href === new URL("./model/manifest.json", location.href).href;
+  let options = {};
+  if (local) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Manifest HTTP ${response.status}`);
+    const manifest = await response.json();
+    const base = new URL(".", url).href;
+    const repos = [manifest.tokenizer.repo, ...Object.values(manifest.builds).map((b) => b.repo)];
+    if (manifest.forecast?.head.repo) repos.push(manifest.forecast.head.repo);
+    // serve.mjs verifies the files before making this endpoint available.
+    options = { manifest, baseUrls: Object.fromEntries(repos.map((repo) => [repo, base])), allowUnverified: true };
+  }
+
+  const next = await S1S2.load({ manifest: url.href, ...options, modules: { ort, transformers: tjs }, device: "webgpu", cpuFallback: false, onStatus: status });
+  try {
+    if (next.forecastUnavailable) throw new Error(next.forecastUnavailable);
+    $("beh").replaceChildren(...next.forecastBehaviors.map((name) => new Option(name, name)));
+  } catch (error) {
+    await next.dispose();
+    throw error;
+  }
+  model = next;
+  loaded = url.href;
   return model;
+}
+
+function renderForecast(behaviors) {
+  const rows = Object.entries(behaviors).map(([name, value]) => {
+    const row = document.createElement("div");
+    row.className = "b";
+    const label = document.createElement("span");
+    label.textContent = name;
+    const bar = document.createElement("progress");
+    bar.max = 1;
+    bar.value = value.p;
+    bar.setAttribute("aria-label", name);
+    const number = document.createElement("span");
+    number.textContent = value.p.toFixed(2);
+    row.append(label, bar, number);
+    return row;
+  });
+  $("fc").replaceChildren(...rows);
 }
 
 $("run").onclick = async () => {
   $("run").disabled = true;
+  $("out").hidden = true;
   try {
-    const m = await load($("manifest").value);
-    status("prefill...");
-    const { forecast, session } = await m.forecast({ input: $("prompt").value, questions: [QUESTION] });
-    const a = session.answers[0];
-    $("decide").textContent = `${a.name}: p(yes) = ${a.probability.toFixed(3)} (${a.method})`;
-    $("fc").innerHTML = Object.entries(forecast.behaviors).map(([k, v]) =>
-      `<div class="b"><span>${k}</span><div class="bar"><i style="width:${(v.p * 100).toFixed(1)}%"></i></div><span>${v.p.toFixed(2)}</span></div>`).join("");
-    $("cost").textContent = `layer ${forecast.layer}, pooling ${forecast.pooling}; ${forecast.cost.prefillTokens} prompt tokens, ${forecast.cost.extraPrefillTokens} extra, head ${forecast.cost.headMs.toFixed(2)} ms`;
-    const p = forecast.behaviors[$("beh").value].p, thr = Number($("thr").value);
-    $("out").hidden = false;
-    if (p > thr) { $("gate").textContent = `p(${$("beh").value}) = ${p.toFixed(2)} > ${thr}: generation skipped`; }
-    else {
-      status("generating...");
-      const g = await session.generate($("prompt").value, { maxNewTokens: 64, temperature: 0 });
-      $("gate").textContent = `p(${$("beh").value}) = ${p.toFixed(2)} <= ${thr}: generated (${g.sharedPrefill ? `continued from the same prefill, ${g.reusedTokens} tokens reused` : "this backend re-prefilled"})\n\n${g.text}`;
+    const prompt = $("prompt").value.trim();
+    if (!prompt) throw new Error("Enter a prompt.");
+    const threshold = $("thr").valueAsNumber;
+    if (!$("thr").checkValidity()) throw new Error("Use a threshold between 0 and 1.");
+    const m = await load(new URL($("manifest").value, location.href));
+    status("Reading the decision prefill…");
+    const { forecast, session } = await m.forecast({ input: prompt, questions: [QUESTION] });
+    try {
+      renderForecast(forecast.behaviors);
+      $("cost").textContent = `Layer ${forecast.layer} · ${forecast.cost.extraPrefillTokens} extra prefill tokens`;
+      const name = $("beh").value;
+      const p = forecast.behaviors[name].p;
+      $("out").hidden = false;
+      $("gate").textContent = p > threshold
+        ? `The estimate exceeds the threshold of ${threshold}. The gate would skip generation.`
+        : `The estimate is at or below the threshold of ${threshold}. The gate would allow generation.`;
+    } finally {
+      await session.dispose();
     }
-    await session.dispose();
     status("");
-  } catch (e) { status(String(e?.message ?? e)); }
-  finally { $("run").disabled = false; }
+  } catch (error) {
+    status(String(error?.message ?? error));
+  } finally {
+    $("run").disabled = false;
+  }
 };

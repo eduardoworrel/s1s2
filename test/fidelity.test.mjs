@@ -92,6 +92,9 @@ test("forecastParity: tolerance max |dp| 0.05 and 5% flips, written before any m
   const flip = forecastParity(ref, [F("a", 0.9, 0.1), F("b", 0.51, 0.6), F("c", 0.2, 0.8)]);
   assert.equal(flip.flips, 1); assert.ok(Math.abs(flip.flipPct - 100 / 6) < 1e-9); assert.equal(flip.pass, false, "one flip of 6 pairs = 16.7% > 5%");
   assert.equal(forecastParity(ref, [F("a", 0.9, 0.1)]).missing.length, 2);
+  assert.equal(forecastParity(ref, [F("a", 0.9, 0.1)]).pass, false, "partial coverage is not a pass");
+  const empty = [{ id: "a", behaviors: {} }];
+  assert.equal(forecastParity(empty, empty).pass, false, "no behavior pairs is not a pass");
   assert.equal(forecastParity(ref, []).pass, false, "no overlap is not a pass");
   assert.throws(() => forecastParity(ref, [{ id: "a", behaviors: { b0: { p: 0.9 } } }]), /no behavior "b1"/);
 });

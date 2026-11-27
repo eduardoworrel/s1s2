@@ -192,5 +192,5 @@ export function forecastParity(reference: ForecastRecord[], build: ForecastRecor
     }
   }
   const flipPct = pairs ? (100 * flips) / pairs : 0;
-  return { n, maxAbsDp, meanAbsDp: pairs ? sum / pairs : 0, flips, flipPct, pairs, missing, tolerance, pass: n > 0 && maxAbsDp <= tolerance.maxAbsDp && flipPct <= tolerance.maxFlipPct };
+  return { n, maxAbsDp, meanAbsDp: pairs ? sum / pairs : 0, flips, flipPct, pairs, missing, tolerance, pass: missing.length === 0 && pairs > 0 && maxAbsDp <= tolerance.maxAbsDp && flipPct <= tolerance.maxFlipPct };
 }

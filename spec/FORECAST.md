@@ -103,8 +103,9 @@ const { forecast, session } = await model.forecast(req);  // decide({forecast:tr
 
 `forecast` is off unless asked (`decide(..., { forecast: true })`, `model.forecast`), so S1 costs and results are unchanged.
 The read position of `last` pooling is the last token of the decide prompt (`enc.last`), so a head must be trained on the
-prompts that `s1s2 encode` produces for the same manifest and question, and its labels must describe what the model does
-after that prompt (the System 2 continuation this gate protects). `session.forecast({ question })` picks which question's
+prompts that `s1s2 encode` produces for the same manifest and question. Labels must describe the generation path the
+head is intended to predict: a standalone reply or a continuation after the decision. Use a head labelled on continuations
+to gate `session.generate()`. The pilot head predicts standalone replies. `session.forecast({ question })` picks which question's
 prompt; the default is the first. A build without `forecastOutput` (WebLLM, LiteRT, or a graph exported without the layer)
 throws `forecast unsupported: ...` naming the reason.
 
@@ -112,13 +113,17 @@ throws `forecast unsupported: ...` naming the reason.
 
 ```
 python -m s1s2_convert build ... --forecast-layer 14      # extra_options aux_hidden_state_layers=15 (see below)
-python -m s1s2_convert train-forecast-head --model <fused dir> --prompts p.jsonl --labels l.jsonl --layer 14 --out dir
+python -m s1s2_convert train-forecast-head collect --model <model-dir> --manifest manifest.json --prompts prompts.jsonl --out responses.jsonl
+python -m s1s2_convert train-forecast-head train --model <model-dir> --manifest manifest.json --responses responses.jsonl --labels labels.jsonl --question '{"name":"refuse","type":"predicate","instructions":"Will your answer refuse to do what this request asks?"}' --layer 14 --out forecast-head
+python -m s1s2_convert package ... --forecast-dir forecast-head
 ```
 
-`train-forecast-head` runs offline: it generates the model's answers (greedy) for each prompt, joins behavior labels you
-provide (`{"id", "labels": {"<behavior>": 0|1}}` per line; no judge, no labels are built in), standardises features,
-fits a logistic regression or a small MLP, fits temperature (and optionally Platt) on a held-out split, and writes the
-safetensors file and the `forecast` manifest block with sha256 values. With a fused LoRA the head must be trained on the
+`collect` generates greedy standalone replies using `generation.turn`, from rows with `id` and `prompt`. For a head that
+predicts continuations, collect replies using `model.decide()` and `session.generate()` with the same question and settings
+as the intended gate. Save each original prompt with its reply in `responses.jsonl`.
+Supply labels as `{"id", "labels": {"<behavior>": 0|1}}`. The `train` subcommand joins them to the responses, extracts
+features from the decision prefill, fits and calibrates the head, and writes the safetensors file and manifest block.
+With a fused LoRA the head must be trained on the
 **fused** model; a head trained on the base does not transfer.
 
 ## Backend support (checked 2026-11-24)

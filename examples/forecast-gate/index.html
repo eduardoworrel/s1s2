@@ -6,9 +6,9 @@
 <title>Forecast gate</title>
 <script type="importmap">
 { "imports": {
-  "onnxruntime-web/webgpu": "./vendor/ort/ort.webgpu.min.mjs",
-  "onnxruntime-web": "./vendor/ort/ort.webgpu.min.mjs",
-  "onnxruntime-common": "./vendor/ortc/index.js",
+  "onnxruntime-web/webgpu": "./vendor/ort/ort.all.bundle.min.mjs",
+  "onnxruntime-web": "./vendor/ort/ort.all.bundle.min.mjs",
+  "onnxruntime-common": "./vendor/ort/ort.all.bundle.min.mjs",
   "@huggingface/transformers": "./vendor/tjs/transformers.web.js"
 } }
 </script>
@@ -27,7 +27,7 @@
   .row { display: flex; gap: 10px; } .row > * { flex: 1; min-width: 0; }
   button { margin-top: 12px; padding: 9px 18px; border: 0; border-radius: 8px; background: var(--bar); color: var(--bg); font-weight: 650; cursor: pointer; }
   button:disabled { opacity: .5; }
-  .bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; } .bar > i { display: block; height: 100%; background: var(--bar); }
+  progress { width: 100%; accent-color: var(--bar); }
   .b { display: grid; grid-template-columns: 9em 1fr 4em; gap: 8px; align-items: center; margin: 6px 0; font-size: 14px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
   #status { color: var(--muted); font-size: 13px; min-height: 1.4em; } pre { white-space: pre-wrap; margin: 0; font: 13px/1.45 ui-monospace, monospace; }
@@ -36,20 +36,19 @@
 <body>
 <main>
   <h1>Forecast gate</h1>
-  <p class="sub">One prefill: <code>decide()</code>, <code>forecast()</code>, then <code>generate()</code> only if the gate allows it.</p>
+  <p class="sub">Estimate whether the model would refuse a standalone reply. The forecast reads the same prefill as the decision.</p>
   <p class="notice">Experimental. Needs a package whose manifest has a <code>forecast</code> block and a build that exposes the layer (see <code>spec/FORECAST.md</code>). No weights are shipped here.</p>
   <div class="card">
     <label for="manifest">Manifest URL</label><input id="manifest" value="./model/manifest.json">
     <label for="prompt">Prompt</label><textarea id="prompt" rows="3">List three facts about the moon.</textarea>
     <div class="row">
       <div><label for="beh">Gate on behavior</label><select id="beh"></select></div>
-      <div><label for="thr">Skip generation when p is above</label><input id="thr" type="number" min="0" max="1" step="0.05" value="0.5"></div>
+      <div><label for="thr">Simulate skipping generation above</label><input id="thr" type="number" min="0" max="1" step="0.05" value="0.5" required></div>
     </div>
     <button id="run">Run</button><div id="status"></div>
   </div>
   <div class="card" id="out" hidden>
-    <h2>decide()</h2><pre id="decide"></pre>
-    <h2 style="margin-top:14px">forecast() on the same prefill</h2><div id="fc"></div><div id="cost" class="sub"></div>
+    <h2>Forecast</h2><div id="fc"></div><div id="cost" class="sub"></div>
     <h2 style="margin-top:14px">Gate</h2><pre id="gate"></pre>
   </div>
 </main>
