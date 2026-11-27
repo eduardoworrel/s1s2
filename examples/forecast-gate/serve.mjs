@@ -14,6 +14,7 @@ const option = (key) => args.includes(`--${key}`) ? args[args.indexOf(`--${key}`
 const port = Number(option("port") ?? 8788);
 const routes = {
   "/vendor/ort/": path.join(lib, "node_modules/onnxruntime-web/dist"),
+  "/vendor/ortc/": path.join(lib, "node_modules/onnxruntime-common/dist/esm"),
   "/vendor/tjs/": path.join(transformers, "dist"),
   "/": here,
 };
