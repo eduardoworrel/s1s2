@@ -4,6 +4,12 @@
 
 Typed decisions from one forward pass of a language model, in the browser, with the probability and the margin of each answer, and text generation on the same weights when you want an explanation.
 
+**Usage examples** · [Text](#text) · [Audio (Marimba)](#audio-experimental) · [Image (Visual Jev)](#image-experimental)
+
+[Try the browser demos](https://webai.blog.br/demos/s1s2/)
+
+## Text
+
 ```sh
 npm i @s1s2/web
 ```
@@ -100,6 +106,8 @@ Other projects already run typed decisions in one pass, including open-jev, the 
 
 ## Audio (experimental)
 
+[Try the Marimba audio demo](https://webai.blog.br/demos/s1s2/marimba/).
+
 Besides text, the library reads an **audio package**: ONNX builds of [Marimba](https://huggingface.co/charcot-ai/marimba) (typed questions about an 8-second audio window, on a frozen Qwen3-ASR-0.6B encoder) for the browser and Node. The weights are on the Hub, [eduardoworrel/Marimba-ONNX-S1S2](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2), and `manifests/marimba-audio.json` pins that repository at the commit that holds them, so `loadMedia` downloads and checks them with no further option. Same answers as the text models (`probability`, `margin`, `rawMargin`, `decision`); one encoder pass answers any number of questions. Requires `@s1s2/web` 0.2.0 or later (`transcribe`: 0.2.1).
 
 ```js
@@ -143,6 +151,8 @@ const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions:
 Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <dir>`, with a local copy of the repository); how the package is made: [`recipes/`](recipes).
 
 ## Image (experimental)
+
+[Try the experimental Visual Jev WebGPU demo](https://webai.blog.br/demos/s1s2/imagem/).
 
 The library also reads an **image package**: [Visual Jev](https://arxiv.org/abs/2609.25845) (Guanxu Yu, Yuhang Yao), a LoRA on Qwen3-VL-4B-Instruct that answers closed-choice questions about one image, as int4 ONNX builds for Chrome and Node ([`eduardoworrel/Visual-Jev-4B-ONNX-S1S2`](https://huggingface.co/eduardoworrel/Visual-Jev-4B-ONNX-S1S2), 3.8 GB). A question is a list of 2 to 16 options (English); the answer is a probability per option, read from the LM-head logit of the option letter.
 

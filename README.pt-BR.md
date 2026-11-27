@@ -4,6 +4,12 @@
 
 Decisões tipadas numa só passada de um modelo de linguagem, no navegador, com a probabilidade e a margem de cada resposta. Quando você quer uma explicação, o mesmo modelo gera texto com os mesmos pesos.
 
+**Exemplos de uso** · [Texto](#texto) · [Áudio (Marimba)](#áudio-experimental) · [Imagem (Visual Jev)](#imagem-experimental)
+
+[Experimente as demos no navegador](https://webai.blog.br/demos/s1s2/)
+
+## Texto
+
 ```sh
 npm i @s1s2/web
 ```
@@ -100,6 +106,8 @@ Outros projetos já fazem decisão tipada numa passada, entre eles o open-jev, o
 
 ## Áudio (experimental)
 
+[Experimente a demo de áudio do Marimba](https://webai.blog.br/demos/s1s2/marimba/).
+
 Além de texto, a biblioteca lê um **pacote de áudio**: builds ONNX do [Marimba](https://huggingface.co/charcot-ai/marimba) (perguntas tipadas sobre uma janela de 8 segundos de áudio, sobre um codificador Qwen3-ASR-0.6B congelado) para o navegador e o Node. Os pesos estão no Hub, [eduardoworrel/Marimba-ONNX-S1S2](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2), e o `manifests/marimba-audio.json` fixa esse repositório no commit que os guarda; assim o `loadMedia` baixa e confere os arquivos sem nenhuma opção a mais. As respostas são as dos modelos de texto (`probability`, `margin`, `rawMargin`, `decision`); uma passada do codificador responde qualquer número de perguntas. Exige o `@s1s2/web` 0.2.0 ou superior (`transcribe`: 0.2.1).
 
 ```js
@@ -143,6 +151,8 @@ const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions:
 Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <pasta>`, com uma cópia local do repositório); como o pacote é feito: [`recipes/`](recipes).
 
 ## Imagem (experimental)
+
+[Experimente a demo do Visual Jev com WebGPU experimental](https://webai.blog.br/demos/s1s2/imagem/).
 
 A biblioteca também lê um **pacote de imagem**: o [Visual Jev](https://arxiv.org/abs/2609.25845) (Guanxu Yu, Yuhang Yao), uma LoRA sobre o Qwen3-VL-4B-Instruct que responde perguntas de escolha sobre uma imagem, em builds ONNX int4 para Chrome e Node ([`eduardoworrel/Visual-Jev-4B-ONNX-S1S2`](https://huggingface.co/eduardoworrel/Visual-Jev-4B-ONNX-S1S2), 3,8 GB). Uma pergunta é uma lista de 2 a 16 opções (em inglês); a resposta é uma probabilidade por opção, lida do logit da letra da opção na cabeça do modelo.
 
