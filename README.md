@@ -2,7 +2,7 @@
 
 [Português](README.pt-BR.md)
 
-Typed decisions from one forward pass of a language model, in the browser, with the probability and the margin of each answer, and text generation on the same weights when you want an explanation.
+A JavaScript library for typed decisions about text, audio and images, with probabilities and margins for each answer. Run models in the browser or in Node.js, depending on the package.
 
 **Usage examples** · [Text](#text) · [Audio (Marimba)](#audio-experimental) · [Image (Visual Jev)](#image-experimental)
 
@@ -24,18 +24,17 @@ const s = await model.decide({
   // evidence: { requirement: "..." },  // packages with an evidence head: s.evidence = the sentence that shows it
 });
 const { probability, margin } = s.answers[0];                // P(true), and p(1st) - p(2nd)
-const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 });  // same weights
 await s.dispose(); await model.dispose();
 ```
 
+On text backends that keep state, `s.generate()` can explain a decision using the same weights and prefill. An optional margin policy can route low-margin answers to another build of the model (for example, int4 to int8) or to generation, using a threshold you measure for your build. [Text API and prefill details](docs/reference.md).
+
 ## What it is
 
-- A JavaScript library that answers `predicate`, `choice` and `score` questions in one forward pass, with no generation, and reports `probability`, `confidence`, `margin` and `rawMargin` for every answer.
-- `s.generate()` continues from the same prefill that produced the decision, on backends that keep state. On WebGPU this reuse (and the prefix shared by several questions) is bit-identical to a full prefill: no prefill block is shorter than 32 tokens, because onnxruntime-web computes shorter blocks on a different numeric path.
-- An optional margin policy escalates low-margin answers to another build of the same model (for example int4 to int8) or to generation. There is no default threshold; you measure one on your own build.
-- Runtimes: ONNX Runtime Web (GenAI graphs and plain decoders), transformers.js, WebLLM and LiteRT.js, plus onnxruntime-node in Node.
-- It reads **S1S2 packages**: a manifest that pins every file by sha256 and describes the prompt layout, markers, readouts and heads. The library and the format share the name; the format is specified in [`spec/`](spec/s1s2-package.md).
-- Head formats it reads: Kev `head.pt`, GGUF decision heads, alias3-web `head.bin`, d3 / pplx linear readouts, JEV, transformers `DecisionConfig` and Clef joint heads. [`converters/heads/`](converters/heads) converts each one and writes a fidelity record against that format's own reference code.
+- **Text models** answer `predicate`, `choice` and `score` questions in one forward pass and report the confidence and margin for each decision.
+- **Audio models** analyse a window once for several questions about speech, speakers and language, or transcribe it.
+- **Image models** encode an image once and answer multiple-choice questions about it, with a probability for each option.
+- **S1S2 packages** use a manifest to describe how to run the model and read its answers, and to pin the files by SHA-256. Browser runtimes include ONNX Runtime Web, transformers.js, WebLLM and LiteRT.js. Node.js packages use ONNX Runtime Node. See the [package spec](spec/s1s2-package.md), [multimodal spec](spec/MULTIMODAL.md) and [head converters](converters/heads).
 
 ## Models
 

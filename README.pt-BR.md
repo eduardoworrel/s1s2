@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-Decisões tipadas numa só passada de um modelo de linguagem, no navegador, com a probabilidade e a margem de cada resposta. Quando você quer uma explicação, o mesmo modelo gera texto com os mesmos pesos.
+Biblioteca JavaScript para decisões tipadas sobre texto, áudio e imagem, com probabilidades e margens por resposta. Os modelos rodam no navegador ou no Node.js, conforme o pacote.
 
 **Exemplos de uso** · [Texto](#texto) · [Áudio (Marimba)](#áudio-experimental) · [Imagem (Visual Jev)](#imagem-experimental)
 
@@ -24,18 +24,17 @@ const s = await model.decide({
   // evidence: { requirement: "..." },  // pacotes com head de evidência: s.evidence = a frase que mostra
 });
 const { probability, margin } = s.answers[0];                // P(verdadeiro) e p(1º) - p(2º)
-const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 });  // mesmos pesos
 await s.dispose(); await model.dispose();
 ```
 
+Nos backends de texto que guardam estado, `s.generate()` pode explicar uma decisão com os mesmos pesos e o mesmo prefill. Uma política opcional pode encaminhar respostas de margem baixa para outro build do modelo (por exemplo, de int4 para int8) ou para a geração, com um limiar medido para o seu build. [API de texto e detalhes do prefill](docs/reference.md).
+
 ## O que é
 
-- Uma biblioteca JavaScript que responde perguntas `predicate`, `choice` e `score` numa só passada, sem gerar texto. Cada resposta traz `probability`, `confidence`, `margin` e `rawMargin`.
-- `s.generate()` continua do mesmo prefill que produziu a decisão, nos backends que guardam estado. No WebGPU esse reuso (e o prefixo comum a várias perguntas) é idêntico bit a bit a um prefill completo: nenhum bloco de prefill tem menos de 32 tokens, porque o onnxruntime-web calcula blocos menores por outro caminho numérico.
-- Uma política de margem opcional manda as respostas de margem baixa para outro build do mesmo modelo (por exemplo, de int4 para int8) ou para a geração. Não há limiar padrão: você mede o seu no seu build.
-- Runtimes: ONNX Runtime Web (grafos GenAI e decoders comuns), transformers.js, WebLLM e LiteRT.js. No Node, onnxruntime-node.
-- Lê **pacotes S1S2**: um manifesto que fixa cada arquivo por sha256 e descreve o layout do prompt, os marcadores, as leituras e os heads. A biblioteca e o formato têm o mesmo nome; o formato está especificado em [`spec/`](spec/s1s2-package.md).
-- Formatos de head que lê: Kev `head.pt`, heads de decisão em GGUF, alias3-web `head.bin`, leituras lineares d3/pplx, JEV, `DecisionConfig` do transformers e heads conjuntos Clef. [`converters/heads/`](converters/heads) converte cada um deles e grava um registro de fidelidade contra o código de referência do próprio formato.
+- **Modelos de texto** respondem perguntas `predicate`, `choice` e `score` numa só passada, com a confiança e a margem de cada decisão.
+- **Modelos de áudio** analisam um trecho uma só vez para responder a várias perguntas sobre fala, falantes e idioma. Também podem transcrever o trecho.
+- **Modelos de imagem** codificam a imagem uma só vez para responder a perguntas de múltipla escolha, com uma probabilidade por opção.
+- **Pacotes S1S2** usam um manifesto que descreve como rodar o modelo e ler as respostas, e fixa os arquivos por SHA-256. No navegador, os runtimes incluem ONNX Runtime Web, transformers.js, WebLLM e LiteRT.js. Os pacotes para Node.js usam ONNX Runtime Node. Veja a [especificação do pacote](spec/s1s2-package.md), a [especificação multimodal](spec/MULTIMODAL.md) e os [conversores de heads](converters/heads).
 
 ## Modelos
 
