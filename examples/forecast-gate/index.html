@@ -38,9 +38,9 @@
 <main>
   <h1>Forecast gate</h1>
   <p class="sub">Estimate whether the model would refuse a standalone reply. The forecast reads the same prefill as the decision.</p>
-  <p class="notice">Experimental. Needs a package whose manifest has a <code>forecast</code> block and a build that exposes the layer (see <code>spec/FORECAST.md</code>). No weights are shipped here.</p>
+  <p class="notice">Experimental. Use desktop Chrome with WebGPU. The default manifest downloads about 555 MB from Hugging Face on the first run.</p>
   <div class="card">
-    <label for="manifest">Manifest URL</label><input id="manifest" value="./model/manifest.json">
+    <label for="manifest">Manifest URL</label><input id="manifest" value="/manifests/forecast-refusal.json">
     <label for="prompt">Prompt</label><textarea id="prompt" rows="3">List three facts about the moon.</textarea>
     <div class="row">
       <div><label for="beh">Gate on behavior</label><select id="beh"></select></div>

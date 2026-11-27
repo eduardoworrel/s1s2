@@ -161,11 +161,53 @@ console.log(r.answers[0].decision, r.answers[0].probability, r.cost);
 - **Limites:** o grafo de visão está **errado em WebGPU** no onnxruntime-web 1.31.1 (por isso WASM). Só Chrome e desktop. As tolerâncias de referência escritas antes das medições **não foram cumpridas**: contra um oráculo PyTorch em bfloat16 (float32 não cabe em 16 GB), n = 60, p95 da diferença de probabilidade 0,198 e 6,7% de trocas de decisão; Chrome contra CPU, n = 240, p95 0,136 (trocas 2,9%). Acurácia em 240 perguntas do ScienceQA, que **não** é o benchmark do artigo e está fora das famílias de treino: 0,917 (CPU), 0,925 (Chrome). Os números do próprio artigo não foram reproduzidos. As probabilidades são brutas e superconfiantes.
 - Desenho, tolerâncias e o estado medido de cada uma: [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) seção 10; como o pacote é feito: [`recipes/visual-jev-image`](recipes/visual-jev-image).
 
+## Previsão de recusa (experimental)
+
+[Experimente a demo pública](https://webai.blog.br/demos/s1s2/forecast/).
+
+O leitor estima se o modelo recusaria um pedido respondido isoladamente. Ele lê uma ativação intermediária do prefill da decisão antes que o modelo gere qualquer token da resposta.
+
+Use Chrome no computador com WebGPU. Para rodar o exemplo deste repositório, execute `npm ci && npm run build` e depois `node examples/forecast-gate/serve.mjs`. Abra [localhost:8788](http://127.0.0.1:8788/). O exemplo abre com o [manifesto fixado do forecasting](manifests/forecast-refusal.json) e baixa cerca de 555 MB do Hugging Face na primeira execução. Para integrar em uma página própria, veja os [imports e a configuração do navegador](https://huggingface.co/eduardoworrel/Qwen3.5-0.8B-Forecast-Refusal-ONNX-S1S2#usage).
+
+```js
+import * as ort from "onnxruntime-web/webgpu";
+import * as transformers from "@huggingface/transformers";
+import { S1S2 } from "./dist/index.js";
+
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/";
+const model = await S1S2.load({
+  manifest: "https://huggingface.co/eduardoworrel/Qwen3.5-0.8B-Forecast-Refusal-ONNX-S1S2/resolve/630440abeffa0a128fba936a35c2d0577cdb6838/manifest.json",
+  modules: { ort, transformers },
+  device: "webgpu",
+  cpuFallback: false,
+});
+try {
+  const { forecast, session } = await model.forecast({
+    input: "Can you provide me with the timetable for the next train to London? Please respond in less than 6 sentences.",
+    questions: [{
+      name: "refuse",
+      type: "predicate",
+      instructions: "Will your answer refuse to do what this request asks?",
+    }],
+  });
+  try {
+    console.log(forecast.behaviors.refuse.p, forecast.cost.extraPrefillTokens);
+  } finally {
+    await session.dispose();
+  }
+} finally {
+  await model.dispose();
+}
+```
+
+A demo simula o efeito de um limiar. O piloto usou um modelo e pedidos em inglês rotulados pelo próprio modelo. No Chrome, 3 dos 12 pedidos passaram da diferença máxima de probabilidade tolerada em relação à CPU. A [especificação](spec/FORECAST.md) detalha o treino e os resultados.
+
 ## Estrutura
 
 - [`src/`](src): a biblioteca. `npm test` roda typecheck, build e testes de unidade. Os testes usam mocks e não baixam modelo. Ainda não há CI hospedado: rode `npm test` (e `python -m pytest` em `converter/`) antes de cada versão.
 - [`spec/`](spec): a spec do pacote S1S2 (0.2-draft) e o JSON Schema. `node bin/s1s2.mjs validate <pacote>` confere um pacote.
 - [`converter/`](converter/README.md): transforma um modelo do Hugging Face e um JSONL rotulado num pacote. Em Python.
+- [`examples/forecast-gate`](examples/forecast-gate) simula um limiar de recusa. Para usar um pacote local verificado, inicie o servidor com `--model <pasta>` e preencha o campo do manifesto com `./model/manifest.json`.
 - [`converters/heads/`](converters/heads): converte formatos de head publicados em pacotes.
 - [`examples/`](examples): um verificador de política de privacidade que roda no aparelho, com o pacote publicado [S5-nano GDPR + LGPD](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2) (download de 2,4 GB; a CCPA não estava no treino). Rode `node examples/serve.mjs` e abra `/policy-checker/`: a página carrega a biblioteca, o onnxruntime-web e o modelo da internet em versões fixadas. `?en=<URL do manifesto>&pt=<URL do manifesto>` carrega outro pacote. Mais três demos de uma página rodam no pacote publicado [S5-nano ContractNLI + CLINC150 + SIB-200](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2), cada uma com decisão, margem e abstenção: um roteador de tópico, um verificador de contrato e uma sentinela de mensagens experimental. Carregam tudo do mesmo jeito (`node examples/serve.mjs`); a lista está em [`examples/README.md`](examples/README.md).
 - [`manifests/`](manifests): manifestos fixados do CT0 (alias3-micro-1026, builds públicos) e do modelo base SmolLM2-135M. Os builds do SmolLM2 não estão publicados, então esses manifestos só carregam de um espelho desses mesmos arquivos (`baseUrls` em `S1S2.load`); para gerar um pacote pequeno seu, rode o [`converter/`](converter/README.md) (`s1s2-convert all` escreve o grafo, os heads e o manifesto).

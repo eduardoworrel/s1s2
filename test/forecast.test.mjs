@@ -110,17 +110,31 @@ test("manifest: forecast errors", () => {
   bad((m) => { withBuild(m); m.builds["genai-int4-webgpu"].runtime = "webllm"; }, /no extra graph output \(forecast unsupported\)/);
 });
 
-test("backward compatibility: every shipped manifest and example still validates, and none gains a forecast", () => {
+test("backward compatibility: legacy shipped manifests and examples still validate without forecast", () => {
   const dirs = ["../manifests/", "../spec/examples/s1s2-toy-smollm2-135m/"];
   let n = 0;
   for (const d of dirs) for (const f of readdirSync(new URL(d, import.meta.url)).filter((x) => /^manifest.*\.json$|\.json$/.test(x))) {
     let j; try { j = JSON.parse(readFileSync(new URL(d + f, import.meta.url), "utf8")); } catch { continue; }
     if (j.schema !== "s1s2.manifest/1") continue;
+    if (d === "../manifests/" && f === "forecast-refusal.json") continue;
     assert.equal(j.forecast, undefined);
     if (j.modalities && !j.modalities.includes("text")) continue; // media packages are validated by validateMediaManifest
     assert.doesNotThrow(() => validateManifest(j), f); n++;
   }
   assert.ok(n >= 3, `checked ${n} manifests`);
+});
+
+test("the documented refusal model ships a pinned WebGPU manifest", async () => {
+  const manifest = JSON.parse(readFileSync(new URL("../manifests/forecast-refusal.json", import.meta.url), "utf8"));
+  assert.doesNotThrow(() => validateManifest(manifest));
+  assert.deepEqual(await schemaProblems(manifest), []);
+  assert.deepEqual(manifest.builds["int4-webgpu"].devices, ["webgpu"]);
+  assert.deepEqual(manifest.forecast.behaviors.map(({ name }) => name), ["refuse"]);
+  for (const file of ["README.md", "README.pt-BR.md"]) {
+    const readme = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.ok(readme.includes("(manifests/forecast-refusal.json)"), file);
+    assert.ok(readme.includes(`huggingface.co/${manifest.tokenizer.repo}/resolve/`), file);
+  }
 });
 
 test("S1 refuses an integer layer.read at load (the forecast layer is separate)", () => {

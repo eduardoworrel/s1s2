@@ -163,22 +163,51 @@ console.log(r.answers[0].decision, r.answers[0].probability, r.cost);
 
 ## Forecast reader (experimental)
 
-A second reader over the same prefill: a small head (linear or MLP) on the hidden state of an intermediate layer of the context returns the probability of behaviors of the answer the model has not written yet, without generating. `decide()` is unchanged; `generate()` still continues from the same prefill.
+[Try the public demo](https://webai.blog.br/demos/s1s2/forecast/).
+
+The forecast reader estimates whether the model would refuse a standalone reply. It reads an intermediate activation from the decision prefill before the model generates any answer tokens.
+
+Use desktop Chrome with WebGPU. To run the example from this checkout, run `npm ci && npm run build`, then `node examples/forecast-gate/serve.mjs` and open [localhost:8788](http://127.0.0.1:8788/). The example starts with the [pinned forecast manifest](manifests/forecast-refusal.json) and loads about 555 MB from Hugging Face on the first run. For your own HTML page, use the complete [browser imports and setup](https://huggingface.co/eduardoworrel/Qwen3.5-0.8B-Forecast-Refusal-ONNX-S1S2#usage).
 
 ```js
-const { forecast, session } = await model.forecast({ input, questions: [question] });   // one prefill
-console.log(forecast.behaviors.refuse.p);                                                // estimated refusal probability
-await session.dispose();
+import * as ort from "onnxruntime-web/webgpu";
+import * as transformers from "@huggingface/transformers";
+import { S1S2 } from "./dist/index.js";
+
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/";
+const model = await S1S2.load({
+  manifest: "https://huggingface.co/eduardoworrel/Qwen3.5-0.8B-Forecast-Refusal-ONNX-S1S2/resolve/630440abeffa0a128fba936a35c2d0577cdb6838/manifest.json",
+  modules: { ort, transformers },
+  device: "webgpu",
+  cpuFallback: false,
+});
+try {
+  const { forecast, session } = await model.forecast({
+    input: "Can you provide me with the timetable for the next train to London? Please respond in less than 6 sentences.",
+    questions: [{
+      name: "refuse",
+      type: "predicate",
+      instructions: "Will your answer refuse to do what this request asks?",
+    }],
+  });
+  try {
+    console.log(forecast.behaviors.refuse.p, forecast.cost.extraPrefillTokens);
+  } finally {
+    await session.dispose();
+  }
+} finally {
+  await model.dispose();
+}
 ```
 
-It needs a manifest with a `forecast` block and a build whose graph exposes the layer (`s1s2-convert build --forecast-layer N`, which uses the GenAI builder's `aux_hidden_state_layers`); `s1s2-convert train-forecast-head` trains the head offline from answers and behavior labels you supply. WebLLM and LiteRT builds cannot expose it. This implements the reading side of the idea in He and Jiralerspong, [arXiv 2611.06837](https://arxiv.org/abs/2611.06837); it does not reproduce their results. One exploratory pilot (Qwen3.5-0.8B, auto-judge labels, 29 test refusals) gave AUROC 0.80 for predicting a refusal; it did not beat a last-layer head, and the Chrome WebGPU smoke test exceeded the probability-parity tolerance on 3 of 12 prompts. Details, file formats and limits: [`spec/FORECAST.md`](spec/FORECAST.md); try the [browser demo](https://webai.blog.br/demos/s1s2/forecast/).
+The demo simulates what a threshold would do. The pilot used one model with self-labelled English requests. The Chrome test exceeded the CPU probability-parity tolerance on 3 of 12 prompts. See the [forecast spec](spec/FORECAST.md) for the training workflow and results.
 
 ## Layout
 
 - [`src/`](src): the library. Run `npm test` for typecheck, build and unit tests. Unit tests use mocks and need no model download. There is no hosted CI yet: run `npm test` (and `python -m pytest` in `converter/`) before each release.
 - [`spec/`](spec): the S1S2 package spec (0.2-draft) and its JSON Schema. `node bin/s1s2.mjs validate <package>` checks a package.
 - [`converter/`](converter/README.md): turns a Hugging Face model plus labelled JSONL into a package. Python.
-- [`examples/forecast-gate`](examples/forecast-gate) reads the decision prefill and shows how a threshold would gate a standalone reply. For a local package, run `npm ci && npm run build`, then `node examples/forecast-gate/serve.mjs --model <dir>` and open `http://127.0.0.1:8788/`. The server verifies the package files at startup.
+- [`examples/forecast-gate`](examples/forecast-gate) simulates a refusal threshold. To use a verified local package, start the server with `--model <dir>` and set the manifest field to `./model/manifest.json`.
 - [`converters/heads/`](converters/heads): converts published head formats into packages.
 - [`examples/`](examples): a Privacy Policy Checker that runs on the device, with the published [S5-nano GDPR + LGPD](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2) package (2.4 GB download; CCPA was not in its training). Run `node examples/serve.mjs` and open `/policy-checker/`: the page loads the library, onnxruntime-web and the model from the internet at pinned versions. `?en=<manifest URL>&pt=<manifest URL>` loads another package. Three more single-page demos run on the published [S5-nano ContractNLI + CLINC150 + SIB-200](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) package, each with decision, margin and abstention: a topic router, a contract check and an experimental message sentinel. They load everything the same way (`node examples/serve.mjs`); the list is in [`examples/README.md`](examples/README.md).
 - [`manifests/`](manifests): pinned manifests for CT0 (alias3-micro-1026, public builds) and the SmolLM2-135M base model. The SmolLM2 builds are not published, so these manifests load only from a mirror of those exact files (`baseUrls` in `S1S2.load`); to make a small package of your own, run [`converter/`](converter/README.md) (`s1s2-convert all` writes the graph, heads and manifest).
