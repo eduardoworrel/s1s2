@@ -8,3 +8,5 @@ export { ManifestError } from "../manifest.js";
 export { mediaProblems, pinnedProblems, validateMediaManifest } from "./manifest.js";
 export { DecoderEngine, DecoderWindow, ortDecoder, f32ToF16Bits, type DecoderBackend, type DecoderKv } from "./decoder.js";
 export { normalizeTerm, termFraction, containsTerm, detectAndFixRepetitions, parseAsrText, parseAsr, decodeIds, type DecoderTokens } from "./decoderText.js";
+export { positionEmbeddings, smartResize, roundHalfEven, resizeBicubicRGB, rgbaToRgb, patchify, prepareImage, prefixText, suffixText, mropePositions, nextPosition, optionScores, LETTERS, SYSTEM, MIN_OPTIONS, MAX_OPTIONS, type SmartResizeOptions, type PatchSpec, type PrepareSpec, type OptionScores } from "./imagePrep.js";
+export { ImageModel, loadImage, type ImageInput, type ImageQuestion, type ImageRequest, type ImageAnswer, type ImageDecision, type ImageLoadOptions } from "./image.js";

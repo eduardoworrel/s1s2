@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "s1s2-convert"
-version = "0.1.2"
+version = "0.1.3"
 description = "Convert a Hugging Face causal LM + labelled JSONL into an S1S2 package (LoRA + pointer heads, int4 ONNX Runtime GenAI build) that s1s2 loads"
 license = "MIT"
 requires-python = ">=3.10"

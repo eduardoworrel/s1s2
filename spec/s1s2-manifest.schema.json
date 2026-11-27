@@ -500,10 +500,11 @@
       "items": {
         "enum": [
           "text",
-          "audio"
+          "audio",
+          "image"
         ]
       },
-      "description": "Inputs `decide` takes. Absent = [\"text\"] (a text manifest). A media package (no text sections) lists \"audio\" and needs repo + revision. See spec/MULTIMODAL.md."
+      "description": "Inputs `decide` takes. Absent = [\"text\"] (a text manifest). A media package (no text sections) lists \"audio\" and/or \"image\" and needs repo + revision. See spec/MULTIMODAL.md."
     },
     "repo": {
       "$ref": "#/$defs/nonEmpty",
@@ -516,6 +517,9 @@
     },
     "audio": {
       "$ref": "#/$defs/audioSpec"
+    },
+    "image": {
+      "$ref": "#/$defs/imageSpec"
     },
     "forecast": {
       "type": "object",
@@ -2487,6 +2491,446 @@
             }
           },
           "description": "The decoder built for CPU kernels (Node CPU, browser WASM)."
+        }
+      }
+    },
+    "imageSpec": {
+      "type": "object",
+      "required": [
+        "preprocess",
+        "vision",
+        "text",
+        "embeddings",
+        "tokenizer",
+        "prompt",
+        "readout"
+      ],
+      "additionalProperties": false,
+      "description": "Image decision reader (Qwen3-VL + LoRA; questions with 2 to 26 lettered options, read by the LM-head logit of the option letter). See spec/MULTIMODAL.md section 10.",
+      "properties": {
+        "preprocess": {
+          "type": "object",
+          "required": [
+            "kind",
+            "patchSize",
+            "mergeSize",
+            "temporalPatchSize",
+            "mean",
+            "std",
+            "resample",
+            "minPixels",
+            "maxPixels"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "qwen-vl-patches"
+            },
+            "patchSize": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mergeSize": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "temporalPatchSize": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mean": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            },
+            "std": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "resample": {
+              "const": "pillow-bicubic"
+            },
+            "minPixels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxPixels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "referenceMaxPixels": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "vision": {
+          "type": "object",
+          "required": [
+            "runtime",
+            "graph",
+            "inputs",
+            "outputs",
+            "devices"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "runtime": {
+              "const": "onnx"
+            },
+            "graph": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/pinnedFile"
+              }
+            },
+            "inputs": {
+              "type": "object",
+              "required": [
+                "pixelValues",
+                "grid"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "pixelValues": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "grid": {
+                  "$ref": "#/$defs/nonEmpty"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object",
+              "required": [
+                "features",
+                "deepstack"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "features": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "deepstack": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/nonEmpty"
+                  }
+                }
+              }
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "enum": [
+                  "webgpu",
+                  "wasm",
+                  "cpu"
+                ]
+              }
+            },
+            "posEmbeds": {
+              "type": "object",
+              "required": [
+                "input",
+                "table",
+                "side"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "input": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "table": {
+                  "$ref": "#/$defs/pinnedFile"
+                },
+                "side": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "text": {
+          "type": "object",
+          "required": [
+            "runtime",
+            "graph",
+            "data",
+            "inputs",
+            "cache",
+            "output",
+            "model",
+            "ioDtype",
+            "devices"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "runtime": {
+              "const": "onnx"
+            },
+            "graph": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "data": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/pinnedFile"
+              }
+            },
+            "inputs": {
+              "type": "object",
+              "required": [
+                "embeds",
+                "attentionMask",
+                "positionIds",
+                "deepstack"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "embeds": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "attentionMask": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "positionIds": {
+                  "$ref": "#/$defs/nonEmpty"
+                },
+                "deepstack": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/nonEmpty"
+                  }
+                }
+              }
+            },
+            "cache": {
+              "type": "object",
+              "required": [
+                "pastKey",
+                "pastValue",
+                "presentKey",
+                "presentValue"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "pastKey": {
+                  "type": "string",
+                  "pattern": "%d"
+                },
+                "pastValue": {
+                  "type": "string",
+                  "pattern": "%d"
+                },
+                "presentKey": {
+                  "type": "string",
+                  "pattern": "%d"
+                },
+                "presentValue": {
+                  "type": "string",
+                  "pattern": "%d"
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "required": [
+                "hidden"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "hidden": {
+                  "$ref": "#/$defs/nonEmpty"
+                }
+              }
+            },
+            "model": {
+              "type": "object",
+              "required": [
+                "layers",
+                "kvHeads",
+                "headDim",
+                "hidden",
+                "vocab"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "layers": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "kvHeads": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "headDim": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "hidden": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "vocab": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "ioDtype": {
+              "enum": [
+                "float32",
+                "float16"
+              ]
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "enum": [
+                  "webgpu",
+                  "wasm",
+                  "cpu"
+                ]
+              }
+            }
+          }
+        },
+        "embeddings": {
+          "type": "object",
+          "required": [
+            "file",
+            "format"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "format": {
+              "enum": [
+                "f16",
+                "q4-block128"
+              ]
+            },
+            "scales": {
+              "$ref": "#/$defs/pinnedFile"
+            }
+          }
+        },
+        "tokenizer": {
+          "type": "object",
+          "required": [
+            "tokenizer",
+            "config"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tokenizer": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "config": {
+              "$ref": "#/$defs/pinnedFile"
+            }
+          }
+        },
+        "prompt": {
+          "type": "object",
+          "required": [
+            "imagePad",
+            "visionStart",
+            "visionEnd",
+            "imStart",
+            "imEnd"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "imagePad": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "visionStart": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "visionEnd": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "imStart": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "imEnd": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "readout": {
+          "type": "object",
+          "required": [
+            "kind",
+            "tokenIds",
+            "rows",
+            "minOptions",
+            "maxOptions",
+            "temperature"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "option-letters"
+            },
+            "tokenIds": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 26,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "rows": {
+              "$ref": "#/$defs/pinnedFile"
+            },
+            "minOptions": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "maxOptions": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 26
+            },
+            "temperature": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "fidelity": {
+          "type": "object"
         }
       }
     }

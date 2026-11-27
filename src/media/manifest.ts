@@ -29,13 +29,15 @@ export function mediaProblems(m: any, mediaOnly: boolean): string[] {
   }
   const has = (k: string) => Array.isArray(mod) && mod.includes(k);
   if (mediaOnly) {
-    if (!Array.isArray(mod) || !has("audio")) p.push('modalities: a media manifest (no text sections) lists "audio"');
+    if (!Array.isArray(mod) || !(has("audio") || has("image"))) p.push('modalities: a media manifest (no text sections) lists "audio" and/or "image"');
     if (has("text")) p.push('modalities: lists "text": this is a text manifest (use load()); loadMedia reads media-only packages');
     if (!str(m.repo)) p.push("repo: string (where the pinned files live)");
     if (!(typeof m.revision === "string" && (SHA1.test(m.revision) || m.revision === "local"))) p.push('revision: a 40-hex commit sha, or "local" for an unpublished package');
   }
   if (m.audio !== undefined && !has("audio")) p.push('audio: present, but modalities does not list "audio"');
   if (has("audio")) { if (m.audio === undefined) p.push('audio: required by modalities "audio"'); else audioProblems(m.audio, p); }
+  if (m.image !== undefined && !has("image")) p.push('image: present, but modalities does not list "image"');
+  if (has("image")) { if (m.image === undefined) p.push('image: required by modalities "image"'); else imageProblems(m.image, p); }
   return p;
 }
 
@@ -119,6 +121,68 @@ function audioProblems(a: any, p: string[]): void {
     else if (g.kind === "pair-split") { if (!(pos(g.split) && g.split < win)) p.push(`${at}.pooling.split: seconds inside the window`); }
     else if (g.kind !== "mean-std") p.push(`${at}.pooling.kind: "tail-mean" | "pair" | "pair-split" | "mean-std"`);
     if (r.kind === "pooled-mlp" && g.kind === "mean-std") p.push(`${at}: the MLP reader is specified for pair features`);
+  }
+}
+
+const DEVICES = ["webgpu", "wasm", "cpu"];
+const idList = (x: any, n?: number) => Array.isArray(x) && (n === undefined || x.length === n) && x.every((i: any) => Number.isInteger(i) && i >= 0);
+
+function imageProblems(im: any, p: string[]): void {
+  if (!isObj(im)) { p.push("image: object"); return; }
+  const pre = im.preprocess;
+  if (!isObj(pre) || pre.kind !== "qwen-vl-patches") p.push('image.preprocess.kind: "qwen-vl-patches"');
+  else {
+    for (const k of ["patchSize", "mergeSize", "temporalPatchSize"]) if (!int(pre[k])) p.push(`image.preprocess.${k}: positive integer`);
+    for (const k of ["mean", "std"]) if (!(Array.isArray(pre[k]) && pre[k].length === 3 && pre[k].every(k === "std" ? pos : num))) p.push(`image.preprocess.${k}: three numbers${k === "std" ? " > 0" : ""}`);
+    if (pre.resample !== "pillow-bicubic") p.push('image.preprocess.resample: "pillow-bicubic" (the only resize that is checked byte for byte)');
+    if (!(int(pre.minPixels) && int(pre.maxPixels) && pre.minPixels <= pre.maxPixels)) p.push("image.preprocess: minPixels <= maxPixels, positive integers");
+    else if (int(pre.patchSize) && int(pre.mergeSize) && pre.maxPixels < (pre.patchSize * pre.mergeSize) ** 2) p.push("image.preprocess.maxPixels: at least one merge window ((patchSize * mergeSize)^2 pixels)");
+    if (pre.referenceMaxPixels !== undefined && !int(pre.referenceMaxPixels)) p.push("image.preprocess.referenceMaxPixels: positive integer");
+  }
+  const v = im.vision, t = im.text;
+  if (!isObj(v) || v.runtime !== "onnx") p.push('image.vision.runtime: "onnx"');
+  else {
+    pinnedProblems(v.graph, "image.vision.graph", p);
+    if (v.data !== undefined) { if (!Array.isArray(v.data)) p.push("image.vision.data: list of pinned files"); else v.data.forEach((d: any, i: number) => pinnedProblems(d, `image.vision.data[${i}]`, p)); }
+    if (!(isObj(v.inputs) && str(v.inputs.pixelValues) && str(v.inputs.grid))) p.push("image.vision.inputs: {pixelValues, grid} graph names");
+    if (!(isObj(v.outputs) && str(v.outputs.features) && Array.isArray(v.outputs.deepstack) && v.outputs.deepstack.length >= 1 && v.outputs.deepstack.every(str))) p.push("image.vision.outputs: {features, deepstack: [names]} (DeepStack outputs are required: spec section 10.2)");
+    if (v.posEmbeds !== undefined) { if (!(isObj(v.posEmbeds) && str(v.posEmbeds.input) && int(v.posEmbeds.side))) p.push("image.vision.posEmbeds: {input, table, side}"); else { pinnedProblems(v.posEmbeds.table, "image.vision.posEmbeds.table", p); if (isObj(v.posEmbeds.table) && Number.isInteger(v.posEmbeds.table.size) && isObj(t) && isObj(t.model) && int(t.model.hidden) && v.posEmbeds.table.size % (v.posEmbeds.side ** 2 * 2) !== 0) p.push("image.vision.posEmbeds.table.size: a whole number of float16 rows of side * side"); } }
+    if (!Array.isArray(v.devices) || !v.devices.length || !v.devices.every((d: any) => DEVICES.includes(d))) p.push('image.vision.devices: non-empty list of "webgpu" | "wasm" | "cpu"');
+  }
+  if (!isObj(t) || t.runtime !== "onnx") p.push('image.text.runtime: "onnx"');
+  else {
+    pinnedProblems(t.graph, "image.text.graph", p);
+    if (!Array.isArray(t.data) || !t.data.length) p.push("image.text.data: at least one external-data piece");
+    else t.data.forEach((d: any, i: number) => { pinnedProblems(d, `image.text.data[${i}]`, p); if (isObj(d) && Number.isInteger(d.size) && d.size > 2 * 1024 ** 3) p.push(`image.text.data[${i}].size: at most 2 GB per piece (onnxruntime-web)`); });
+    if (!(isObj(t.inputs) && str(t.inputs.embeds) && str(t.inputs.attentionMask) && str(t.inputs.positionIds) && Array.isArray(t.inputs.deepstack) && t.inputs.deepstack.every(str))) p.push("image.text.inputs: {embeds, attentionMask, positionIds, deepstack: [names]}");
+    else if (isObj(v) && isObj(v.outputs) && Array.isArray(v.outputs.deepstack) && v.outputs.deepstack.length !== t.inputs.deepstack.length) p.push(`image.text.inputs.deepstack: ${t.inputs.deepstack.length} inputs for ${v.outputs.deepstack.length} vision DeepStack outputs`);
+    if (!(isObj(t.cache) && ["pastKey", "pastValue", "presentKey", "presentValue"].every((k) => typeof t.cache[k] === "string" && t.cache[k].includes("%d")))) p.push("image.text.cache: {pastKey, pastValue, presentKey, presentValue} name patterns with %d");
+    if (!(isObj(t.output) && str(t.output.hidden))) p.push("image.text.output: {hidden} graph name");
+    if (!(isObj(t.model) && ["layers", "kvHeads", "headDim", "hidden", "vocab"].every((k) => int(t.model[k])))) p.push("image.text.model: {layers, kvHeads, headDim, hidden, vocab} positive integers");
+    if (t.ioDtype !== "float32" && t.ioDtype !== "float16") p.push('image.text.ioDtype: "float32" | "float16"');
+    if (!Array.isArray(t.devices) || !t.devices.length || !t.devices.every((d: any) => DEVICES.includes(d))) p.push('image.text.devices: non-empty list of "webgpu" | "wasm" | "cpu"');
+  }
+  const hidden = isObj(t) && isObj(t.model) && int(t.model.hidden) ? t.model.hidden : 0, vocab = isObj(t) && isObj(t.model) && int(t.model.vocab) ? t.model.vocab : 0;
+  const e = im.embeddings;
+  if (!isObj(e) || !(e.format === "f16" || e.format === "q4-block128")) p.push('image.embeddings.format: "f16" | "q4-block128"');
+  else {
+    pinnedProblems(e.file, "image.embeddings.file", p);
+    if (e.format === "q4-block128") { pinnedProblems(e.scales, "image.embeddings.scales", p); if (hidden && hidden % 128) p.push("image.embeddings: q4-block128 needs hidden divisible by 128"); }
+    else if (e.scales !== undefined) p.push('image.embeddings.scales: only for "q4-block128"');
+    if (e.format === "f16" && hidden && vocab && isObj(e.file) && Number.isInteger(e.file.size) && e.file.size !== vocab * hidden * 2) p.push(`image.embeddings.file.size: ${e.file.size} != vocab * hidden * 2 = ${vocab * hidden * 2}`);
+  }
+  const tk = im.tokenizer;
+  if (!isObj(tk)) p.push("image.tokenizer: {tokenizer, config} pinned files"); else { pinnedProblems(tk.tokenizer, "image.tokenizer.tokenizer", p); pinnedProblems(tk.config, "image.tokenizer.config", p); }
+  const pr = im.prompt;
+  if (!(isObj(pr) && ["imagePad", "visionStart", "visionEnd", "imStart", "imEnd"].every((k) => Number.isInteger(pr[k]) && pr[k] >= 0 && (!vocab || pr[k] < vocab)))) p.push("image.prompt: {imagePad, visionStart, visionEnd, imStart, imEnd} token ids inside the vocabulary");
+  const r = im.readout;
+  if (!isObj(r) || r.kind !== "option-letters") p.push('image.readout.kind: "option-letters"');
+  else {
+    if (!(int(r.minOptions) && int(r.maxOptions) && r.minOptions >= 2 && r.minOptions <= r.maxOptions && r.maxOptions <= 26)) p.push("image.readout: 2 <= minOptions <= maxOptions <= 26");
+    else if (!(idList(r.tokenIds, r.maxOptions) && new Set(r.tokenIds).size === r.maxOptions && (!vocab || r.tokenIds.every((i: number) => i < vocab)))) p.push(`image.readout.tokenIds: ${r.maxOptions} distinct token ids inside the vocabulary (one per option letter)`);
+    pinnedProblems(r.rows, "image.readout.rows", p);
+    if (int(r.maxOptions) && hidden && isObj(r.rows) && Number.isInteger(r.rows.size) && r.rows.size !== r.maxOptions * hidden * 2) p.push(`image.readout.rows.size: ${r.rows.size} != maxOptions * hidden * 2 = ${r.maxOptions * hidden * 2}`);
+    if (!pos(r.temperature)) p.push("image.readout.temperature: positive number (1 = raw)");
   }
 }
 

@@ -2,7 +2,13 @@
 
 [Português](README.pt-BR.md)
 
-Typed decisions from one forward pass of a language model, in the browser, with the probability and the margin of each answer, and text generation on the same weights when you want an explanation.
+A JavaScript library for typed decisions about text, audio and images, with probabilities and margins for each answer. Run models in the browser or in Node.js, depending on the package.
+
+**Usage examples** · [Text](#text) · [Audio (Marimba)](#audio-experimental) · [Image (Visual Jev)](#image-experimental)
+
+[Try the browser demos](https://webai.blog.br/demos/s1s2/)
+
+## Text
 
 ```sh
 npm i @s1s2/web
@@ -18,38 +24,21 @@ const s = await model.decide({
   // evidence: { requirement: "..." },  // packages with an evidence head: s.evidence = the sentence that shows it
 });
 const { probability, margin } = s.answers[0];                // P(true), and p(1st) - p(2nd)
-const why = await s.generate("Explain the decision in two sentences.", { maxNewTokens: 96 });  // same weights
 await s.dispose(); await model.dispose();
 ```
 
+On text backends that keep state, `s.generate()` can explain a decision using the same weights and prefill. An optional margin policy can route low-margin answers to another build of the model (for example, int4 to int8) or to generation, using a threshold you measure for your build. [Text API and prefill details](docs/reference.md).
+
 ## What it is
 
-- A JavaScript library that answers `predicate`, `choice` and `score` questions in one forward pass, with no generation, and reports `probability`, `confidence`, `margin` and `rawMargin` for every answer.
-- `s.generate()` continues from the same prefill that produced the decision, on backends that keep state. On WebGPU this reuse (and the prefix shared by several questions) is bit-identical to a full prefill: no prefill block is shorter than 32 tokens, because onnxruntime-web computes shorter blocks on a different numeric path.
-- An optional margin policy escalates low-margin answers to another build of the same model (for example int4 to int8) or to generation. There is no default threshold; you measure one on your own build.
-- Runtimes: ONNX Runtime Web (GenAI graphs and plain decoders), transformers.js, WebLLM and LiteRT.js, plus onnxruntime-node in Node.
-- It reads **S1S2 packages**: a manifest that pins every file by sha256 and describes the prompt layout, markers, readouts and heads. The library and the format share the name; the format is specified in [`spec/`](spec/s1s2-package.md).
-- Head formats it reads: Kev `head.pt`, GGUF decision heads, alias3-web `head.bin`, d3 / pplx linear readouts, JEV, transformers `DecisionConfig` and Clef joint heads. [`converters/heads/`](converters/heads) converts each one and writes a fidelity record against that format's own reference code.
+- **Text models** answer `predicate`, `choice` and `score` questions in one forward pass and report the confidence and margin for each decision.
+- **Audio models** analyse a window once for several questions about speech, speakers and language, or transcribe it.
+- **Image models** encode an image once and answer multiple-choice questions about it, with a probability for each option.
+- **S1S2 packages** use a manifest to describe how to run the model and read its answers, and to pin the files by SHA-256. Browser runtimes include ONNX Runtime Web, transformers.js, WebLLM and LiteRT.js. Node.js packages use ONNX Runtime Node. See the [package spec](spec/s1s2-package.md), [multimodal spec](spec/MULTIMODAL.md) and [head converters](converters/heads).
 
 ## Models
 
-All of them in one place: [s1s2 specialists](https://huggingface.co/collections/eduardoworrel/s1s2-specialists-6afc6b0ec797ec2a26933909) on Hugging Face.
-
-Published S1S2 specialists. The ONNX repos run in the browser with this library (WebGPU); the LoRA repos hold the PyTorch adapter and heads for servers. Each card lists its results, limits and license.
-
-| Task | Base | Browser (ONNX int4, WebGPU) | Servers (LoRA + heads) |
-|---|---|---|---|
-| GDPR + LGPD | EuroLLM-1.7B | [EuroLLM-1.7B-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/EuroLLM-1.7B-GDPR-LGPD-ONNX-genai-int4-S1S2) | [EuroLLM-1.7B-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/EuroLLM-1.7B-GDPR-LGPD-LoRA) |
-| GDPR + LGPD | S5-nano | [S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2) | [S5-nano-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-LoRA) |
-| GDPR + LGPD | Salamandra-2B | [Salamandra-2B-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Salamandra-2B-GDPR-LGPD-ONNX-genai-int4-S1S2) | [Salamandra-2B-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/Salamandra-2B-GDPR-LGPD-LoRA) |
-| GDPR + LGPD | SmolLM3-3B | [SmolLM3-3B-GDPR-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-GDPR-LGPD-ONNX-genai-int4-S1S2) | [SmolLM3-3B-GDPR-LGPD-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-GDPR-LGPD-LoRA) |
-| LGPD only | Jurema-7B (gated) | [Jurema-7B-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Jurema-7B-LGPD-ONNX-genai-int4-S1S2) | [Jurema-7B-LGPD-LoRA](https://huggingface.co/eduardoworrel/Jurema-7B-LGPD-LoRA) |
-| LGPD only | S5-nano | [S5-nano-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-LGPD-ONNX-genai-int4-S1S2) | [S5-nano-LGPD-LoRA](https://huggingface.co/eduardoworrel/S5-nano-LGPD-LoRA) |
-| LGPD only | SmolLM3-3B | [SmolLM3-3B-LGPD-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-LGPD-ONNX-genai-int4-S1S2) | [SmolLM3-3B-LGPD-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-LGPD-LoRA) |
-| ContractNLI + CLINC150 + SIB-200 | Qwen3-0.6B | [Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [Qwen3-0.6B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/Qwen3-0.6B-ContractNLI-CLINC-SIB-LoRA) |
-| ContractNLI + CLINC150 + SIB-200 | Qwen3-1.7B | [Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [Qwen3-1.7B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/Qwen3-1.7B-ContractNLI-CLINC-SIB-LoRA) |
-| ContractNLI + CLINC150 + SIB-200 | S5-nano | [S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [S5-nano-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/S5-nano-ContractNLI-CLINC-SIB-LoRA) |
-| ContractNLI + CLINC150 + SIB-200 | SmolLM3-3B | [SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-ONNX-genai-int4-S1S2) | [SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA](https://huggingface.co/eduardoworrel/SmolLM3-3B-ContractNLI-CLINC-SIB-LoRA) |
+Find published models in the [s1s2 specialists](https://huggingface.co/collections/eduardoworrel/s1s2-specialists-6afc6b0ec797ec2a26933909) collection on Hugging Face. The ONNX builds run in the browser with WebGPU. The LoRA repositories provide PyTorch adapters and heads for servers. Each model card lists results, limitations and the license.
 
 CPU fallback: without WebGPU, `S1S2.load` runs builds whose manifest lists device `"wasm"` on the browser CPU (onnxruntime-web WASM; `model.device === "wasm"`, opt out with `cpuFallback: false`): 7.5–16.5× slower than WebGPU, same decisions in ≥116/120 items (120 development items per task, Chrome on an Apple M2 Pro); long inputs (ContractNLI) on the 1.7B and 3B models did not fit a 2-hour budget for 120 items. S5-nano cannot run there (no WASM kernel for GatedDeltaNet).
 
@@ -100,6 +89,8 @@ Other projects already run typed decisions in one pass, including open-jev, the 
 
 ## Audio (experimental)
 
+[Try the Marimba audio demo](https://webai.blog.br/demos/s1s2/marimba/).
+
 Besides text, the library reads an **audio package**: ONNX builds of [Marimba](https://huggingface.co/charcot-ai/marimba) (typed questions about an 8-second audio window, on a frozen Qwen3-ASR-0.6B encoder) for the browser and Node. The weights are on the Hub, [eduardoworrel/Marimba-ONNX-S1S2](https://huggingface.co/eduardoworrel/Marimba-ONNX-S1S2), and `manifests/marimba-audio.json` pins that repository at the commit that holds them, so `loadMedia` downloads and checks them with no further option. Same answers as the text models (`probability`, `margin`, `rawMargin`, `decision`); one encoder pass answers any number of questions. Requires `@s1s2/web` 0.2.0 or later (`transcribe`: 0.2.1).
 
 ```js
@@ -141,6 +132,34 @@ const d = await audio.decide({ audio: { samples, sampleRate: 16000 }, questions:
 ```
 
 Demo: [`examples/audio-turn`](examples/audio-turn) (`node examples/serve-media.mjs --weights <dir>`, with a local copy of the repository); how the package is made: [`recipes/`](recipes).
+
+## Image (experimental)
+
+[Try the experimental Visual Jev WebGPU demo](https://webai.blog.br/demos/s1s2/imagem/).
+
+The library also reads an **image package**: [Visual Jev](https://arxiv.org/abs/2609.25845) (Guanxu Yu, Yuhang Yao), a LoRA on Qwen3-VL-4B-Instruct that answers closed-choice questions about one image, as int4 ONNX builds for Chrome and Node ([`eduardoworrel/Visual-Jev-4B-ONNX-S1S2`](https://huggingface.co/eduardoworrel/Visual-Jev-4B-ONNX-S1S2), 3.8 GB). A question is a list of 2 to 16 options (English); the answer is a probability per option, read from the LM-head logit of the option letter.
+
+```js
+import * as ort from "onnxruntime-web/webgpu";
+import * as transformers from "@huggingface/transformers";
+import { loadMedia } from "@s1s2/web/media";
+
+const reader = await loadMedia({
+  manifest: "https://huggingface.co/eduardoworrel/Visual-Jev-4B-ONNX-S1S2/resolve/main/manifest.json",
+  modality: "image",
+  modules: { ort, transformers },
+  device: "webgpu",            // the text graph; the vision graph runs on WASM (visionDevice: "wasm", also the default here)
+  visionDevice: "wasm",
+});
+// rgba: ImageData.data of a canvas
+const r = await reader.decide({ image: { rgb: rgba, width, height, channels: 4 },
+  questions: [{ name: "dog", instruction: "Is there a dog in the image?", options: ["yes", "no"] }] });
+console.log(r.answers[0].decision, r.answers[0].probability, r.cost);
+```
+
+- **Cost:** Chrome, Apple silicon (16 GB), text on WebGPU and vision on WASM, one question per image: median 15.6 s per question (vision 10.8 s, the question 4.3 s); about 3 GB resident; 3.8 GB to download. Node CPU took 2 to 3 s on 3 questions.
+- **Limits:** the vision graph is **wrong on WebGPU** in onnxruntime-web 1.31.1 (hence WASM). Chrome and desktop only. The reference tolerances written before the runs were **not met**: against a bfloat16 PyTorch oracle (float32 does not fit in 16 GB), n = 60, p95 of the probability difference 0.198 and 6.7% decision flips; Chrome against CPU, n = 240, p95 0.136 (flips 2.9%). Accuracy on 240 ScienceQA questions, which is **not** the paper's benchmark and outside its training families: 0.917 (CPU), 0.925 (Chrome). The paper's own numbers were not reproduced. Probabilities are raw and overconfident.
+- Design, tolerances and the measured status of each: [`spec/MULTIMODAL.md`](spec/MULTIMODAL.md) section 10; how the package is made: [`recipes/visual-jev-image`](recipes/visual-jev-image).
 
 ## Forecast reader (experimental)
 
