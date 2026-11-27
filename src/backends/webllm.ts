@@ -109,6 +109,7 @@ export function webllmBackend(engine: any, capture: LogitCapture, opts: WebllmBa
     hiddenName: rec ? "recovered-from-logits" : null,
     dispose() { return gate.dispose(async () => { rec = null; await engine.unload?.(); }); },
     async prefill(ids, want) {
+      if (want.extra?.positions.length) throw new Error("forecast unsupported: webllm builds return logits only and have no intermediate-layer output");
       gate.assertLive();
       checkPositions("webllm", ids, want.positions);
       if (want.positions.length && !rec) throw new Error("webllm: without opts.recovery the backend cannot recover hidden states; use method 'logits'");

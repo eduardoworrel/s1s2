@@ -148,3 +148,49 @@ export function fidelitySlot(reference: string, a: Partial<Record<"logits" | "he
     measuredAt: new Date().toISOString().slice(0, 10),
   };
 }
+
+/** One line of forecast outputs for a prompt (reference or build): probability per behavior. */
+export interface ForecastRecord { id: string; behaviors: Record<string, { p: number }> }
+
+export interface ForecastParity {
+  /** Prompts present in both. */
+  n: number;
+  /** Largest |p_build - p_ref| over prompts and behaviors. */
+  maxAbsDp: number;
+  meanAbsDp: number;
+  /** Prompt x behavior pairs on the other side of `threshold` (default 0.5), and their share in percent. */
+  flips: number;
+  flipPct: number;
+  pairs: number;
+  /** Ids in the reference with no build output (not counted in n). */
+  missing: string[];
+  tolerance: { maxAbsDp: number; maxFlipPct: number; threshold: number };
+  /** maxAbsDp <= tolerance.maxAbsDp and flipPct <= tolerance.maxFlipPct (and n > 0). */
+  pass: boolean;
+}
+
+/**
+ * Parity of the forecast head output between two precisions of the same weights (e.g. fp32 against int4). Default
+ * tolerance (written before any measurement; provisional, to be replaced by a measured one): max |dp| 0.05, flips of
+ * the 0.5 decision <= 5% of prompt x behavior pairs.
+ */
+export function forecastParity(reference: ForecastRecord[], build: ForecastRecord[], tol: { maxAbsDp?: number; maxFlipPct?: number; threshold?: number } = {}): ForecastParity {
+  const tolerance = { maxAbsDp: tol.maxAbsDp ?? 0.05, maxFlipPct: tol.maxFlipPct ?? 5, threshold: tol.threshold ?? 0.5 };
+  const got = new Map(build.map((r) => [r.id, r]));
+  const missing: string[] = [];
+  let n = 0, pairs = 0, flips = 0, maxAbsDp = 0, sum = 0;
+  for (const r of reference) {
+    const b = got.get(r.id);
+    if (!b) { missing.push(r.id); continue; }
+    n++;
+    for (const [name, v] of Object.entries(r.behaviors)) {
+      const w = b.behaviors[name];
+      if (!w) throw new Error(`forecastParity: build output ${r.id} has no behavior ${JSON.stringify(name)}`);
+      const d = Math.abs(w.p - v.p);
+      maxAbsDp = Math.max(maxAbsDp, d); sum += d; pairs++;
+      if ((w.p >= tolerance.threshold) !== (v.p >= tolerance.threshold)) flips++;
+    }
+  }
+  const flipPct = pairs ? (100 * flips) / pairs : 0;
+  return { n, maxAbsDp, meanAbsDp: pairs ? sum / pairs : 0, flips, flipPct, pairs, missing, tolerance, pass: missing.length === 0 && pairs > 0 && maxAbsDp <= tolerance.maxAbsDp && flipPct <= tolerance.maxFlipPct };
+}

@@ -128,6 +128,10 @@ export interface BuildSpec {
   /** Out-of-graph final norm (spec 6.5): `hiddenOutput` carries the state BEFORE the decoder's final norm and the
    *  runtime applies this RMSNorm before any head reads it (alias3-web's norm.bin). Absent = hiddenOutput is post-norm. */
   norm?: { file: PinnedFile; kind?: "rmsnorm"; eps?: number; weight?: "w" | "1+w" };
+  /** Forecast reader (spec/FORECAST.md): graph output with the residual stream after block `forecastLayer` (width hiddenSize).
+   *  Both keys together; genai, decode-only and transformers.js builds only. */
+  forecastOutput?: string;
+  forecastLayer?: number;
   /** Attention of the decision pass the heads were trained with (spec 7): "causal" (default) or "noncausal"
    *  (pplx-decider v1.1 / d3). Described only: s1s2 0.1 refuses to load a "noncausal" build. */
   attention?: "causal" | "noncausal";
@@ -205,7 +209,7 @@ export interface Manifest {
   base: { repo: string; revision: string };
   hiddenSize: number;
   /** Which hidden state the head reads. ct0: the graph output after the final norm; no JS norm. */
-  layer: { read: "final"; norm: "in-graph" };
+  layer: { read: "final" | number; norm: "in-graph" };
   tokenizer: { repo: string; revision: string; files: { tokenizer: PinnedFile; config: PinnedFile } };
   eos: TokenRef[];
   /** Token fed once after load to warm the graph. */
@@ -255,12 +259,37 @@ export interface Manifest {
   escalation?: EscalationSpec;
   /** Evidence selector question (optional; see EvidenceSpec). */
   evidence?: EvidenceSpec;
+  /** Forecast reader (optional, experimental; spec/FORECAST.md). */
+  forecast?: ForecastSpec;
   /** SPDX license expression of the package as distributed (weights, heads, graphs). Optional; see spec/s1s2-package.md. */
   license?: string;
   /** Where the package came from (base model, data, recipe, tools). Optional; see Provenance. */
   provenance?: Provenance;
   /** Confidence definition answers report (spec 5.1). Reserved hook until a comparison of confidence definitions is done; ignored by s1s2 0.1. */
   confidence?: { definition: "C1" | "C3" | "C4" | "C5" | "C6" | "C7" | "tbd-007"; source?: string; [k: string]: unknown };
+}
+
+export const FORECAST_POOLINGS = ["last", "mean", "bins32"] as const;
+export type ForecastPooling = (typeof FORECAST_POOLINGS)[number];
+export const FORECAST_BINS = 32;
+
+/** Forecast reader (spec/FORECAST.md): a head over a mid-layer activation of the context -> P(behavior of the answer). */
+export interface ForecastSpec {
+  id: string;
+  /** 0-indexed decoder block whose output the head reads. */
+  layer: number;
+  pooling: ForecastPooling;
+  head: {
+    type: "linear" | "mlp";
+    file: PinnedFile;
+    /** Repo and revision of the head file; default: those of the loaded build. */
+    repo?: string; revision?: string;
+    dims: { in: number; out: number; hidden?: number };
+  };
+  behaviors: { name: string; description?: string }[];
+  /** z / T, then a z + b when platt is given; a number applies to every behavior, an array is per behavior. */
+  calibration: { temperature: number | number[]; platt?: { a: number | number[]; b: number | number[] } };
+  trainedOn: { baseId: string; weightsSha256: string; loraSha256?: string };
 }
 
 /** Package provenance (S1S2 package spec 0.1-draft, section "Provenance and license"). Free-form beyond these keys. */
@@ -320,7 +349,7 @@ export function validateManifest(m: any): Manifest {
   need(isObj(m.base) && str(m.base?.repo), "base.repo: string");
   rev(m.base?.revision, "base.revision");
   need(int(m.hiddenSize) && m.hiddenSize > 0, "hiddenSize: positive integer");
-  need(isObj(m.layer) && m.layer.read === "final" && m.layer.norm === "in-graph", 'layer: {read: "final", norm: "in-graph"} (the only readout supported)');
+  need(isObj(m.layer) && (m.layer.read === "final" || int(m.layer.read)) && m.layer.norm === "in-graph", 'layer: {read: "final" | layer index, norm: "in-graph"}');
   if (!isObj(m.tokenizer)) p.push("tokenizer: object required");
   else {
     need(str(m.tokenizer.repo), "tokenizer.repo: string");
@@ -446,6 +475,11 @@ export function validateManifest(m: any): Manifest {
       if (kind === "joint") need(isObj(h?.config), `${at}.heads.${hn}.config: the joint head config`);
       if (h?.scale !== undefined) need(typeof h.scale === "number" && Number.isFinite(h.scale) && h.scale > 0, `${at}.heads.${hn}.scale: positive number`);
     }
+    need((b.forecastOutput === undefined) === (b.forecastLayer === undefined), `${at}: forecastOutput and forecastLayer go together`);
+    if (b.forecastOutput !== undefined) {
+      need(str(b.forecastOutput) && int(b.forecastLayer), `${at}: forecastOutput: string, forecastLayer: layer index`);
+      need(["genai", "decode-only", "transformers.js"].includes(b.runtime), `${at}.forecastOutput: runtime ${b.runtime} has no extra graph output (forecast unsupported); only genai, decode-only, transformers.js`);
+    }
     need(b.attention === undefined || b.attention === "causal" || b.attention === "noncausal", `${at}.attention: "causal" | "noncausal"`);
     if (b.norm !== undefined) {
       if (!isObj(b.norm)) p.push(`${at}.norm: {file, kind?, eps?, weight?}`);
@@ -477,6 +511,7 @@ export function validateManifest(m: any): Manifest {
       if (m.evidence.sentencePrefix !== undefined) need(typeof m.evidence.sentencePrefix === "string" && !/\n/.test(m.evidence.sentencePrefix), "evidence.sentencePrefix: string without newlines");
     }
   }
+  if (m.forecast !== undefined) forecastProblems(m.forecast, m, p);
   if (m.license !== undefined) need(str(m.license) && m.license.trim().length > 0, "license: non-empty SPDX expression");
   if (m.provenance !== undefined) provenanceProblems(m.provenance, p);
   // Only the cheap rules here, so the text entry points carry no media code; the audio block of a text + audio manifest is
@@ -491,6 +526,48 @@ export function validateManifest(m: any): Manifest {
   }
   if (p.length) throw new ManifestError(p);
   return m as Manifest;
+}
+
+/** Problems of the optional forecast block (spec/FORECAST.md). */
+export function forecastProblems(f: any, m: any, p: string[]): void {
+  const at = "forecast";
+  const int = (x: any) => Number.isInteger(x) && x >= 0;
+  const num = (x: any) => typeof x === "number" && Number.isFinite(x);
+  if (!isObj_(f)) { p.push(`${at}: object`); return; }
+  const known = ["id", "layer", "pooling", "head", "behaviors", "calibration", "trainedOn"];
+  for (const k of Object.keys(f)) if (!known.includes(k)) p.push(`${at}.${k}: unknown key (known: ${known.join(", ")})`);
+  if (!(typeof f.id === "string" && f.id)) p.push(`${at}.id: non-empty string`);
+  if (!int(f.layer)) p.push(`${at}.layer: 0-indexed block index`);
+  if (!(FORECAST_POOLINGS as readonly string[]).includes(f.pooling)) p.push(`${at}.pooling: ${FORECAST_POOLINGS.join(" | ")}`);
+  const nb = Array.isArray(f.behaviors) ? f.behaviors.length : 0;
+  if (!Array.isArray(f.behaviors) || !nb || !f.behaviors.every((b: any) => isObj_(b) && typeof b.name === "string" && b.name)) p.push(`${at}.behaviors: non-empty array of {name, description?}`);
+  else if (new Set(f.behaviors.map((b: any) => b.name)).size !== nb) p.push(`${at}.behaviors: names must be unique`);
+  const h = f.head;
+  if (!isObj_(h)) p.push(`${at}.head: {type, file, dims}`);
+  else {
+    if (h.type !== "linear" && h.type !== "mlp") p.push(`${at}.head.type: "linear" | "mlp"`);
+    const fl = h.file;
+    if (!isObj_(fl) || !(typeof fl.path === "string" && fl.path) || !(typeof fl.sha256 === "string" && HEX64.test(fl.sha256))) p.push(`${at}.head.file: {path, sha256 (64 lowercase hex)}`);
+    if (h.revision !== undefined && !(typeof h.revision === "string" && SHA1.test(h.revision))) p.push(`${at}.head.revision: pinned 40-hex commit sha`);
+    const d = h.dims;
+    if (!isObj_(d) || !int(d.in) || !int(d.out) || d.in < 1 || d.out < 1) p.push(`${at}.head.dims: {in, out[, hidden]} positive integers`);
+    else {
+      const per = f.pooling === "bins32" ? FORECAST_BINS : 1;
+      if (int(m?.hiddenSize) && (FORECAST_POOLINGS as readonly string[]).includes(f.pooling) && d.in !== per * m.hiddenSize) p.push(`${at}.head.dims.in: ${d.in} != ${per} x hiddenSize (${m.hiddenSize}) for pooling ${f.pooling}`);
+      if (nb && d.out !== nb) p.push(`${at}.head.dims.out: ${d.out} != behaviors.length (${nb})`);
+      if (h.type === "mlp" && !(int(d.hidden) && d.hidden > 0)) p.push(`${at}.head.dims.hidden: required for an mlp head`);
+      if (h.type === "linear" && d.hidden !== undefined) p.push(`${at}.head.dims.hidden: only for an mlp head`);
+    }
+  }
+  const per = (x: any) => num(x) || (Array.isArray(x) && x.length === nb && x.every(num));
+  const c = f.calibration;
+  if (!isObj_(c) || !per(c.temperature) || (Array.isArray(c.temperature) ? c.temperature : [c.temperature]).some((t: any) => !(t > 0))) p.push(`${at}.calibration.temperature: number > 0, or one per behavior`);
+  else if (c.platt !== undefined && !(isObj_(c.platt) && per(c.platt.a) && per(c.platt.b))) p.push(`${at}.calibration.platt: {a, b} numbers, or one per behavior`);
+  const t = f.trainedOn;
+  if (!isObj_(t) || !(typeof t.baseId === "string" && t.baseId) || !(typeof t.weightsSha256 === "string" && HEX64.test(t.weightsSha256)) || (t.loraSha256 !== undefined && !(typeof t.loraSha256 === "string" && HEX64.test(t.loraSha256))))
+    p.push(`${at}.trainedOn: {baseId, weightsSha256 (64 hex), loraSha256? (64 hex)}`);
+  if (isObj_(m?.builds)) for (const [name, b] of Object.entries<any>(m.builds)) if (isObj_(b) && b.forecastLayer !== undefined && int(f.layer) && b.forecastLayer !== f.layer)
+    p.push(`builds.${name}.forecastLayer: ${b.forecastLayer} != forecast.layer (${f.layer})`);
 }
 
 const QTYPES = ["predicate", "choice", "score"];

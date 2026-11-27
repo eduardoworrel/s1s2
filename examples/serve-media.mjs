@@ -18,7 +18,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.resolve(HERE, "..");
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".wasm": "application/wasm", ".png": "image/png", ".jpg": "image/jpeg", ".wav": "audio/wav", ".onnx": "application/octet-stream", ".md": "text/plain; charset=utf-8" };
 
-export function createMediaServer({ weights, extra = {} }) {
+export function createMediaServer({ weights, extra = {}, canonical = false }) {
   const routes = {
     "/lib/": path.join(LIB, "dist"),
     "/manifests/": path.join(LIB, "manifests"),
@@ -28,7 +28,7 @@ export function createMediaServer({ weights, extra = {} }) {
   for (const [r, d] of Object.entries(extra)) routes[r] = path.resolve(d);          // tests only: reference data served next to the pages
   if (weights) for (const pkg of ["marimba-audio"]) if (fs.existsSync(path.join(weights, pkg))) routes[`/weights/${pkg}/`] = path.resolve(weights, pkg);
   return http.createServer((req, res) => {
-    try { handle(routes, req, res); }
+    try { handle(routes, req, res, canonical); }
     catch { if (!res.headersSent) res.writeHead(500); res.end(); }
   });
 }
@@ -49,7 +49,7 @@ function parseRange(header, size) {
   return Number.isFinite(a) && Number.isFinite(b) && a <= b && a < size ? [a, b] : null;
 }
 
-function handle(routes, req, res) {
+function handle(routes, req, res, canonical) {
   let url;
   try { url = decodeURIComponent(new URL(req.url, "http://x").pathname); } catch { return fail(res, 400); }
   if (url.includes("\0")) return fail(res, 400);
@@ -61,6 +61,10 @@ function handle(routes, req, res) {
   if (fs.statSync(file, { throwIfNoEntry: false })?.isDirectory()) file = path.join(file, "index.html");
   const st = fs.statSync(file, { throwIfNoEntry: false });
   if (!st?.isFile()) return fail(res, 404);
+  if (canonical) {
+    file = fs.realpathSync(file);
+    if (!inside(fs.realpathSync(root), file)) return fail(res, 403);
+  }
   const h = { ...HEAD, "Content-Type": TYPES[path.extname(file)] ?? "application/octet-stream", "Cache-Control": "no-cache", "Accept-Ranges": "bytes" };
   let opts, status = 200, length = st.size;
   if (req.headers.range !== undefined) {
