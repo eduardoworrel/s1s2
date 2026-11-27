@@ -10,7 +10,7 @@
   "GDPR": {
    "section": "v3_gdpr",
    "language": "en",
-   "manifest": "https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2/resolve/main/manifest.en.json",
+   "manifest": "https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2/resolve/e5b9f164aae6fdfee85ca8dba930916c0d3f4e43/manifest.en.json",
    "question": "Does this passage address {name} ({definition})? Answer with one option only.",
    "quote": "Passage:\n{passage}\n\nThis passage addresses {name} ({definition}). Quote the exact sentence that shows it.",
    "labels": {
@@ -251,7 +251,7 @@
   "LGPD": {
    "section": "v3_lgpd",
    "language": "pt",
-   "manifest": "https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2/resolve/main/manifest.pt.json",
+   "manifest": "https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2/resolve/e5b9f164aae6fdfee85ca8dba930916c0d3f4e43/manifest.pt.json",
    "question": "Este trecho trata {name} ({definition})? Responda só com uma opção.",
    "quote": "Trecho:\n{passage}\n\nEste trecho trata {name} ({definition}). Cite a frase exata que mostra isso.",
    "labels": {
@@ -436,7 +436,7 @@
   "CCPA": {
    "section": "v4_ccpa",
    "language": "en",
-   "manifest": "https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2/resolve/main/manifest.en.json",
+   "manifest": "https://huggingface.co/eduardoworrel/S5-nano-GDPR-LGPD-ONNX-genai-int4-S1S2/resolve/e5b9f164aae6fdfee85ca8dba930916c0d3f4e43/manifest.en.json",
    "question": "Does this passage address {name} ({definition})? Answer with one option only.",
    "quote": "Passage:\n{passage}\n\nThis passage addresses {name} ({definition}). Quote the exact sentence that shows it.",
    "labels": {

@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinela de mensagens · Message sentinel</title>
+<script type="importmap">
+{ "imports": {
+  "@s1s2/web": "https://cdn.jsdelivr.net/npm/@s1s2/web@0.2.1/dist/index.js",
+  "@s1s2/web/media": "https://cdn.jsdelivr.net/npm/@s1s2/web@0.2.1/dist/media.js",
+  "onnxruntime-web/webgpu": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort.webgpu.min.mjs",
+  "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort.webgpu.min.mjs",
+  "onnxruntime-common": "https://cdn.jsdelivr.net/npm/onnxruntime-common@1.31.1/dist/esm/index.js",
+  "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/dist/transformers.web.js"
+} }
+</script>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --line: #e7e5e4; --card: #fff; --ok: #166534; --okbg: #dcfce7;
+          --no: #9a3412; --nobg: #ffedd5; --warnbg: #fef3c7; --warn: #78350f; --accent: #1d4ed8; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --card: #292524;
+          --ok: #86efac; --okbg: #14532d; --no: #fdba74; --nobg: #431407; --warnbg: #451a03; --warn: #fde68a; --accent: #93c5fd; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { font-weight: 600; font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  textarea { width: 100%; min-height: 150px; resize: vertical; font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+             padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .grow { flex: 1; }
+  button.primary { padding: 9px 18px; border-radius: 8px; border: 0; background: var(--accent); color: #fff; font-weight: 650; cursor: pointer; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.ghost { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; font-size: 13px; }
+  button.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 13px; }
+  input[type=range] { width: 160px; }
+  #status { color: var(--muted); font-size: 13px; margin-top: 10px; min-height: 1.5em; overflow-wrap: anywhere; }
+  .summary { display: flex; gap: 24px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+  .big { font-size: 34px; font-weight: 750; letter-spacing: -0.02em; }
+  .item { border-top: 1px solid var(--line); padding: 12px 0; }
+  .item:first-of-type { border-top: 0; }
+  .msg { overflow-wrap: anywhere; }
+  .meta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .pill { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+  .yes { background: var(--okbg); color: var(--ok); } .no { background: var(--nobg); color: var(--no); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; width: 110px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .cands { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 150px) 1fr 48px; gap: 4px 10px; align-items: center; font-size: 13px; }
+  .cands .bar { width: 100%; display: block; margin: 0; }
+  pre { margin: 8px 0 0; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+  .cmp > div { border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-width: 0; }
+  .cmp b { font-size: 24px; letter-spacing: -0.01em; }
+  .exp { display: inline-block; border-radius: 6px; padding: 1px 8px; font-size: 12px; font-weight: 700; background: var(--warnbg); color: var(--warn); margin-left: 8px; vertical-align: middle; }
+  .notice { background: var(--warnbg); color: var(--warn); border-radius: 8px; padding: 10px 14px; margin: 0 0 16px; font-size: 14px; }
+  .sum2 { margin: 8px 0 0; padding: 6px 10px; border-left: 3px solid var(--accent); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .sliders { display: flex; gap: 20px; flex-wrap: wrap; }
+  .gray { background: var(--line); color: var(--fg); } .amber { background: var(--warnbg); color: var(--warn); }
+  .quote { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0 0; color: var(--fg); font-size: 13px; overflow-wrap: anywhere; }
+  .quote.bad { border-left-color: var(--no); color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+  @media (max-width: 640px) { .big { font-size: 28px; } .cmp { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1><span data-i="title"></span><span class="exp" data-i="exp"></span></h1>
+      <p class="sub" data-i="sub"></p>
+    </div>
+    <button class="ghost" id="lang" aria-label="language">EN</button>
+  </div>
+  <p class="notice" data-i="limit"></p>
+
+  <section class="card">
+    <label for="text" data-i="input"></label>
+    <textarea id="text" spellcheck="false"></textarea>
+    <div class="row sliders">
+      <label style="margin:0"><span data-i="wake"></span> <b id="wv">0.20</b>
+        <input type="range" id="wake" min="0.05" max="0.9" step="0.05" value="0.2"></label>
+      <label style="margin:0"><span data-i="abstain"></span> <b id="thv">0.20</b>
+        <input type="range" id="th" min="0" max="0.9" step="0.05" value="0.2"></label>
+    </div>
+    <div class="row">
+      <button class="primary" id="run" disabled data-i="loading"></button>
+    </div>
+    <div id="status"></div>
+  </section>
+
+  <section class="card" id="results" hidden></section>
+  <footer data-i="foot"></footer>
+</main>
+<script type="module">
+import * as ort from "onnxruntime-web/webgpu";
+import * as tjs from "@huggingface/transformers";
+import { S1S2 } from "@s1s2/web";
+
+const params = new URLSearchParams(location.search);
+const MANIFEST = params.get("manifest") ?? "./manifest.json"; // pins the published S5-nano ContractNLI + CLINC150 + SIB-200 build (same weights, plain Sim/Não readout)
+
+// Synthetic messages written for this demo: [text, urgent?]. The label is only used by the test script, never shown.
+const BANK = [
+  ["Bom dia doutor, tudo bem? Passando para agradecer o atendimento de ontem.", 0],
+  ["Doutor, meu irmão acabou de ser preso em Santo André, estão levando ele pra delegacia agora.", 1],
+  ["Oi, qual o horário da nossa reunião da próxima segunda?", 0],
+  ["Vi um filme sobre habeas corpus ontem, é assim mesmo na vida real? Curiosidade.", 0],
+  ["A audiência do João é amanhã às 9h no Fórum Criminal da Barra Funda, o senhor confirma presença?", 1],
+  ["Pode me indicar um bom contador? Preciso para a minha empresa.", 0],
+  ["Doutor, levaram o Marcos agora há pouco, os policiais disseram que ele não volta pra casa hoje.", 1],
+  ["O prazo do recurso é só daqui a três semanas, sem pressa, só avisando que já separei os documentos.", 0],
+  ["Doutor, segue em anexo a procuração assinada.", 0],
+  ["O prazo do recurso vence amanhã às 18h, ainda falta protocolar.", 1],
+  ["Meu primo foi preso ano passado e agora está em liberdade, queria saber se pode pedir indenização.", 0],
+  ["Atenção: a juíza marcou a oitiva da testemunha para amanhã cedo, às 8h30, sala 4.", 1],
+  ["Feliz aniversário ao senhor e à equipe do escritório!", 0],
+  ["Doutor, a audiência é só em 15 de março, só queria confirmar o horário.", 0],
+  ["Minha mãe foi detida na blitz e estão pedindo fiança, estamos na delegacia do bairro.", 1],
+  ["Os honorários deste mês já foram pagos, o comprovante está no e-mail.", 0],
+  ["Pode me explicar a diferença entre prisão preventiva e temporária? Estou estudando.", 0],
+  ["Lembrete: audiência de custódia hoje às 15h, Fórum de Pinheiros. Preciso do senhor lá.", 1],
+  ["Olá, como anda meu processo? Sem pressa, só curiosidade.", 0],
+  ["Meu filho está na viatura neste momento, vão levar ele pro presídio, me ajuda!", 1],
+  ["A audiência de conciliação do mês que vem foi remarcada para o dia 20, tudo bem para o senhor?", 0],
+  ["O oficial de justiça entregou a intimação: preciso comparecer amanhã às 10h na delegacia.", 1],
+  ["Bom dia! Só confirmando que recebi o contrato revisado.", 0],
+  ["Estou com medo de ser preso algum dia, o que devo evitar fazer? Só uma dúvida geral.", 0],
+  ["A polícia está aqui em casa com um mandado de prisão. O que eu faço?", 1],
+  ["O prazo que vence amanhã é o do meu contrato de aluguel, não do processo. Pode olhar depois?", 0],
+  ["O prazo da resposta à acusação termina depois de amanhã e o cliente ainda não mandou os documentos.", 1],
+  ["Doutor, tem como o senhor me enviar o recibo da consulta de ontem?", 0],
+];
+window.__bank = BANK;
+
+// Same wording as the laboratory's case 3 (frozen there); only the setting is kept: messages to a criminal-defence lawyer.
+const S1_INPUT = (m) => `Mensagem de WhatsApp recebida por um advogado criminalista:\n${m}`;
+const S1_INSTR = "Esta mensagem exige acordar o advogado agora (prisão em curso, ou audiência ou prazo processual em até 48 horas)? Responda apenas Sim ou Não.";
+const S2_PROMPT = (m) => `${S1_INPUT(m)}\n\nResponda em duas linhas. Linha 1: URGENTE (prisão em curso, ou audiência ou prazo em até 48 horas) ou ROTINA. Linha 2: resumo de até 20 palavras com data, hora e local, se houver.`;
+
+const I18N = {
+  pt: { title: "Sentinela de mensagens", exp: "experimental", sub: "O S1 lê cada mensagem e só acorda o S2 para resumir as urgentes.",
+    limit: "Limite real: no laboratório (300 mensagens sintéticas, 36 urgentes) o S1 deste modelo, a 0,20, não deu falso alarme e omitiu 3 urgentes. O par S1 + S2 não ficou provado melhor que S1 + uma regra de resumo: empatou neste modelo e só venceu em um modelo da família S5 (o S5-nano de privacidade, que não é este). O limiar 0,20 veio de um teste anterior e não foi recalibrado.",
+    input: "Uma mensagem por linha", wake: "Acordar acima de P(urgente)", abstain: "Abster abaixo da margem",
+    loading: "Carregando modelo…", ready: "Ler fluxo", nowebgpu: "Precisa de WebGPU (Chrome ou Edge recentes).", ready_s: "Modelo pronto. As mensagens não saem deste aparelho.",
+    err_load: "Não foi possível carregar o modelo: ", empty: "Escreva ao menos uma mensagem.",
+    wakes: "acordou", sleeps: "dorme", unsure: "incerta: vai para a pessoa", urgent: "P(urgente)", margin: "margem",
+    see: "ver o que o modelo escolheu", hide: "esconder", seen_q: "Pergunta", seen_pick: "Escolha", seen_how: "Leitura", seen_how_v: "logits Sim/Não (uma passada, sem gerar)", rawm: "margem bruta",
+    s2_none: "S2 não foi chamado", woke_of: "mensagens acordaram o S2", s1_med: "S1 por mensagem (mediana)", s2_med: "S2 por resumo (mediana)", saved: "S2 em todas levaria cerca de", actual: "aqui o fluxo levou", total: "total",
+    foot: "Modelo: S5-nano ContractNLI + CLINC150 + SIB-200 (int4, 2,4 GB, baixa uma vez), lido como Sim/Não pelos logits, sem cabeça. Mensagens de exemplo sintéticas. S1 acorda; o resumo do S2 pode errar." },
+  en: { title: "Message sentinel", exp: "experimental", sub: "S1 reads each message and only wakes S2 to summarise the urgent ones.",
+    limit: "Real limit: in the lab (300 synthetic messages, 36 urgent) this model's S1 at 0.20 raised no false alarm and missed 3 urgent ones. The S1 + S2 pair was not proven better than S1 + a summary rule: it tied on this model and only won on one model of the S5 family (the privacy S5-nano, not this one). The 0.20 threshold came from an earlier test and was not recalibrated.",
+    input: "One message per line", wake: "Wake above P(urgent)", abstain: "Abstain below margin",
+    loading: "Loading model…", ready: "Read stream", nowebgpu: "Needs WebGPU (recent Chrome or Edge).", ready_s: "Model ready. Messages never leave this device.",
+    err_load: "Could not load the model: ", empty: "Write at least one message.",
+    wakes: "woke", sleeps: "sleeps", unsure: "unsure: goes to a person", urgent: "P(urgent)", margin: "margin",
+    see: "see what the model chose", hide: "hide", seen_q: "Question", seen_pick: "Choice", seen_how: "Reading", seen_how_v: "Yes/No logits (one pass, no generation)", rawm: "raw margin",
+    s2_none: "S2 was not called", woke_of: "messages woke S2", s1_med: "S1 per message (median)", s2_med: "S2 per summary (median)", saved: "S2 on all would take about", actual: "here the stream took", total: "total",
+    foot: "Model: S5-nano ContractNLI + CLINC150 + SIB-200 (int4, 2.4 GB, downloaded once), read as Yes/No from the logits, no head. Example messages are synthetic. S1 wakes; the S2 summary can be wrong." },
+};
+let L = params.get("lang") ?? (navigator.language?.toLowerCase().startsWith("pt") ? "pt" : "en");
+const t = (k) => I18N[L][k];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const setStatus = (m) => { $("status").textContent = m; };
+let lib = null, manifest = null, last = null, loadMs = 0;
+
+function applyLang() {
+  document.documentElement.lang = L === "pt" ? "pt-BR" : "en";
+  document.querySelectorAll("[data-i]").forEach((n) => { if (!(n.id === "run" && lib)) n.textContent = t(n.dataset.i); });
+  $("lang").textContent = L === "pt" ? "EN" : "PT";
+  if (lib) $("run").textContent = t("ready");
+  if (last) render(last);
+}
+
+const s1 = (m) => lib.decide({ input: S1_INPUT(m), questions: [{ name: "q", task: "sn", instructions: S1_INSTR }] }, { method: "logits", keepState: false });
+
+async function loadModel() {
+  manifest = await (await fetch(MANIFEST)).json();
+  ort.env.wasm.numThreads = 1;
+  ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/"; // same version as the module above
+  const t0 = performance.now();
+  lib = await S1S2.load({ manifest, build: "genai-int4-webgpu", modules: { ort, transformers: tjs },
+    genai: { verifyEp: true }, onStatus: (m) => setStatus(m) });
+  await (await s1("Bom dia.")).dispose(); // compile the kernels once
+  loadMs = performance.now() - t0;
+}
+
+const state = (r) => {
+  const wake = Number($("wake").value), th = Number($("th").value);
+  if (r.margin < th) return "unsure";
+  return r.p >= wake ? "wakes" : "sleeps";
+};
+const median = (xs) => xs.length ? [...xs].sort((a, b) => a - b)[xs.length >> 1] : 0;
+
+async function run() {
+  const lines = $("text").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) { setStatus(t("empty")); return; }
+  $("run").disabled = true;
+  const rows = [];
+  try {
+    const t0 = performance.now();
+    for (const [i, m] of lines.entries()) {
+      setStatus(`${i + 1} / ${lines.length}`);
+      const a0 = performance.now();
+      const s = await s1(m);
+      const ms1 = performance.now() - a0;
+      const a = s.answers[0];
+      const row = { m, p: a.probability, margin: a.margin, rawMargin: a.rawMargin, method: a.method, ms1 };
+      await s.dispose();
+      rows.push(row);
+      // System 2 only when S1 wakes it up (or is unsure): the summary is generated on the same weights.
+      if (state(row) !== "sleeps") {
+        const b0 = performance.now();
+        row.summary = (await lib.generate(S2_PROMPT(m), { maxNewTokens: 60, temperature: 0 })).text.trim();
+        row.ms2 = performance.now() - b0;
+      }
+      last = { rows, total: performance.now() - t0 };
+      render(last);
+    }
+    setStatus("");
+  } catch (e) { setStatus(`Error: ${e?.message ?? e}`); console.error(e); }
+  finally { $("run").disabled = false; }
+}
+
+function render(st) {
+  const el = $("results");
+  el.hidden = false;
+  const woke = st.rows.filter((r) => r.summary !== undefined).length;
+  const m1 = median(st.rows.map((r) => r.ms1)), m2 = median(st.rows.filter((r) => r.ms2).map((r) => r.ms2));
+  el.innerHTML = `<div class="summary"><div><span class="big">${woke}</span><span class="big" style="color:var(--muted)"> / ${st.rows.length}</span> ${t("woke_of")}</div>
+    <div><small style="color:var(--muted)">${t("s1_med")} ${Math.round(m1)} ms · ${m2 ? `${t("s2_med")} ${Math.round(m2)} ms · ${t("saved")} ${((m2 * st.rows.length) / 1000).toFixed(0)} s, ${t("actual")} ${(st.total / 1000).toFixed(0)} s` : t("s2_none")}</small></div></div>` +
+    st.rows.map((r, i) => { const s = state(r), cls = s === "wakes" ? "no" : s === "unsure" ? "amber" : "gray";
+      return `<div class="item"><div class="msg">${esc(r.m)}</div>
+      <div class="meta"><span class="pill ${cls}">${t(s)}</span>
+        <span>${t("urgent")} ${r.p.toFixed(2)}</span>
+        <span><span class="bar"><i style="width:${Math.round(100 * r.margin)}%"></i></span>${t("margin")} ${r.margin.toFixed(2)}</span>
+        <span>${Math.round(r.ms1)} ms</span>
+        <button class="link" data-see="${i}">${t("see")}</button></div>
+      ${r.summary !== undefined ? `<div class="sum2">${esc(r.summary)}</div>` : ""}
+      <div id="see${i}"></div></div>`; }).join("");
+  el.querySelectorAll("[data-see]").forEach((b) => b.addEventListener("click", () => {
+    const i = Number(b.dataset.see), box = $("see" + i), r = st.rows[i];
+    if (box.innerHTML) { box.innerHTML = ""; b.textContent = t("see"); return; }
+    b.textContent = t("hide");
+    box.innerHTML = `<pre>${esc(`${t("seen_q")}: ${S1_INSTR}\n${S1_INPUT(r.m)}\n\n${t("seen_pick")}: ${r.p >= 0.5 ? "Sim" : "Não"}\n${t("seen_how")}: ${t("seen_how_v")}\n` +
+      `  Sim ${r.p.toFixed(4)}\n  Não ${(1 - r.p).toFixed(4)}\n${t("margin")} ${r.margin.toFixed(4)} · ${t("rawm")} ${r.rawMargin?.toFixed(3)} · ${r.method}`)}</pre>`;
+  }));
+}
+
+async function main() {
+  $("text").value = BANK.map((b) => b[0]).join("\n");
+  $("text").style.minHeight = "200px";
+  const sync = () => { $("wv").textContent = Number($("wake").value).toFixed(2); $("thv").textContent = Number($("th").value).toFixed(2); if (last) render(last); };
+  $("wake").addEventListener("input", sync); $("th").addEventListener("input", sync);
+  $("lang").addEventListener("click", () => { L = L === "pt" ? "en" : "pt"; applyLang(); });
+  $("run").addEventListener("click", run);
+  applyLang();
+  if (!navigator.gpu) { setStatus(t("nowebgpu")); $("run").textContent = t("nowebgpu"); return; }
+  try {
+    await loadModel();
+    $("run").textContent = t("ready"); $("run").disabled = false;
+    setStatus(`${t("ready_s")} (${(loadMs / 1000).toFixed(1)} s)`);
+    window.__demoReady = { loadMs };
+  } catch (e) { setStatus(t("err_load") + (e?.message ?? e)); console.error(e); window.__demoError = String(e?.message ?? e); }
+}
+main();
+</script>
+</body>
+</html>
